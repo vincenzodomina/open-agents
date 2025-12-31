@@ -27,7 +27,7 @@ const TextPart = memo(function TextPart({ text }: { text: string }) {
 
   return (
     <Box>
-      <Text>● </Text>
+      <Text>●{" "}</Text>
       <Text>{rendered}</Text>
     </Box>
   );
