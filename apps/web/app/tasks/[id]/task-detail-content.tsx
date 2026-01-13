@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isToolUIPart } from "ai";
 import type { ComponentProps, ReactNode } from "react";
@@ -20,11 +20,15 @@ import {
   MoreVertical,
   GitCompare,
   Paperclip,
-  Save,
   Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ToolCall } from "@/components/tool-call";
 import { TaskGroupView } from "@/components/task-group-view";
 import { CreatePRDialog } from "@/components/create-pr-dialog";
@@ -100,42 +104,8 @@ function isSandboxValid(sandboxInfo: SandboxInfo | null): boolean {
   return Date.now() < expiresAt - 10_000;
 }
 
-function formatTimeRemaining(ms: number): string {
-  if (ms <= 0) return "0:00";
-  const totalSeconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function SandboxStatus({
-  sandboxInfo,
-  isCreating,
-  isReconnecting,
-  reconnectionStatus,
-  isSavingSnapshot,
-  isRestoring,
-  hasSnapshot,
-  onKill,
-  onSaveAndKill,
-  onSaveSnapshot,
-  onRestore,
-}: {
-  sandboxInfo: SandboxInfo | null;
-  isCreating: boolean;
-  isReconnecting: boolean;
-  reconnectionStatus: ReconnectionStatus;
-  isSavingSnapshot: boolean;
-  isRestoring: boolean;
-  hasSnapshot: boolean;
-  onKill: () => void;
-  onSaveAndKill: () => void;
-  onSaveSnapshot: () => void;
-  onRestore: () => void;
-}) {
+function useSandboxTimeRemaining(sandboxInfo: SandboxInfo | null) {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const [showStopConfirm, setShowStopConfirm] = useState(false);
-  const hasAutoSavedRef = useRef(false);
 
   useEffect(() => {
     if (!sandboxInfo) {
@@ -154,13 +124,47 @@ function SandboxStatus({
     return () => clearInterval(interval);
   }, [sandboxInfo]);
 
+  return timeRemaining;
+}
+
+const WARNING_THRESHOLD_MS = 60_000; // Show warning when < 1 minute remaining
+
+function SandboxHeaderBadge({
+  sandboxInfo,
+  isCreating,
+  isSavingSnapshot,
+  isRestoring,
+  isExtending,
+  timeRemaining,
+  onExtend,
+  onSaveAndKill,
+}: {
+  sandboxInfo: SandboxInfo | null;
+  isCreating: boolean;
+  isSavingSnapshot: boolean;
+  isRestoring: boolean;
+  isExtending: boolean;
+  timeRemaining: number | null;
+  onExtend: () => void;
+  onSaveAndKill: () => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const hasAutoSavedRef = useRef(false);
+
   // Reset auto-save flag when sandbox changes
   useEffect(() => {
     hasAutoSavedRef.current = false;
   }, [sandboxInfo?.sandboxId]);
 
+  // Reset stopping state when sandbox becomes inactive
+  useEffect(() => {
+    if (!sandboxInfo) {
+      setIsStopping(false);
+    }
+  }, [sandboxInfo]);
+
   // Auto-save when timeout reached
-  // The TIMEOUT_BUFFER_MS in vercel.ts gives 30s extra sandbox life for this to complete
   useEffect(() => {
     if (
       timeRemaining !== null &&
@@ -169,175 +173,189 @@ function SandboxStatus({
       !isSavingSnapshot
     ) {
       hasAutoSavedRef.current = true;
+      setIsStopping(true);
       onSaveAndKill();
     }
   }, [timeRemaining, isSavingSnapshot, onSaveAndKill]);
 
+  const handleStop = () => {
+    setIsStopping(true);
+    onSaveAndKill();
+  };
+
+  // Creating or restoring - show spinner dot
   if (isCreating || isRestoring) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
-        <span>
-          {isRestoring ? "Restoring snapshot..." : "Creating sandbox..."}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center justify-center">
+            <Loader2 className="size-3 animate-spin text-yellow-500" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={8}>
+          {isRestoring ? "Restoring sandbox..." : "Creating sandbox..."}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // Stopping - show optimistic pausing state
+  if (isStopping && sandboxInfo) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center justify-center">
+            <Loader2 className="size-3 animate-spin text-muted-foreground" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={8}>
+          Pausing sandbox...
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  // Inactive - show gray dot
+  if (!sandboxInfo || timeRemaining === null || timeRemaining <= 0) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center justify-center p-1">
+            <span className="size-2.5 rounded-full bg-muted-foreground/40" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={8}>
+          Sandbox inactive
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  const isWarning = timeRemaining < WARNING_THRESHOLD_MS;
+  const secondsRemaining = Math.ceil(timeRemaining / 1000);
+
+  // Warning state - show message with extend and close buttons
+  if (isWarning) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-orange-500">
+          Pausing in {secondsRemaining}s
         </span>
-      </div>
-    );
-  }
-
-  if (isReconnecting) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-yellow-500" />
-        <span>Reconnecting to sandbox...</span>
-      </div>
-    );
-  }
-
-  // Reconnection failed - show appropriate state
-  if (reconnectionStatus === "failed") {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="h-2 w-2 rounded-full bg-amber-500" />
-        <span>Sandbox expired</span>
-        {hasSnapshot && (
-          <button
-            type="button"
-            onClick={onRestore}
-            className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary hover:bg-primary/20"
-          >
-            <span>Restore snapshot</span>
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // No sandbox was ever created for this task (or it was cleared)
-  if (reconnectionStatus === "no_sandbox") {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="h-2 w-2 rounded-full bg-gray-400" />
-        <span>No active sandbox</span>
-        {hasSnapshot && (
-          <button
-            type="button"
-            onClick={onRestore}
-            className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary hover:bg-primary/20"
-          >
-            <span>Restore snapshot</span>
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  // No sandbox and has snapshot - show restore option
-  if (!sandboxInfo && hasSnapshot) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="h-2 w-2 rounded-full bg-amber-500" />
-        <span>Sandbox stopped</span>
-        <button
-          type="button"
-          onClick={onRestore}
-          className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary hover:bg-primary/20"
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onExtend}
+          disabled={isExtending}
+          className="h-6 px-2 text-xs"
         >
-          <span>Restore snapshot</span>
-        </button>
+          {isExtending ? <Loader2 className="size-3 animate-spin" /> : "Extend"}
+        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleStop}
+              disabled={isSavingSnapshot}
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              <X className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8}>
+            Save and pause
+          </TooltipContent>
+        </Tooltip>
       </div>
     );
   }
 
-  if (!sandboxInfo || timeRemaining === null) {
+  // Active - show green dot with X on hover
+  return (
+    <div
+      className="flex items-center gap-1"
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center p-1">
+            <span className="size-2.5 rounded-full bg-green-500" />
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" sideOffset={8}>
+          Sandbox active
+        </TooltipContent>
+      </Tooltip>
+
+      {/* X button on hover */}
+      {isHovered && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleStop}
+              disabled={isSavingSnapshot}
+              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              <X className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8}>
+            Save and pause
+          </TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+function SandboxInputOverlay({
+  sandboxInfo,
+  isCreating,
+  isRestoring,
+  timeRemaining,
+  hasSnapshot,
+  onRestore,
+  onCreateNew,
+}: {
+  sandboxInfo: SandboxInfo | null;
+  isCreating: boolean;
+  isRestoring: boolean;
+  timeRemaining: number | null;
+  hasSnapshot: boolean;
+  onRestore: () => void;
+  onCreateNew: () => void;
+}) {
+  const isActive = !isCreating && !isRestoring && isSandboxValid(sandboxInfo);
+
+  if (isActive) {
     return null;
   }
 
-  if (timeRemaining <= 0) {
+  if (isCreating || isRestoring) {
     return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="h-2 w-2 rounded-full bg-red-500" />
-        <span>Sandbox expired</span>
-        {hasSnapshot && (
-          <button
-            type="button"
-            onClick={onRestore}
-            className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary hover:bg-primary/20"
-          >
-            <span>Restore snapshot</span>
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (showStopConfirm) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span>Save before stopping?</span>
-        <button
-          type="button"
-          onClick={() => {
-            setShowStopConfirm(false);
-            onSaveAndKill();
-          }}
-          disabled={isSavingSnapshot}
-          className="flex items-center gap-1 rounded bg-primary/10 px-1.5 py-0.5 text-primary hover:bg-primary/20 disabled:opacity-50"
-        >
-          {isSavingSnapshot ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Save className="h-3 w-3" />
-          )}
-          <span>Save</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setShowStopConfirm(false);
-            onKill();
-          }}
-          className="rounded px-1.5 py-0.5 hover:bg-muted-foreground/20"
-        >
-          <span>Discard</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowStopConfirm(false)}
-          className="rounded p-0.5 hover:bg-muted-foreground/20"
-          title="Cancel"
-        >
-          <X className="h-3 w-3" />
-        </button>
+      <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-background/60 backdrop-blur-[2px]">
+        <div className="flex items-center gap-3 rounded-full bg-background/90 px-4 py-2 text-muted-foreground shadow-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm">
+            {isRestoring ? "Restoring snapshot..." : "Creating sandbox..."}
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-      <span className="h-2 w-2 rounded-full bg-green-500" />
-      <span>{formatTimeRemaining(timeRemaining)}</span>
-      <button
-        type="button"
-        onClick={onSaveSnapshot}
-        disabled={isSavingSnapshot}
-        className="flex items-center gap-1 rounded px-1.5 py-0.5 hover:bg-muted-foreground/20 disabled:opacity-50"
-        title="Save snapshot"
-      >
-        {isSavingSnapshot ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Save className="h-3 w-3" />
-        )}
-        <span>Save</span>
-      </button>
-      <button
-        type="button"
-        onClick={() => setShowStopConfirm(true)}
-        className="rounded p-0.5 hover:bg-muted-foreground/20"
-        title="Stop sandbox"
-      >
-        <X className="h-3 w-3" />
-      </button>
+    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-background/60 backdrop-blur-[2px]">
+      {hasSnapshot ? (
+        <Button onClick={onRestore} size="sm" className="shadow-sm">
+          Resume sandbox
+        </Button>
+      ) : (
+        <Button onClick={onCreateNew} size="sm" className="shadow-sm">
+          Create sandbox
+        </Button>
+      )}
     </div>
   );
 }
@@ -355,6 +373,7 @@ export function TaskDetailContent() {
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
   const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
+  const [isExtendingSandbox, setIsExtendingSandbox] = useState(false);
   const [prDialogOpen, setPrDialogOpen] = useState(false);
   const [repoDialogOpen, setRepoDialogOpen] = useState(false);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
@@ -371,7 +390,6 @@ export function TaskDetailContent() {
     getFileParts,
     fileInputRef,
     openFilePicker,
-    addImageAttachments,
   } = useImageAttachments();
   const { containerRef, isAtBottom, scrollToBottom } =
     useScrollToBottom<HTMLDivElement>();
@@ -392,6 +410,7 @@ export function TaskDetailContent() {
     reconnectionStatus,
     attemptReconnection,
   } = useTaskChatContext();
+  const sandboxTimeRemaining = useSandboxTimeRemaining(sandboxInfo);
   const {
     messages,
     error,
@@ -436,7 +455,7 @@ export function TaskDetailContent() {
     onSelect: handleFileSelect,
   });
 
-  const handleKillSandbox = async () => {
+  const handleKillSandbox = useCallback(async () => {
     if (!sandboxInfo) return;
     try {
       await fetch("/api/sandbox", {
@@ -450,7 +469,7 @@ export function TaskDetailContent() {
     } finally {
       clearSandboxInfo();
     }
-  };
+  }, [sandboxInfo, task.id, clearSandboxInfo]);
 
   const saveSnapshot = async (
     sandboxId: string,
@@ -489,8 +508,9 @@ export function TaskDetailContent() {
     }
   };
 
-  const handleSaveSnapshot = async () => {
-    if (!sandboxInfo) return;
+  const handleSaveAndKill = useCallback(async () => {
+    if (!sandboxInfo || isSavingSnapshotRef.current) return;
+    isSavingSnapshotRef.current = true;
     setIsSavingSnapshot(true);
     try {
       const result = await saveSnapshot(sandboxInfo.sandboxId);
@@ -499,25 +519,53 @@ export function TaskDetailContent() {
       }
     } finally {
       setIsSavingSnapshot(false);
-    }
-  };
-
-  const handleSaveAndKill = async () => {
-    if (!sandboxInfo) return;
-    setIsSavingSnapshot(true);
-    try {
-      const result = await saveSnapshot(sandboxInfo.sandboxId);
-      if (result.success && result.downloadUrl && result.createdAt) {
-        updateTaskSnapshot(result.downloadUrl, new Date(result.createdAt));
-      }
-    } finally {
-      setIsSavingSnapshot(false);
+      isSavingSnapshotRef.current = false;
     }
     // Kill sandbox after saving (regardless of save success)
     await handleKillSandbox();
+  }, [sandboxInfo, updateTaskSnapshot, handleKillSandbox]);
+
+  const handleExtendSandbox = async () => {
+    if (!sandboxInfo) return;
+    setIsExtendingSandbox(true);
+    try {
+      const response = await fetch("/api/sandbox/extend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sandboxId: sandboxInfo.sandboxId,
+          taskId: task.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = (await response.json()) as { error?: string };
+        console.error("Failed to extend sandbox:", error.error);
+        return;
+      }
+
+      const data = (await response.json()) as {
+        expiresAt: number;
+        extendedBy: number;
+      };
+
+      // Update sandbox info with new expiration
+      // Use a single timestamp to avoid drift between createdAt and timeout calculation
+      const now = Date.now();
+      setSandboxInfo({
+        ...sandboxInfo,
+        createdAt: now,
+        timeout: data.expiresAt - now,
+      });
+    } catch (err) {
+      console.error("Failed to extend sandbox:", err);
+    } finally {
+      setIsExtendingSandbox(false);
+    }
   };
 
   const [restoreError, setRestoreError] = useState<string | null>(null);
+  const isSavingSnapshotRef = useRef(false);
 
   const handleRestoreSnapshot = async () => {
     if (!task.snapshotUrl) return;
@@ -579,6 +627,34 @@ export function TaskDetailContent() {
       setIsRestoringSnapshot(false);
     }
   };
+
+  const handleCreateNewSandbox = useCallback(async () => {
+    setIsCreatingSandbox(true);
+    try {
+      const branchExistsOnOrigin = task.prNumber != null;
+      const shouldCreateNewBranch = task.isNewBranch && !branchExistsOnOrigin;
+      const newSandbox = await createSandbox(
+        task.cloneUrl ?? undefined,
+        task.branch ?? undefined,
+        shouldCreateNewBranch,
+        task.id,
+        task.sandboxId ?? undefined,
+      );
+      setSandboxInfo(newSandbox);
+    } catch (err) {
+      console.error("Failed to create sandbox:", err);
+    } finally {
+      setIsCreatingSandbox(false);
+    }
+  }, [
+    task.prNumber,
+    task.isNewBranch,
+    task.cloneUrl,
+    task.branch,
+    task.id,
+    task.sandboxId,
+    setSandboxInfo,
+  ]);
 
   useEffect(() => {
     if (isAtBottom) {
@@ -761,26 +837,37 @@ export function TaskDetailContent() {
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <div>
-              <h1 className="font-medium">{task.title}</h1>
-              <p className="text-sm text-muted-foreground">
-                {formatDate(new Date(task.createdAt))}
-                {task.repoName && (
-                  <>
-                    {" "}
-                    <span className="text-muted-foreground/50">-</span>{" "}
-                    {task.repoOwner}/{task.repoName}
-                  </>
-                )}
-                {task.branch && (
-                  <>
-                    {" "}
-                    <span className="text-muted-foreground/50">-</span>{" "}
-                    {task.branch}
-                  </>
-                )}
-              </p>
+            <div className="flex items-center gap-2 text-sm">
+              {task.repoName ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {task.repoName}
+                  </span>
+                  {task.branch && (
+                    <>
+                      <span className="text-muted-foreground/40">/</span>
+                      <span className="text-muted-foreground">
+                        {task.branch}
+                      </span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span className="text-muted-foreground">
+                  {formatDate(new Date(task.createdAt))}
+                </span>
+              )}
             </div>
+            <SandboxHeaderBadge
+              sandboxInfo={sandboxInfo}
+              isCreating={isCreatingSandbox}
+              isSavingSnapshot={isSavingSnapshot}
+              isRestoring={isRestoringSnapshot}
+              isExtending={isExtendingSandbox}
+              timeRemaining={sandboxTimeRemaining}
+              onExtend={handleExtendSandbox}
+              onSaveAndKill={handleSaveAndKill}
+            />
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -1033,21 +1120,6 @@ export function TaskDetailContent() {
                 </button>
               </div>
             )}
-            <div className="flex justify-end px-2">
-              <SandboxStatus
-                sandboxInfo={sandboxInfo}
-                isCreating={isCreatingSandbox}
-                isReconnecting={reconnectionStatus === "checking"}
-                reconnectionStatus={reconnectionStatus}
-                isSavingSnapshot={isSavingSnapshot}
-                isRestoring={isRestoringSnapshot}
-                hasSnapshot={!!task.snapshotUrl}
-                onKill={handleKillSandbox}
-                onSaveAndKill={handleSaveAndKill}
-                onSaveSnapshot={handleSaveSnapshot}
-                onRestore={handleRestoreSnapshot}
-              />
-            </div>
             {/* Hidden file input */}
             <input
               ref={fileInputRef}
@@ -1064,42 +1136,15 @@ export function TaskDetailContent() {
               className="hidden"
             />
             <form
-              onSubmit={async (e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
                 const hasContent = input.trim() || images.length > 0;
-                if (!hasContent) return;
+                if (!hasContent || !isSandboxValid(sandboxInfo)) return;
 
                 const messageText = input;
-                const savedImages = images;
                 const files = getFileParts();
                 setInput("");
                 clearImages();
-
-                // Recreate sandbox if expired
-                if (!isSandboxValid(sandboxInfo)) {
-                  setIsCreatingSandbox(true);
-                  try {
-                    // For isNewBranch tasks: use newBranch pattern if branch doesn't exist on origin.
-                    // Branch only exists on origin if a PR was created (which pushes the branch).
-                    const branchExistsOnOrigin = task.prNumber != null;
-                    const shouldCreateNewBranch =
-                      task.isNewBranch && !branchExistsOnOrigin;
-                    const newSandbox = await createSandbox(
-                      task.cloneUrl ?? undefined,
-                      task.branch ?? undefined,
-                      shouldCreateNewBranch,
-                      task.id,
-                      task.sandboxId ?? undefined,
-                    );
-                    setSandboxInfo(newSandbox);
-                  } catch {
-                    setInput(messageText);
-                    addImageAttachments(savedImages);
-                    return;
-                  } finally {
-                    setIsCreatingSandbox(false);
-                  }
-                }
 
                 sendMessage({ text: messageText, files });
               }}
@@ -1125,6 +1170,17 @@ export function TaskDetailContent() {
               }}
               className={`relative overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
             >
+              {/* Sandbox overlay when inactive */}
+              <SandboxInputOverlay
+                sandboxInfo={sandboxInfo}
+                isCreating={isCreatingSandbox}
+                isRestoring={isRestoringSnapshot}
+                timeRemaining={sandboxTimeRemaining}
+                hasSnapshot={!!task.snapshotUrl}
+                onRestore={handleRestoreSnapshot}
+                onCreateNew={handleCreateNewSandbox}
+              />
+
               {/* Image attachments preview */}
               <ImageAttachmentsPreview images={images} onRemove={removeImage} />
 
