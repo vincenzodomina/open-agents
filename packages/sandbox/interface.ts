@@ -5,8 +5,9 @@ import type { Dirent } from "fs";
  * - "local": Local filesystem sandbox using Node.js fs/child_process
  * - "in-memory": In-memory sandbox using just-bash (no real filesystem)
  * - "cloud": Remote cloud sandbox (e.g., Vercel Sandbox)
+ * - "hybrid": Hybrid sandbox that starts with in-memory and can upgrade to cloud
  */
-export type SandboxType = "local" | "in-memory" | "cloud";
+export type SandboxType = "local" | "in-memory" | "cloud" | "hybrid";
 
 /**
  * Options for creating a snapshot of the sandbox filesystem.
@@ -274,4 +275,15 @@ export interface Sandbox {
    * @param options - Restore configuration including download URL
    */
   restoreSnapshot?(options: RestoreOptions): Promise<void>;
+
+  /**
+   * Get the current state of the sandbox for persistence/restoration.
+   * Returns state that can be passed to `connectSandbox()` to restore.
+   * Not all sandbox implementations support state persistence.
+   *
+   * TODO: Return `SandboxState` instead of `unknown`. Currently returns `unknown`
+   * due to circular dependency (factory.ts imports from interface.ts). Fix by
+   * moving `SandboxState` to a shared types file.
+   */
+  getState?(): unknown;
 }

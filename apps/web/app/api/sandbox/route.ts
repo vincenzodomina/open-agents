@@ -1,16 +1,37 @@
-import { connectVercelSandbox } from "@open-harness/sandbox";
+import {
+  connectSandbox,
+  type FileEntry,
+  type SandboxState,
+} from "@open-harness/sandbox";
+import { after } from "next/server";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { getTaskById, updateTask } from "@/lib/db/tasks";
+import { downloadAndExtractTarball } from "@/lib/github/tarball";
 
 const DEFAULT_TIMEOUT = 300_000; // 5 minutes
+const WORKING_DIR = "/vercel/sandbox";
+
+/**
+ * Convert simple file strings to FileEntry format.
+ */
+function toFileEntries(
+  files: Record<string, string>,
+): Record<string, FileEntry> {
+  const entries: Record<string, FileEntry> = {};
+  for (const [path, content] of Object.entries(files)) {
+    entries[path] = { type: "file", content };
+  }
+  return entries;
+}
 
 interface CreateSandboxRequest {
   repoUrl?: string;
   branch?: string;
   isNewBranch?: boolean;
   taskId?: string;
-  sandboxId?: string; // Existing sandbox ID if any
+  sandboxId?: string;
+  sandboxType?: "hybrid" | "vercel" | "just-bash";
 }
 
 export async function POST(req: Request) {
@@ -27,6 +48,7 @@ export async function POST(req: Request) {
     isNewBranch = false,
     taskId,
     sandboxId: providedSandboxId,
+    sandboxType = "hybrid",
   } = body;
 
   // Get user's GitHub token
@@ -41,79 +63,161 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Validate task ownership and sandbox association
+  // Validate task ownership
+  let task;
   if (taskId) {
-    const task = await getTaskById(taskId);
+    task = await getTaskById(taskId);
     if (!task) {
       return Response.json({ error: "Task not found" }, { status: 404 });
     }
     if (task.userId !== session.user.id) {
       return Response.json({ error: "Forbidden" }, { status: 403 });
     }
-    // Validate provided sandboxId matches task's sandbox (if any)
-    if (providedSandboxId && task.sandboxId !== providedSandboxId) {
-      return Response.json(
-        { error: "Sandbox does not belong to this task" },
-        { status: 403 },
-      );
-    }
   }
 
-  // Determine if we should create a new branch
-  // Frontend is responsible for deciding when to pass isNewBranch: true based on:
-  // - First sandbox creation for a new branch task
-  // - Snapshot restore when branch doesn't exist on origin (no PR created yet)
-  // - Expired sandbox recreation when branch doesn't exist on origin
-  const shouldCreateNewBranch = isNewBranch;
-
-  // Build sandbox options - source is only included when repoUrl is provided
-  const sandboxOptions: Parameters<typeof connectVercelSandbox>[0] = {
-    timeout: DEFAULT_TIMEOUT,
-    gitUser: {
-      name: session.user.name ?? session.user.username,
-      email:
-        session.user.email ??
-        `${session.user.username}@users.noreply.github.com`,
-    },
-    env: {
-      GITHUB_TOKEN: githubToken,
-    },
+  const gitUser = {
+    name: session.user.name ?? session.user.username,
+    email:
+      session.user.email ?? `${session.user.username}@users.noreply.github.com`,
   };
 
-  // Only add source when we have a repo to clone
-  if (repoUrl) {
-    sandboxOptions.source = {
-      url: repoUrl,
-      token: githubToken,
-      // If creating new branch: don't specify branch (clone default), use newBranch
-      // Otherwise: clone the specified branch
-      ...(shouldCreateNewBranch ? { newBranch: branch } : { branch }),
-    };
-  }
+  // ============================================
+  // RECONNECT: Existing sandbox
+  // ============================================
+  if (providedSandboxId) {
+    const sandbox = await connectSandbox({
+      state: { type: "hybrid", sandboxId: providedSandboxId },
+      options: { env: { GITHUB_TOKEN: githubToken } },
+    });
 
-  const sandbox = await connectVercelSandbox(sandboxOptions);
-
-  // Update task with sandbox metadata
-  // This handles both first-time creation and sandbox recreation after expiry/restore
-  const sandboxCreatedAt = new Date();
-  if (taskId) {
-    await updateTask(taskId, {
-      sandboxId: sandbox.id,
-      sandboxCreatedAt,
-      sandboxTimeout: DEFAULT_TIMEOUT,
+    return Response.json({
+      sandboxId: providedSandboxId,
+      createdAt: Date.now(),
+      timeout: DEFAULT_TIMEOUT,
+      currentBranch: sandbox.currentBranch,
+      mode: "hybrid",
     });
   }
 
+  // ============================================
+  // NEW SANDBOX: Create based on sandboxType
+  // ============================================
+  const startTime = Date.now();
+
+  // Download and extract tarball if repo provided (needed for hybrid and just-bash)
+  let files: Record<string, FileEntry> = {};
+  if (repoUrl && (sandboxType === "hybrid" || sandboxType === "just-bash")) {
+    let tarballResult;
+    try {
+      tarballResult = await downloadAndExtractTarball(
+        repoUrl,
+        branch,
+        githubToken,
+        WORKING_DIR,
+      );
+    } catch {
+      // Retry without token for public repos
+      tarballResult = await downloadAndExtractTarball(
+        repoUrl,
+        branch,
+        undefined,
+        WORKING_DIR,
+      );
+    }
+    files = toFileEntries(tarballResult.files);
+  }
+
+  const source = repoUrl
+    ? {
+        repo: repoUrl,
+        branch: isNewBranch ? undefined : branch,
+        token: githubToken,
+      }
+    : undefined;
+
+  let sandbox;
+
+  if (sandboxType === "just-bash") {
+    // Local-only sandbox
+    sandbox = await connectSandbox({
+      state: {
+        type: "just-bash",
+        files,
+        workingDirectory: WORKING_DIR,
+        source,
+      },
+      options: {
+        env: { GITHUB_TOKEN: githubToken },
+      },
+    });
+  } else if (sandboxType === "vercel") {
+    // Cloud-first sandbox
+    sandbox = await connectSandbox({
+      state: {
+        type: "vercel",
+        source,
+      },
+      options: {
+        env: { GITHUB_TOKEN: githubToken },
+        gitUser,
+      },
+    });
+  } else {
+    // Default: hybrid sandbox (local first, then cloud)
+    sandbox = await connectSandbox({
+      state: {
+        type: "hybrid",
+        files,
+        workingDirectory: WORKING_DIR,
+        source,
+      },
+      options: {
+        env: { GITHUB_TOKEN: githubToken },
+        gitUser,
+        scheduleBackgroundWork: (cb) => after(cb),
+        hooks: taskId
+          ? {
+              onCloudSandboxReady: async (sandboxId) => {
+                const currentTask = await getTaskById(taskId);
+                if (currentTask?.sandboxState?.type === "hybrid") {
+                  await updateTask(taskId, {
+                    sandboxState: { type: "hybrid", sandboxId },
+                  });
+                  console.log(
+                    `[Sandbox] Cloud sandbox ready for task ${taskId}: ${sandboxId}`,
+                  );
+                }
+              },
+              onCloudSandboxFailed: async (error) => {
+                console.error(
+                  `[Sandbox] Cloud sandbox failed for task ${taskId}:`,
+                  error.message,
+                );
+              },
+            }
+          : undefined,
+      },
+    });
+  }
+
+  if (taskId && sandbox.getState) {
+    await updateTask(taskId, {
+      sandboxState: sandbox.getState() as SandboxState,
+    });
+  }
+
+  const readyMs = Date.now() - startTime;
+
   return Response.json({
-    sandboxId: sandbox.id,
     createdAt: Date.now(),
-    timeout: DEFAULT_TIMEOUT,
-    currentBranch: sandbox.currentBranch,
+    timeout: sandboxType === "just-bash" ? null : DEFAULT_TIMEOUT,
+    currentBranch: repoUrl ? branch : undefined,
+    mode: sandboxType,
+    timing: { readyMs },
   });
 }
 
 export async function DELETE(req: Request) {
-  // Validate session
   const session = await getServerSession();
   if (!session?.user) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
@@ -129,18 +233,13 @@ export async function DELETE(req: Request) {
   if (
     !body ||
     typeof body !== "object" ||
-    !("sandboxId" in body) ||
-    typeof (body as Record<string, unknown>).sandboxId !== "string" ||
     !("taskId" in body) ||
     typeof (body as Record<string, unknown>).taskId !== "string"
   ) {
-    return Response.json(
-      { error: "Missing sandboxId or taskId" },
-      { status: 400 },
-    );
+    return Response.json({ error: "Missing taskId" }, { status: 400 });
   }
 
-  const { sandboxId, taskId } = body as { sandboxId: string; taskId: string };
+  const { taskId } = body as { taskId: string };
 
   const task = await getTaskById(taskId);
   if (!task) {
@@ -149,22 +248,15 @@ export async function DELETE(req: Request) {
   if (task.userId !== session.user.id) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (task.sandboxId !== sandboxId) {
-    return Response.json(
-      { error: "Sandbox does not belong to this task" },
-      { status: 403 },
-    );
+  if (!task.sandboxState) {
+    return Response.json({ error: "No sandbox to stop" }, { status: 400 });
   }
 
-  const sandbox = await connectVercelSandbox({ sandboxId });
+  // Connect and stop using unified API
+  const sandbox = await connectSandbox(task.sandboxState);
   await sandbox.stop();
 
-  // Clear sandbox metadata from task so future sandbox creation doesn't fail validation
-  await updateTask(taskId, {
-    sandboxId: null,
-    sandboxCreatedAt: null,
-    sandboxTimeout: null,
-  });
+  await updateTask(taskId, { sandboxState: null });
 
   return Response.json({ success: true });
 }

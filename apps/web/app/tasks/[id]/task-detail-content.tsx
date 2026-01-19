@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { isToolUIPart } from "ai";
 import type { ComponentProps, ReactNode } from "react";
 import { Children, cloneElement, isValidElement } from "react";
@@ -69,13 +69,17 @@ const shikiThemes = ["github-dark", "github-dark"] as [
   BundledTheme,
 ];
 
+type CreateSandboxResponse = SandboxInfo & {
+  type: "just-bash" | "vercel" | "hybrid";
+};
+
 async function createSandbox(
   cloneUrl: string | undefined,
   branch: string | undefined,
   isNewBranch: boolean,
   taskId: string,
-  existingSandboxId: string | undefined,
-): Promise<SandboxInfo> {
+  sandboxType?: string,
+): Promise<CreateSandboxResponse> {
   const response = await fetch("/api/sandbox", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -84,7 +88,7 @@ async function createSandbox(
       branch: cloneUrl ? (branch ?? "main") : undefined,
       isNewBranch: cloneUrl ? isNewBranch : false,
       taskId,
-      sandboxId: existingSandboxId,
+      sandboxType: sandboxType ?? "hybrid",
     }),
   });
   if (!response.ok) {
@@ -93,11 +97,15 @@ async function createSandbox(
       `Failed to create sandbox: ${response.status}${text ? ` - ${text}` : ""}`,
     );
   }
-  return (await response.json()) as SandboxInfo;
+  const data = (await response.json()) as {
+    mode: "just-bash" | "vercel" | "hybrid";
+  } & SandboxInfo;
+  return { ...data, type: data.mode };
 }
 
 function isSandboxValid(sandboxInfo: SandboxInfo | null): boolean {
   if (!sandboxInfo) return false;
+  if (sandboxInfo.timeout === null) return true; // No timeout = always valid
   const expiresAt = sandboxInfo.createdAt + sandboxInfo.timeout;
   return Date.now() < expiresAt - 10_000;
 }
@@ -106,13 +114,15 @@ function useSandboxTimeRemaining(sandboxInfo: SandboxInfo | null) {
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!sandboxInfo) {
+    if (!sandboxInfo || sandboxInfo.timeout === null) {
       setTimeRemaining(null);
       return;
     }
 
+    const { createdAt, timeout } = sandboxInfo;
+
     const updateTime = () => {
-      const expiresAt = sandboxInfo.createdAt + sandboxInfo.timeout;
+      const expiresAt = createdAt + timeout;
       const remaining = expiresAt - Date.now();
       setTimeRemaining(remaining > 0 ? remaining : 0);
     };
@@ -232,6 +242,7 @@ function ContextUsageIndicator({
 
 function SandboxHeaderBadge({
   sandboxInfo,
+  sandboxType,
   isCreating,
   isSavingSnapshot,
   isRestoring,
@@ -241,6 +252,7 @@ function SandboxHeaderBadge({
   onSaveAndKill,
 }: {
   sandboxInfo: SandboxInfo | null;
+  sandboxType?: string;
   isCreating: boolean;
   isSavingSnapshot: boolean;
   isRestoring: boolean;
@@ -256,7 +268,7 @@ function SandboxHeaderBadge({
   // Reset auto-save flag when sandbox changes
   useEffect(() => {
     hasAutoSavedRef.current = false;
-  }, [sandboxInfo?.sandboxId]);
+  }, [sandboxInfo]);
 
   // Reset stopping state when sandbox becomes inactive
   useEffect(() => {
@@ -317,7 +329,12 @@ function SandboxHeaderBadge({
   }
 
   // Inactive - show gray dot
-  if (!sandboxInfo || timeRemaining === null || timeRemaining <= 0) {
+  // Note: timeRemaining is null for just-bash (no timeout), so check timeout !== null
+  if (
+    !sandboxInfo ||
+    (sandboxInfo.timeout !== null &&
+      (timeRemaining === null || timeRemaining <= 0))
+  ) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
@@ -331,6 +348,32 @@ function SandboxHeaderBadge({
       </Tooltip>
     );
   }
+
+  // For just-bash (no timeout), skip countdown logic and show active state
+  if (sandboxInfo.timeout === null) {
+    return (
+      <div
+        className="flex items-center gap-1"
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center p-1">
+              <span className="size-2.5 rounded-full bg-green-500" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" sideOffset={8}>
+            Sandbox active (in-memory)
+          </TooltipContent>
+        </Tooltip>
+      </div>
+    );
+  }
+
+  // At this point timeout is not null, so timeRemaining must be a number
+  // (we returned early for null timeout above, and the inactive check handles null/0 timeRemaining)
+  if (timeRemaining === null) return null;
 
   const isWarning = timeRemaining < WARNING_THRESHOLD_MS;
   const secondsRemaining = Math.ceil(timeRemaining / 1000);
@@ -384,12 +427,12 @@ function SandboxHeaderBadge({
           </div>
         </TooltipTrigger>
         <TooltipContent side="bottom" sideOffset={8}>
-          Sandbox active
+          {sandboxType ? `Sandbox active (${sandboxType})` : "Sandbox active"}
         </TooltipContent>
       </Tooltip>
 
-      {/* X button on hover */}
-      {isHovered && (
+      {/* X button on hover (not shown for in-memory sandboxes) */}
+      {isHovered && sandboxType !== "just-bash" && (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -461,6 +504,12 @@ function SandboxInputOverlay({
 
 export function TaskDetailContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const sandboxTypeParam = searchParams.get("sandbox") as
+    | "hybrid"
+    | "vercel"
+    | "just-bash"
+    | null;
   const [input, setInput] = useState("");
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
@@ -558,6 +607,7 @@ export function TaskDetailContent() {
     fetchFiles,
     triggerFileRefresh,
     updateTaskSnapshot,
+    setSandboxType,
     reconnectionStatus,
     attemptReconnection,
   } = useTaskChatContext();
@@ -613,7 +663,6 @@ export function TaskDetailContent() {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sandboxId: sandboxInfo.sandboxId,
           taskId: task.id,
         }),
       });
@@ -622,62 +671,70 @@ export function TaskDetailContent() {
     }
   }, [sandboxInfo, task.id, clearSandboxInfo]);
 
-  const saveSnapshot = useCallback(
-    async (
-      sandboxId: string,
-    ): Promise<{
-      success: boolean;
-      downloadUrl?: string;
-      createdAt?: number;
-    }> => {
-      try {
-        const response = await fetch("/api/sandbox/snapshot", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sandboxId,
-            taskId: task.id,
-          }),
-        });
+  const saveSnapshot = useCallback(async (): Promise<{
+    success: boolean;
+    downloadUrl?: string;
+    createdAt?: number;
+  }> => {
+    try {
+      const response = await fetch("/api/sandbox/snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: task.id,
+        }),
+      });
 
-        if (!response.ok) {
-          const error = (await response.json()) as { error?: string };
-          console.error("Failed to save snapshot:", error.error);
-          return { success: false };
-        }
-        const data = (await response.json()) as {
-          downloadUrl: string;
-          createdAt: number;
-        };
-        return {
-          success: true,
-          downloadUrl: data.downloadUrl,
-          createdAt: data.createdAt,
-        };
-      } catch (err) {
-        console.error("Failed to save snapshot:", err);
+      if (!response.ok) {
+        const error = (await response.json()) as { error?: string };
+        console.error("Failed to save snapshot:", error.error);
         return { success: false };
       }
-    },
-    [task.id],
-  );
+      const data = (await response.json()) as {
+        downloadUrl: string;
+        createdAt: number;
+      };
+      return {
+        success: true,
+        downloadUrl: data.downloadUrl,
+        createdAt: data.createdAt,
+      };
+    } catch (err) {
+      console.error("Failed to save snapshot:", err);
+      return { success: false };
+    }
+  }, [task.id]);
 
   const handleSaveAndKill = useCallback(async () => {
     if (!sandboxInfo || isSavingSnapshotRef.current) return;
-    isSavingSnapshotRef.current = true;
-    setIsSavingSnapshot(true);
-    try {
-      const result = await saveSnapshot(sandboxInfo.sandboxId);
-      if (result.success && result.downloadUrl && result.createdAt) {
-        updateTaskSnapshot(result.downloadUrl, new Date(result.createdAt));
+
+    // Only save snapshot for sandbox types that support it
+    // just-bash state is already persisted after each message via getState()
+    const supportsSnapshot = task.sandboxState?.type !== "just-bash";
+
+    if (supportsSnapshot) {
+      isSavingSnapshotRef.current = true;
+      setIsSavingSnapshot(true);
+      try {
+        const result = await saveSnapshot();
+        if (result.success && result.downloadUrl && result.createdAt) {
+          updateTaskSnapshot(result.downloadUrl, new Date(result.createdAt));
+        }
+      } finally {
+        setIsSavingSnapshot(false);
+        isSavingSnapshotRef.current = false;
       }
-    } finally {
-      setIsSavingSnapshot(false);
-      isSavingSnapshotRef.current = false;
     }
-    // Kill sandbox after saving (regardless of save success)
+
+    // Kill sandbox (regardless of save result or type)
     await handleKillSandbox();
-  }, [sandboxInfo, updateTaskSnapshot, handleKillSandbox, saveSnapshot]);
+  }, [
+    sandboxInfo,
+    task.sandboxState?.type,
+    updateTaskSnapshot,
+    handleKillSandbox,
+    saveSnapshot,
+  ]);
 
   const handleExtendSandbox = async () => {
     if (!sandboxInfo) return;
@@ -687,7 +744,6 @@ export function TaskDetailContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sandboxId: sandboxInfo.sandboxId,
           taskId: task.id,
         }),
       });
@@ -727,7 +783,7 @@ export function TaskDetailContent() {
     setIsRestoringSnapshot(true);
     setRestoreError(null);
 
-    let newSandbox: SandboxInfo | null = null;
+    let newSandbox: CreateSandboxResponse | null = null;
     try {
       // First create a new sandbox
       // Don't pass task.sandboxId - we're creating a fresh sandbox for restore,
@@ -744,16 +800,16 @@ export function TaskDetailContent() {
         task.branch ?? undefined,
         useNewBranch,
         task.id,
-        undefined,
+        task.sandboxState?.type ?? "hybrid",
       );
       setSandboxInfo(newSandbox);
+      setSandboxType(newSandbox.type);
 
       // Then restore the snapshot
       const response = await fetch("/api/sandbox/snapshot", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sandboxId: newSandbox.sandboxId,
           taskId: task.id,
         }),
       });
@@ -792,9 +848,10 @@ export function TaskDetailContent() {
         task.branch ?? undefined,
         shouldCreateNewBranch,
         task.id,
-        task.sandboxId ?? undefined,
+        task.sandboxState?.type ?? sandboxTypeParam ?? "hybrid",
       );
       setSandboxInfo(newSandbox);
+      setSandboxType(newSandbox.type);
     } catch (err) {
       console.error("Failed to create sandbox:", err);
     } finally {
@@ -806,8 +863,10 @@ export function TaskDetailContent() {
     task.cloneUrl,
     task.branch,
     task.id,
-    task.sandboxId,
+    task.sandboxState?.type,
+    sandboxTypeParam,
     setSandboxInfo,
+    setSandboxType,
   ]);
 
   useEffect(() => {
@@ -826,13 +885,13 @@ export function TaskDetailContent() {
   useEffect(() => {
     // Only attempt reconnection if:
     // 1. We have initial messages (returning to an existing conversation)
-    // 2. Task has a sandboxId (sandbox was created before)
+    // 2. Task has sandboxState (sandbox was created before)
     // 3. No current sandboxInfo (haven't reconnected yet)
     // 4. Not already creating a sandbox
     // 5. Reconnection status is idle (haven't tried yet)
     if (
       hadInitialMessages &&
-      task.sandboxId &&
+      task.sandboxState &&
       !sandboxInfo &&
       !isCreatingSandbox &&
       reconnectionStatus === "idle"
@@ -841,7 +900,7 @@ export function TaskDetailContent() {
     }
   }, [
     hadInitialMessages,
-    task.sandboxId,
+    task.sandboxState,
     sandboxInfo,
     isCreatingSandbox,
     reconnectionStatus,
@@ -870,9 +929,10 @@ export function TaskDetailContent() {
             task.branch ?? undefined,
             shouldCreateNewBranch,
             task.id,
-            task.sandboxId ?? undefined,
+            sandboxTypeParam ?? "hybrid",
           );
           setSandboxInfo(newSandbox);
+          setSandboxType(newSandbox.type);
         } catch (err) {
           console.error("Failed to create sandbox:", err);
           return;
@@ -890,12 +950,13 @@ export function TaskDetailContent() {
     messages.length,
     sendMessage,
     setSandboxInfo,
+    setSandboxType,
     task.id,
     task.cloneUrl,
     task.branch,
     task.isNewBranch,
     task.prNumber,
-    task.sandboxId,
+    sandboxTypeParam,
     task.title,
   ]);
 
@@ -944,8 +1005,13 @@ export function TaskDetailContent() {
     prevToolStatesRef.current = currentToolStates;
 
     if (hasFileChange) {
-      // Auto-open diff panel on first file change
-      if (!showDiffPanel && !hasAutoOpenedDiffRef.current && sandboxInfo) {
+      // Auto-open diff panel on first file change (not for in-memory sandboxes)
+      if (
+        !showDiffPanel &&
+        !hasAutoOpenedDiffRef.current &&
+        sandboxInfo &&
+        task.sandboxState?.type !== "just-bash"
+      ) {
         hasAutoOpenedDiffRef.current = true;
         setShowDiffPanel(true);
       }
@@ -958,6 +1024,7 @@ export function TaskDetailContent() {
     messages,
     showDiffPanel,
     sandboxInfo,
+    task.sandboxState?.type,
     triggerDiffRefresh,
     triggerFileRefresh,
   ]);
@@ -965,7 +1032,7 @@ export function TaskDetailContent() {
   // Fetch files when sandbox becomes available
   useEffect(() => {
     if (sandboxInfo && !fileCache.data && !fileCache.isLoading) {
-      fetchFiles(sandboxInfo.sandboxId);
+      fetchFiles();
     }
   }, [sandboxInfo, fileCache.data, fileCache.isLoading, fetchFiles]);
 
@@ -973,10 +1040,10 @@ export function TaskDetailContent() {
   useEffect(() => {
     // Fetch on mount (for cached data) or when sandbox/diffRefreshKey changes
     if (!diffCache.isLoading && diffCache.lastFetchedKey !== diffRefreshKey) {
-      fetchDiff(sandboxInfo?.sandboxId);
+      fetchDiff();
     }
   }, [
-    sandboxInfo?.sandboxId,
+    sandboxInfo,
     diffRefreshKey,
     diffCache.isLoading,
     diffCache.lastFetchedKey,
@@ -1109,6 +1176,7 @@ export function TaskDetailContent() {
             </div>
             <SandboxHeaderBadge
               sandboxInfo={sandboxInfo}
+              sandboxType={task.sandboxState?.type}
               isCreating={isCreatingSandbox}
               isSavingSnapshot={isSavingSnapshot}
               isRestoring={isRestoringSnapshot}
@@ -1123,6 +1191,10 @@ export function TaskDetailContent() {
               variant="ghost"
               size="sm"
               onClick={async () => {
+                // Stop sandbox if active (save snapshot first)
+                if (sandboxInfo) {
+                  await handleSaveAndKill();
+                }
                 await archiveTask();
                 router.push("/");
               }}
@@ -1130,27 +1202,43 @@ export function TaskDetailContent() {
               <Archive className="mr-2 h-4 w-4" />
               Archive
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowDiffPanel(!showDiffPanel)}
-              disabled={!sandboxInfo && !task.cachedDiff}
-            >
-              <GitCompare className="mr-2 h-4 w-4" />
-              Diff
-              {diffCache.data &&
-                (diffCache.data.summary.totalAdditions > 0 ||
-                  diffCache.data.summary.totalDeletions > 0) && (
-                  <span className="ml-2 text-xs">
-                    <span className="text-green-500">
-                      +{diffCache.data.summary.totalAdditions}
-                    </span>{" "}
-                    <span className="text-red-400">
-                      -{diffCache.data.summary.totalDeletions}
-                    </span>
+            {task.sandboxState?.type === "just-bash" ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button variant="ghost" size="sm" disabled>
+                      <GitCompare className="mr-2 h-4 w-4" />
+                      Diff
+                    </Button>
                   </span>
-                )}
-            </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" sideOffset={8}>
+                  Not available for in-memory sandboxes
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDiffPanel(!showDiffPanel)}
+                disabled={!diffCache.data && !task.cachedDiff}
+              >
+                <GitCompare className="mr-2 h-4 w-4" />
+                Diff
+                {diffCache.data &&
+                  (diffCache.data.summary.totalAdditions > 0 ||
+                    diffCache.data.summary.totalDeletions > 0) && (
+                    <span className="ml-2 text-xs">
+                      <span className="text-green-500">
+                        +{diffCache.data.summary.totalAdditions}
+                      </span>{" "}
+                      <span className="text-red-400">
+                        -{diffCache.data.summary.totalDeletions}
+                      </span>
+                    </span>
+                  )}
+              </Button>
+            )}
             {task?.cloneUrl ? (
               // Task has a repo - show PR buttons
               task?.prNumber ? (
@@ -1176,8 +1264,8 @@ export function TaskDetailContent() {
                   Create PR
                 </Button>
               )
-            ) : (
-              // Task has no repo - show Create Repo button
+            ) : task.sandboxState?.type === "just-bash" ? null : (
+              // Task has no repo - show Create Repo button (not available for in-memory sandboxes)
               <Button
                 variant="outline"
                 size="sm"
@@ -1597,7 +1685,7 @@ export function TaskDetailContent() {
           open={prDialogOpen}
           onOpenChange={setPrDialogOpen}
           task={task}
-          sandboxId={sandboxInfo?.sandboxId ?? null}
+          hasSandbox={sandboxInfo !== null}
         />
       )}
 
@@ -1607,14 +1695,13 @@ export function TaskDetailContent() {
           open={repoDialogOpen}
           onOpenChange={setRepoDialogOpen}
           task={task}
-          sandboxId={sandboxInfo?.sandboxId ?? null}
+          hasSandbox={sandboxInfo !== null}
         />
       )}
 
       {/* Diff Viewer Panel */}
       {showDiffPanel && (sandboxInfo || Boolean(task.cachedDiff)) && (
         <DiffViewer
-          sandboxId={sandboxInfo?.sandboxId}
           refreshKey={diffRefreshKey}
           onClose={() => setShowDiffPanel(false)}
         />

@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import type { Dirent } from "fs";
 import * as fs from "fs/promises";
-import type { ExecResult, Sandbox, SandboxStats } from "./interface";
+import type { ExecResult, Sandbox, SandboxStats } from "../interface";
 
 const MAX_OUTPUT_LENGTH = 50_000;
 

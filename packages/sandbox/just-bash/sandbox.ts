@@ -1,11 +1,14 @@
 import type { Dirent } from "fs";
-import { Bash, OverlayFs } from "just-bash";
+import { Bash, OverlayFs, type FsEntry } from "just-bash";
 import type {
   ExecResult,
   Sandbox,
   SandboxHooks,
   SandboxStats,
-} from "./interface";
+} from "../interface";
+import type { JustBashSnapshot } from "./snapshot";
+import type { JustBashState } from "./state";
+import type { SandboxStatus } from "../types";
 
 const MAX_OUTPUT_LENGTH = 50_000;
 
@@ -152,16 +155,15 @@ export class JustBashSandbox implements Sandbox {
   }
 
   async readFile(path: string, _encoding: "utf-8"): Promise<string> {
-    // Use cat command to read file contents
-    const result = await this.bash.exec(`cat "${path}"`);
-    if (result.exitCode !== 0) {
+    try {
+      return await this.bash.readFile(path);
+    } catch {
       const error = new Error(
-        result.stderr || `ENOENT: no such file or directory, open '${path}'`,
+        `ENOENT: no such file or directory, open '${path}'`,
       );
       (error as NodeJS.ErrnoException).code = "ENOENT";
       throw error;
     }
-    return result.stdout;
   }
 
   async writeFile(
@@ -175,16 +177,8 @@ export class JustBashSandbox implements Sandbox {
       await this.bash.exec(`mkdir -p "${parentDir}"`);
     }
 
-    // Use heredoc to write content (handles special characters)
-    // Escape any single quotes in the content
-    const escapedContent = content.replace(/'/g, "'\\''");
-    const result = await this.bash.exec(
-      `printf '%s' '${escapedContent}' > "${path}"`,
-    );
-
-    if (result.exitCode !== 0) {
-      throw new Error(result.stderr || `Failed to write file: ${path}`);
-    }
+    // Use bash's native writeFile to preserve content exactly
+    await this.bash.writeFile(path, content);
   }
 
   async stat(path: string): Promise<SandboxStats> {
@@ -324,6 +318,140 @@ export class JustBashSandbox implements Sandbox {
     }
     // No resources to clean up for just-bash
   }
+
+  /**
+   * Get the current status of the sandbox.
+   * JustBash is always ready since it's in-memory.
+   */
+  get status(): SandboxStatus {
+    return "ready";
+  }
+
+  /**
+   * Get the current state for persistence.
+   * Returns state that can be passed to `connectSandbox()` to restore this sandbox.
+   */
+  getState(): { type: "just-bash" } & JustBashState {
+    const snapshot = this.serialize();
+    return {
+      type: "just-bash",
+      files: snapshot.files,
+      workingDirectory: snapshot.workingDirectory,
+      env: snapshot.env,
+    };
+  }
+
+  /**
+   * Serialize the sandbox state to a JSON-compatible snapshot.
+   *
+   * Only serializes files under the working directory - system files
+   * (`/bin`, `/proc`, `/dev`, `/usr`) are recreated automatically.
+   *
+   * Note: Only supported for memory mode sandboxes.
+   */
+  serialize(): JustBashSnapshot {
+    if (this.mode !== "memory") {
+      throw new Error(
+        "Serialization is only supported for memory mode sandboxes",
+      );
+    }
+
+    const snapshot: JustBashSnapshot = {
+      workingDirectory: this.bash.getCwd(),
+      env: this.bash.getEnv(),
+      files: {},
+    };
+
+    const fsData = this.bash.fs.data as Map<string, FsEntry>;
+
+    for (const [path, entry] of fsData) {
+      // Skip system files - only include files under the working directory
+      if (
+        !path.startsWith(this.workingDirectory) &&
+        path !== this.workingDirectory
+      ) {
+        continue;
+      }
+
+      if (entry.type === "file" && entry.content) {
+        try {
+          // Try to decode as UTF-8 text
+          const content = new TextDecoder("utf-8", { fatal: true }).decode(
+            entry.content,
+          );
+          snapshot.files[path] = { type: "file", content, mode: entry.mode };
+        } catch {
+          // Binary file - encode as base64
+          const base64 = Buffer.from(entry.content).toString("base64");
+          snapshot.files[path] = {
+            type: "file",
+            content: base64,
+            encoding: "base64",
+            mode: entry.mode,
+          };
+        }
+      } else if (entry.type === "directory") {
+        snapshot.files[path] = { type: "directory", mode: entry.mode };
+      } else if (entry.type === "symlink" && entry.target) {
+        snapshot.files[path] = { type: "symlink", target: entry.target };
+      }
+    }
+
+    return snapshot;
+  }
+
+  /**
+   * Restore a sandbox from a previously serialized snapshot.
+   *
+   * @param snapshot - The snapshot to restore from
+   * @param hooks - Optional lifecycle hooks
+   */
+  static async fromSnapshot(
+    snapshot: JustBashSnapshot,
+    hooks?: SandboxHooks,
+  ): Promise<JustBashSandbox> {
+    // Convert snapshot to Bash's expected files format
+    const files: Record<string, string> = {};
+    const directories: string[] = [];
+
+    for (const [path, entry] of Object.entries(snapshot.files)) {
+      if (entry.type === "file" && entry.content) {
+        if (entry.encoding === "base64") {
+          files[path] = Buffer.from(entry.content, "base64").toString("utf-8");
+        } else {
+          files[path] = entry.content;
+        }
+      } else if (entry.type === "directory") {
+        directories.push(path);
+      }
+    }
+
+    const bash = new Bash({
+      files,
+      cwd: snapshot.workingDirectory,
+      env: snapshot.env,
+    });
+
+    const sandbox = new JustBashSandbox(
+      snapshot.workingDirectory,
+      bash,
+      "memory",
+      snapshot.env,
+      hooks,
+    );
+
+    // Create empty directories that weren't created implicitly by files
+    for (const dir of directories) {
+      await bash.exec(`mkdir -p "${dir}"`);
+    }
+
+    // Run afterStart hook if provided
+    if (hooks?.afterStart) {
+      await hooks.afterStart(sandbox);
+    }
+
+    return sandbox;
+  }
 }
 
 /**
@@ -345,6 +473,6 @@ export class JustBashSandbox implements Sandbox {
  */
 export async function createJustBashSandbox(
   config: JustBashSandboxConfig,
-): Promise<Sandbox> {
+): Promise<JustBashSandbox> {
   return JustBashSandbox.create(config);
 }

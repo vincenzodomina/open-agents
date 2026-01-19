@@ -35,6 +35,7 @@ To work through these todos, follow this pattern:
 
 ### Sandbox Setup
 - [ ] Ensure pnpm install runs during sandbox setup
+- [ ] interesting idea with just-bash that we allow the user to start in read-only mode and then offer to switch to full sandbox if needed (e.g. if the agent wants to write files or run files)
 
 ### Nice to Have
 - [ ] Add terminal view in tasks (terminal implementation exists elsewhere)
@@ -53,6 +54,8 @@ To work through these todos, follow this pattern:
 
 ### Architecture
 - [ ] Evaluate whether TUI package should remain separate or be merged into CLI app
+- [ ] Explore workflows for being able to spin up and leave things running in the background
+- [ ] Explore sandboxes having maximum timeout and then proactively shutting down after inactivity 
 
 ### Nice to Have
 - [ ] Add auth flow to authenticate with web app
@@ -62,6 +65,10 @@ To work through these todos, follow this pattern:
 ### Features
 - [ ] Add plan mode
 - [ ] Add automatic compaction approach as a tool
+
+## Technical Debt
+
+- [ ] Align import extensions across packages - `packages/shared` uses `.js` extensions which cause issues with Next.js/Turbopack. Requires updating tsconfig settings for web-consumed packages. CLI-only packages can keep `.js` extensions.
 
 ## Slack App (New)
 

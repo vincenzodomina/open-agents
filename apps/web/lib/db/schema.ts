@@ -7,6 +7,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { SandboxState } from "@open-harness/sandbox";
 
 export const users = pgTable(
   "users",
@@ -84,10 +85,8 @@ export const tasks = pgTable("tasks", {
   modelId: text("model_id").default("anthropic/claude-haiku-4.5"),
   // Whether this task uses a new auto-generated branch
   isNewBranch: boolean("is_new_branch").default(false).notNull(),
-  // Sandbox info
-  sandboxId: text("sandbox_id"),
-  sandboxCreatedAt: timestamp("sandbox_created_at"),
-  sandboxTimeout: integer("sandbox_timeout"),
+  // Unified sandbox state
+  sandboxState: jsonb("sandbox_state").$type<SandboxState>(),
   // Git stats (for display in task list)
   linesAdded: integer("lines_added").default(0),
   linesRemoved: integer("lines_removed").default(0),
@@ -96,7 +95,7 @@ export const tasks = pgTable("tasks", {
   prStatus: text("pr_status", {
     enum: ["open", "merged", "closed"],
   }),
-  // Snapshot info
+  // Snapshot info (for cached snapshots feature)
   snapshotUrl: text("snapshot_url"),
   snapshotCreatedAt: timestamp("snapshot_created_at"),
   snapshotSizeBytes: integer("snapshot_size_bytes"),

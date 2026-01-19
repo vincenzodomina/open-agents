@@ -16,15 +16,15 @@ import {
 import { useChat, type UseChatHelpers } from "@ai-sdk/react";
 import type { WebAgentUIMessage } from "@/app/types";
 import type { Task } from "@/lib/db/schema";
+import type { SandboxState } from "@open-harness/sandbox";
 import type { DiffResponse } from "@/app/api/tasks/[id]/diff/route";
 import type { CachedDiffResponse } from "@/app/api/tasks/[id]/diff/cached/route";
 import type { FileSuggestion } from "@/app/api/tasks/[id]/files/route";
 import type { ReconnectResponse } from "@/app/api/sandbox/reconnect/route";
 
 export type SandboxInfo = {
-  sandboxId: string;
   createdAt: number;
-  timeout: number;
+  timeout: number | null;
   currentBranch?: string;
 };
 
@@ -72,7 +72,7 @@ type TaskChatContextValue = {
   /** Cached diff state */
   diffCache: DiffCacheState;
   /** Fetch diff data (uses cache if valid, falls back to cached if offline) */
-  fetchDiff: (sandboxId?: string) => Promise<void>;
+  fetchDiff: () => Promise<void>;
   /** Counter that increments when file list should be refreshed */
   fileRefreshKey: number;
   /** Trigger a file list refresh (invalidates cache) */
@@ -80,9 +80,11 @@ type TaskChatContextValue = {
   /** Cached file list state */
   fileCache: FileCacheState;
   /** Fetch file list (uses cache if valid) */
-  fetchFiles: (sandboxId: string) => Promise<void>;
+  fetchFiles: () => Promise<void>;
   /** Update task snapshot info after saving */
   updateTaskSnapshot: (snapshotUrl: string, snapshotCreatedAt: Date) => void;
+  /** Update sandbox type in task state */
+  setSandboxType: (type: "just-bash" | "vercel" | "hybrid") => void;
   /** Current status of sandbox reconnection attempt */
   reconnectionStatus: ReconnectionStatus;
   /** Attempt to reconnect to an existing sandbox */
@@ -105,14 +107,12 @@ export function TaskChatProvider({
   children,
 }: TaskChatProviderProps) {
   const [task, setTask] = useState<Task>(initialTask);
-  const sandboxIdRef = useRef<string | null>(initialTask.sandboxId ?? null);
 
   const transport = useMemo(
     () =>
       new DefaultChatTransport({
         api: "/api/chat",
         body: () => ({
-          sandboxId: sandboxIdRef.current,
           taskId: task.id,
         }),
       }),
@@ -128,17 +128,13 @@ export function TaskChatProvider({
   const [sandboxInfo, setSandboxInfoState] = useState<SandboxInfo | null>(null);
 
   const setSandboxInfo = useCallback((info: SandboxInfo) => {
-    sandboxIdRef.current = info.sandboxId;
     setSandboxInfoState(info);
-    // Keep task.sandboxId in sync so it doesn't become stale
-    setTask((prev) => ({ ...prev, sandboxId: info.sandboxId }));
   }, []);
 
   const clearSandboxInfo = useCallback(() => {
-    sandboxIdRef.current = null;
     setSandboxInfoState(null);
-    // Keep task.sandboxId in sync so it doesn't become stale
-    setTask((prev) => ({ ...prev, sandboxId: null }));
+    // Clear sandboxState to indicate no active sandbox
+    setTask((prev) => ({ ...prev, sandboxState: null }));
   }, []);
 
   const [reconnectionStatus, setReconnectionStatus] =
@@ -159,23 +155,20 @@ export function TaskChatProvider({
       const data = (await response.json()) as ReconnectResponse;
 
       if (data.status === "connected") {
-        sandboxIdRef.current = data.sandboxId;
+        // Sandbox is still alive - set info for UI
+        // (actual sandbox connection happens server-side via task.sandboxState)
         setSandboxInfoState({
-          sandboxId: data.sandboxId,
-          createdAt: data.createdAt,
-          timeout: data.timeout,
+          createdAt: Date.now(),
+          timeout: 300_000, // 5 minutes default for UI display
         });
         setReconnectionStatus("connected");
       } else if (data.status === "no_sandbox") {
-        // Clear stale sandboxId from local state
-        sandboxIdRef.current = null;
-        setTask((prev) => ({ ...prev, sandboxId: null }));
+        // No sandbox state exists
+        setTask((prev) => ({ ...prev, sandboxState: null }));
         setReconnectionStatus("no_sandbox");
       } else {
-        // expired or not_found - server has already cleared sandbox metadata
-        // Clear stale sandboxId from local state to prevent 403 errors on next sandbox creation
-        sandboxIdRef.current = null;
-        setTask((prev) => ({ ...prev, sandboxId: null }));
+        // expired or not_found - server has already cleared sandbox state
+        setTask((prev) => ({ ...prev, sandboxState: null }));
         setReconnectionStatus("failed");
       }
     } catch (error) {
@@ -187,6 +180,28 @@ export function TaskChatProvider({
   const updateTaskSnapshot = useCallback(
     (snapshotUrl: string, snapshotCreatedAt: Date) => {
       setTask((prev) => ({ ...prev, snapshotUrl, snapshotCreatedAt }));
+    },
+    [],
+  );
+
+  const setSandboxType = useCallback(
+    (type: "just-bash" | "vercel" | "hybrid") => {
+      setTask((prev) => {
+        if (!prev.sandboxState) {
+          // Create minimal sandboxState with just the type
+          return {
+            ...prev,
+            sandboxState: { type } as SandboxState,
+          };
+        }
+        return {
+          ...prev,
+          sandboxState: {
+            ...prev.sandboxState,
+            type,
+          } as SandboxState,
+        };
+      });
     },
     [],
   );
@@ -227,133 +242,128 @@ export function TaskChatProvider({
   const lastFetchedKeyRef = useRef<number>(initialTask.cachedDiff ? 0 : -1);
   const fetchingKeyRef = useRef<number | null>(null);
 
-  const fetchDiff = useCallback(
-    async (sandboxId?: string) => {
-      // Skip if we already have data for this key or are already fetching it
-      if (
-        lastFetchedKeyRef.current === diffRefreshKey ||
-        fetchingKeyRef.current === diffRefreshKey
-      ) {
-        return;
-      }
-      fetchingKeyRef.current = diffRefreshKey;
+  const fetchDiff = useCallback(async () => {
+    // Skip if we already have data for this key or are already fetching it
+    if (
+      lastFetchedKeyRef.current === diffRefreshKey ||
+      fetchingKeyRef.current === diffRefreshKey
+    ) {
+      return;
+    }
+    fetchingKeyRef.current = diffRefreshKey;
 
-      // Increment counter and capture this fetch's ID
-      const thisFetchId = ++fetchCounterRef.current;
+    // Increment counter and capture this fetch's ID
+    const thisFetchId = ++fetchCounterRef.current;
 
-      setDiffCache((prev) => ({
-        ...prev,
-        isLoading: true,
-        error: null,
-      }));
+    setDiffCache((prev) => ({
+      ...prev,
+      isLoading: true,
+      error: null,
+    }));
 
-      // If no sandboxId, go directly to cached endpoint
-      if (!sandboxId) {
-        try {
-          const cachedRes = await fetch(`/api/tasks/${task.id}/diff/cached`);
-          if (cachedRes.ok) {
-            const cachedData = (await cachedRes.json()) as CachedDiffResponse;
-            if (thisFetchId === fetchCounterRef.current) {
-              lastFetchedKeyRef.current = diffRefreshKey;
-              setDiffCache({
-                data: cachedData.data,
-                error: null,
-                isLoading: false,
-                lastFetchedKey: diffRefreshKey,
-                isStale: true,
-                cachedAt: new Date(cachedData.cachedAt),
-              });
-            }
-            return;
-          }
-        } catch {
-          // Ignore cached fetch errors
-        }
-
-        if (thisFetchId === fetchCounterRef.current) {
-          lastFetchedKeyRef.current = diffRefreshKey;
-          setDiffCache((prev) => ({
-            ...prev,
-            error: "No sandbox available and no cached diff",
-            isLoading: false,
-            lastFetchedKey: diffRefreshKey,
-            isStale: false,
-            cachedAt: null,
-          }));
-        }
-        return;
-      }
-
+    // If no sandbox connected, go directly to cached endpoint
+    if (!sandboxInfo) {
       try {
-        const res = await fetch(
-          `/api/tasks/${task.id}/diff?sandboxId=${sandboxId}`,
-        );
-
-        if (!res.ok) {
-          const errorData = (await res.json()) as { error?: string };
-          throw new Error(errorData.error ?? "Failed to fetch diff");
-        }
-
-        const data = (await res.json()) as DiffResponse;
-
-        // Only update if this is still the latest fetch
-        if (thisFetchId === fetchCounterRef.current) {
-          lastFetchedKeyRef.current = diffRefreshKey;
-          setDiffCache({
-            data,
-            error: null,
-            isLoading: false,
-            lastFetchedKey: diffRefreshKey,
-            isStale: false,
-            cachedAt: null,
-          });
-          // Update local task state so cachedDiff is available when sandbox shuts down
-          setTask((prev) => ({
-            ...prev,
-            cachedDiff: data,
-            cachedDiffUpdatedAt: new Date(),
-          }));
-        }
-        // If not the latest fetch, don't update - the newer fetch will handle it
-      } catch (err) {
-        // Try to load cached diff as fallback
-        try {
-          const cachedRes = await fetch(`/api/tasks/${task.id}/diff/cached`);
-          if (cachedRes.ok) {
-            const cachedData = (await cachedRes.json()) as CachedDiffResponse;
-            if (thisFetchId === fetchCounterRef.current) {
-              lastFetchedKeyRef.current = diffRefreshKey;
-              setDiffCache({
-                data: cachedData.data,
-                error: null,
-                isLoading: false,
-                lastFetchedKey: diffRefreshKey,
-                isStale: true,
-                cachedAt: new Date(cachedData.cachedAt),
-              });
-            }
-            return;
+        const cachedRes = await fetch(`/api/tasks/${task.id}/diff/cached`);
+        if (cachedRes.ok) {
+          const cachedData = (await cachedRes.json()) as CachedDiffResponse;
+          if (thisFetchId === fetchCounterRef.current) {
+            lastFetchedKeyRef.current = diffRefreshKey;
+            setDiffCache({
+              data: cachedData.data,
+              error: null,
+              isLoading: false,
+              lastFetchedKey: diffRefreshKey,
+              isStale: true,
+              cachedAt: new Date(cachedData.cachedAt),
+            });
           }
-        } catch {
-          // Ignore cached fetch errors
+          return;
         }
-
-        // No cached data available - show original error
-        if (thisFetchId === fetchCounterRef.current) {
-          lastFetchedKeyRef.current = diffRefreshKey;
-          setDiffCache((prev) => ({
-            ...prev,
-            error: err instanceof Error ? err.message : "Failed to fetch diff",
-            isLoading: false,
-            lastFetchedKey: diffRefreshKey,
-            isStale: false,
-            cachedAt: null,
-          }));
-        }
+      } catch {
+        // Ignore cached fetch errors
       }
-    },
-    [task.id, diffRefreshKey],
-  );
+
+      if (thisFetchId === fetchCounterRef.current) {
+        lastFetchedKeyRef.current = diffRefreshKey;
+        setDiffCache((prev) => ({
+          ...prev,
+          error: "No sandbox available and no cached diff",
+          isLoading: false,
+          lastFetchedKey: diffRefreshKey,
+          isStale: false,
+          cachedAt: null,
+        }));
+      }
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/diff`);
+
+      if (!res.ok) {
+        const errorData = (await res.json()) as { error?: string };
+        throw new Error(errorData.error ?? "Failed to fetch diff");
+      }
+
+      const data = (await res.json()) as DiffResponse;
+
+      // Only update if this is still the latest fetch
+      if (thisFetchId === fetchCounterRef.current) {
+        lastFetchedKeyRef.current = diffRefreshKey;
+        setDiffCache({
+          data,
+          error: null,
+          isLoading: false,
+          lastFetchedKey: diffRefreshKey,
+          isStale: false,
+          cachedAt: null,
+        });
+        // Update local task state so cachedDiff is available when sandbox shuts down
+        setTask((prev) => ({
+          ...prev,
+          cachedDiff: data,
+          cachedDiffUpdatedAt: new Date(),
+        }));
+      }
+      // If not the latest fetch, don't update - the newer fetch will handle it
+    } catch (err) {
+      // Try to load cached diff as fallback
+      try {
+        const cachedRes = await fetch(`/api/tasks/${task.id}/diff/cached`);
+        if (cachedRes.ok) {
+          const cachedData = (await cachedRes.json()) as CachedDiffResponse;
+          if (thisFetchId === fetchCounterRef.current) {
+            lastFetchedKeyRef.current = diffRefreshKey;
+            setDiffCache({
+              data: cachedData.data,
+              error: null,
+              isLoading: false,
+              lastFetchedKey: diffRefreshKey,
+              isStale: true,
+              cachedAt: new Date(cachedData.cachedAt),
+            });
+          }
+          return;
+        }
+      } catch {
+        // Ignore cached fetch errors
+      }
+
+      // No cached data available - show original error
+      if (thisFetchId === fetchCounterRef.current) {
+        lastFetchedKeyRef.current = diffRefreshKey;
+        setDiffCache((prev) => ({
+          ...prev,
+          error: err instanceof Error ? err.message : "Failed to fetch diff",
+          isLoading: false,
+          lastFetchedKey: diffRefreshKey,
+          isStale: false,
+          cachedAt: null,
+        }));
+      }
+    }
+  }, [task.id, diffRefreshKey, sandboxInfo]);
 
   // File cache state (mirrors diff cache pattern)
   const [fileRefreshKey, setFileRefreshKey] = useState(0);
@@ -373,59 +383,68 @@ export function TaskChatProvider({
   const fileLastFetchedKeyRef = useRef<number>(-1);
   const fileFetchingKeyRef = useRef<number | null>(null);
 
-  const fetchFiles = useCallback(
-    async (sandboxId: string) => {
-      if (
-        fileLastFetchedKeyRef.current === fileRefreshKey ||
-        fileFetchingKeyRef.current === fileRefreshKey
-      ) {
-        return;
+  const fetchFiles = useCallback(async () => {
+    if (
+      fileLastFetchedKeyRef.current === fileRefreshKey ||
+      fileFetchingKeyRef.current === fileRefreshKey
+    ) {
+      return;
+    }
+    fileFetchingKeyRef.current = fileRefreshKey;
+
+    const thisFetchId = ++fileFetchCounterRef.current;
+
+    setFileCache((prev) => ({
+      ...prev,
+      isLoading: true,
+      error: null,
+    }));
+
+    // If no sandbox connected, skip
+    if (!sandboxInfo) {
+      if (thisFetchId === fileFetchCounterRef.current) {
+        fileLastFetchedKeyRef.current = fileRefreshKey;
+        setFileCache((prev) => ({
+          ...prev,
+          error: "No sandbox available",
+          isLoading: false,
+          lastFetchedKey: fileRefreshKey,
+        }));
       }
-      fileFetchingKeyRef.current = fileRefreshKey;
+      return;
+    }
 
-      const thisFetchId = ++fileFetchCounterRef.current;
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/files`);
 
-      setFileCache((prev) => ({
-        ...prev,
-        isLoading: true,
-        error: null,
-      }));
-
-      try {
-        const res = await fetch(
-          `/api/tasks/${task.id}/files?sandboxId=${sandboxId}`,
-        );
-
-        if (!res.ok) {
-          const errorData = (await res.json()) as { error?: string };
-          throw new Error(errorData.error ?? "Failed to fetch files");
-        }
-
-        const data = (await res.json()) as { files: FileSuggestion[] };
-
-        if (thisFetchId === fileFetchCounterRef.current) {
-          fileLastFetchedKeyRef.current = fileRefreshKey;
-          setFileCache({
-            data: data.files,
-            error: null,
-            isLoading: false,
-            lastFetchedKey: fileRefreshKey,
-          });
-        }
-      } catch (err) {
-        if (thisFetchId === fileFetchCounterRef.current) {
-          fileLastFetchedKeyRef.current = fileRefreshKey;
-          setFileCache((prev) => ({
-            ...prev,
-            error: err instanceof Error ? err.message : "Failed to fetch files",
-            isLoading: false,
-            lastFetchedKey: fileRefreshKey,
-          }));
-        }
+      if (!res.ok) {
+        const errorData = (await res.json()) as { error?: string };
+        throw new Error(errorData.error ?? "Failed to fetch files");
       }
-    },
-    [task.id, fileRefreshKey],
-  );
+
+      const data = (await res.json()) as { files: FileSuggestion[] };
+
+      if (thisFetchId === fileFetchCounterRef.current) {
+        fileLastFetchedKeyRef.current = fileRefreshKey;
+        setFileCache({
+          data: data.files,
+          error: null,
+          isLoading: false,
+          lastFetchedKey: fileRefreshKey,
+        });
+      }
+    } catch (err) {
+      if (thisFetchId === fileFetchCounterRef.current) {
+        fileLastFetchedKeyRef.current = fileRefreshKey;
+        setFileCache((prev) => ({
+          ...prev,
+          error: err instanceof Error ? err.message : "Failed to fetch files",
+          isLoading: false,
+          lastFetchedKey: fileRefreshKey,
+        }));
+      }
+    }
+  }, [task.id, fileRefreshKey, sandboxInfo]);
 
   const archiveTask = useCallback(async () => {
     const res = await fetch(`/api/tasks/${task.id}`, {
@@ -489,6 +508,7 @@ export function TaskChatProvider({
         fileCache,
         fetchFiles,
         updateTaskSnapshot,
+        setSandboxType,
         reconnectionStatus,
         attemptReconnection,
       }}

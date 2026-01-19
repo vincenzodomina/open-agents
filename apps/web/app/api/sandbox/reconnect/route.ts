@@ -1,4 +1,4 @@
-import { Sandbox as VercelSandboxSDK } from "@vercel/sandbox";
+import { connectSandbox } from "@open-harness/sandbox";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { getTaskById, updateTask } from "@/lib/db/tasks";
 
@@ -8,18 +8,10 @@ export type ReconnectStatus =
   | "not_found"
   | "no_sandbox";
 
-export type ReconnectResponse =
-  | {
-      status: "connected";
-      sandboxId: string;
-      createdAt: number;
-      timeout: number;
-      remainingTimeout: number;
-    }
-  | {
-      status: "expired" | "not_found" | "no_sandbox";
-      hasSnapshot: boolean;
-    };
+export type ReconnectResponse = {
+  status: ReconnectStatus;
+  hasSnapshot: boolean;
+};
 
 export async function GET(req: Request): Promise<Response> {
   const session = await getServerSession();
@@ -42,56 +34,36 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // No sandbox to reconnect to
-  if (!task.sandboxId || !task.sandboxCreatedAt || !task.sandboxTimeout) {
+  // No sandbox state at all
+  if (!task.sandboxState) {
     return Response.json({
       status: "no_sandbox",
       hasSnapshot: !!task.snapshotUrl,
     } satisfies ReconnectResponse);
   }
 
-  // Check if sandbox might still be valid (with 10s buffer)
-  const expiresAt = task.sandboxCreatedAt.getTime() + task.sandboxTimeout;
-  const now = Date.now();
-  const remainingTimeout = expiresAt - now;
+  const state = task.sandboxState;
 
-  if (remainingTimeout < 10_000) {
-    // Clear stale sandbox metadata
-    await updateTask(taskId, {
-      sandboxId: null,
-      sandboxCreatedAt: null,
-      sandboxTimeout: null,
-    });
-
+  // Pre-handoff hybrid (has files) - always available since JustBash is in-memory
+  if (state.type === "hybrid" && state.files) {
     return Response.json({
-      status: "expired",
+      status: "connected",
       hasSnapshot: !!task.snapshotUrl,
     } satisfies ReconnectResponse);
   }
 
-  // Attempt to reconnect
+  // Post-handoff hybrid or Vercel - has sandboxId, try to connect
   try {
-    await VercelSandboxSDK.get({ sandboxId: task.sandboxId });
-
-    // Success - sandbox exists and is accessible
+    await connectSandbox(state);
     return Response.json({
       status: "connected",
-      sandboxId: task.sandboxId,
-      createdAt: task.sandboxCreatedAt.getTime(),
-      timeout: task.sandboxTimeout,
-      remainingTimeout,
+      hasSnapshot: !!task.snapshotUrl,
     } satisfies ReconnectResponse);
   } catch {
-    // Sandbox no longer exists (was stopped or timed out on Vercel side)
-    // Clear sandbox info from task
-    await updateTask(taskId, {
-      sandboxId: null,
-      sandboxCreatedAt: null,
-      sandboxTimeout: null,
-    });
-
+    // Sandbox no longer exists (expired or stopped)
+    await updateTask(taskId, { sandboxState: null });
     return Response.json({
-      status: "not_found",
+      status: "expired",
       hasSnapshot: !!task.snapshotUrl,
     } satisfies ReconnectResponse);
   }

@@ -1,4 +1,4 @@
-import { connectVercelSandbox } from "@open-harness/sandbox";
+import { connectSandbox, type SandboxState } from "@open-harness/sandbox";
 import { convertToModelMessages, gateway } from "ai";
 import { nanoid } from "nanoid";
 import { WebAgentUIMessage } from "@/app/types";
@@ -8,9 +8,9 @@ import {
   createTaskMessage,
   createTaskMessageIfNotExists,
   getTaskById,
+  updateTask,
 } from "@/lib/db/tasks";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
-
 import { getServerSession } from "@/lib/session/get-server-session";
 
 // Allow streaming responses up to 5 minutes (matching sandbox timeout)
@@ -18,7 +18,6 @@ export const maxDuration = 300;
 
 interface ChatRequestBody {
   messages: WebAgentUIMessage[];
-  sandboxId: string;
   taskId?: string;
 }
 
@@ -36,14 +35,14 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { messages, sandboxId, taskId } = body;
+  const { messages, taskId } = body;
 
   // 2. Require taskId to ensure sandbox ownership verification
   if (!taskId) {
     return Response.json({ error: "taskId is required" }, { status: 400 });
   }
 
-  // 3. Verify task ownership and sandbox association
+  // 3. Verify task ownership
   const task = await getTaskById(taskId);
   if (!task) {
     return Response.json({ error: "Task not found" }, { status: 404 });
@@ -51,17 +50,10 @@ export async function POST(req: Request) {
   if (task.userId !== session.user.id) {
     return Response.json({ error: "Unauthorized" }, { status: 403 });
   }
-  if (!task.sandboxId) {
-    return Response.json(
-      { error: "Sandbox not linked to task" },
-      { status: 400 },
-    );
-  }
-  if (task.sandboxId !== sandboxId) {
-    return Response.json(
-      { error: "Sandbox does not belong to this task" },
-      { status: 403 },
-    );
+
+  // 4. Require sandboxState
+  if (!task.sandboxState) {
+    return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
   }
 
   const modelMessages = await convertToModelMessages(messages, {
@@ -69,11 +61,11 @@ export async function POST(req: Request) {
     tools: webAgent.tools,
   });
 
-  // Get the GitHub token to pass as env var when reconnecting
+  // Get the GitHub token to pass as env var
   const githubToken = await getUserGitHubToken();
 
-  const sandbox = await connectVercelSandbox({
-    sandboxId,
+  // Connect sandbox (handles all modes, handoff, restoration)
+  const sandbox = await connectSandbox(task.sandboxState, {
     env: githubToken ? { GITHUB_TOKEN: githubToken } : undefined,
   });
 
@@ -128,7 +120,7 @@ export async function POST(req: Request) {
 
   result.consumeStream();
 
-  // Save assistant message on finish
+  // Save assistant message on finish, and persist sandbox state if applicable
   return result.toUIMessageStreamResponse({
     originalMessages: messages,
     generateMessageId: nanoid,
@@ -143,6 +135,7 @@ export async function POST(req: Request) {
     },
     onFinish: async ({ responseMessage }) => {
       if (taskId) {
+        // Save assistant message
         try {
           await createTaskMessage({
             id: responseMessage.id,
@@ -152,6 +145,49 @@ export async function POST(req: Request) {
           });
         } catch (error) {
           console.error("Failed to save assistant message:", error);
+        }
+
+        // Persist sandbox state
+        // For hybrid sandboxes, we need to be careful not to overwrite the sandboxId
+        // that may have been set by background work (the onCloudSandboxReady hook)
+        if (sandbox.getState) {
+          try {
+            const currentState = sandbox.getState() as SandboxState;
+
+            // For hybrid sandboxes in pre-handoff state (has files, no sandboxId),
+            // check if background work has already set a sandboxId we should preserve
+            if (
+              currentState.type === "hybrid" &&
+              "files" in currentState &&
+              !currentState.sandboxId
+            ) {
+              const currentTask = await getTaskById(taskId);
+              if (
+                currentTask?.sandboxState?.type === "hybrid" &&
+                currentTask.sandboxState.sandboxId
+              ) {
+                // Background work has completed - use the sandboxId from DB
+                // but also include pending operations from this session
+                await updateTask(taskId, {
+                  sandboxState: {
+                    type: "hybrid",
+                    sandboxId: currentTask.sandboxState.sandboxId,
+                    pendingOperations:
+                      "pendingOperations" in currentState
+                        ? currentState.pendingOperations
+                        : undefined,
+                  },
+                });
+                return;
+              }
+            }
+
+            await updateTask(taskId, {
+              sandboxState: currentState,
+            });
+          } catch (error) {
+            console.error("Failed to persist sandbox state:", error);
+          }
         }
       }
     },
