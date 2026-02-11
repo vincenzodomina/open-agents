@@ -152,6 +152,13 @@ type SessionChatContextValue = {
   syncSandboxStatus: () => Promise<SandboxStatusSyncResult>;
   /** Attempt to reconnect to an existing sandbox */
   attemptReconnection: () => Promise<ReconnectionStatus>;
+  /** Update session repo info after creating a repo */
+  updateSessionRepo: (info: {
+    cloneUrl: string;
+    repoOwner: string;
+    repoName: string;
+    branch: string;
+  }) => void;
 };
 
 const SessionChatContext = createContext<SessionChatContextValue | undefined>(
@@ -559,6 +566,24 @@ export function SessionChatProvider({
       }
     }, [sessionRecord.id, sessionId, applyLifecycleTiming]);
 
+  const updateSessionRepo = useCallback(
+    (info: {
+      cloneUrl: string;
+      repoOwner: string;
+      repoName: string;
+      branch: string;
+    }) => {
+      setSessionRecord((prev) => ({
+        ...prev,
+        cloneUrl: info.cloneUrl,
+        repoOwner: info.repoOwner,
+        repoName: info.repoName,
+        branch: info.branch,
+      }));
+    },
+    [],
+  );
+
   const updateSessionSnapshot = useCallback(
     (snapshotUrl: string, snapshotCreatedAt: Date) => {
       setHasSnapshotState(true);
@@ -779,6 +804,7 @@ export function SessionChatProvider({
         lifecycleTiming,
         syncSandboxStatus,
         attemptReconnection,
+        updateSessionRepo,
       }}
     >
       {children}
