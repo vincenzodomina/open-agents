@@ -12,7 +12,6 @@ import {
   EllipsisVertical,
   ExternalLink,
   FolderGit2,
-  GitCommit,
   GitCompare,
   GitMerge,
   GitPullRequest,
@@ -101,6 +100,7 @@ import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
+import { useUserPreferences } from "@/hooks/use-user-preferences";
 import {
   hasRenderableAssistantPart,
   isChatInFlight as isChatInFlightStatus,
@@ -121,6 +121,11 @@ import {
   useSessionChatWorkspaceContext,
 } from "./session-chat-context";
 import { useStreamRecovery } from "./hooks/use-stream-recovery";
+import { useAutoCommitStatus } from "./hooks/use-auto-commit-status";
+import {
+  CommitActionHeaderButton,
+  CommitActionMenuItem,
+} from "./commit-action-button";
 import "streamdown/styles.css";
 
 const DiffViewer = dynamic(
@@ -889,6 +894,7 @@ export function SessionChatContent({
   >(null);
   const hasMounted = useHasMounted();
   const isMobile = useIsMobile();
+  const { preferences } = useUserPreferences();
   const isIosDevice = useMemo(() => {
     if (typeof navigator === "undefined") {
       return false;
@@ -1044,6 +1050,22 @@ export function SessionChatContent({
     skills,
     skillsLoading,
   } = useSessionChatWorkspaceContext();
+  const autoCommitEnabled = Boolean(
+    session.cloneUrl &&
+      session.repoOwner &&
+      session.repoName &&
+      (session.autoCommitPushOverride ?? preferences?.autoCommitPush ?? false),
+  );
+  const { isAutoCommitting, markAutoCommitStarted } = useAutoCommitStatus(
+    autoCommitEnabled,
+    gitStatus,
+    () => {
+      void refreshGitStatus().catch(() => undefined);
+      void refreshDiff().catch(() => undefined);
+      void refreshFiles().catch(() => undefined);
+      void checkBranchAndPr().catch(() => undefined);
+    },
+  );
   const {
     messages,
     error,
@@ -1819,6 +1841,8 @@ export function SessionChatContent({
       status === "ready" &&
       isMountedRef.current
     ) {
+      markAutoCommitStarted();
+
       const refreshCompletedTurnState = async () => {
         await requestStatusSync("force").catch(() => undefined);
         await refreshGitStatus().catch(() => undefined);
@@ -1858,6 +1882,7 @@ export function SessionChatContent({
     session.cloneUrl,
     session.repoOwner,
     session.repoName,
+    markAutoCommitStarted,
   ]);
 
   // Track whether we've auto-attempted sandbox startup for this page load.
@@ -2427,20 +2452,12 @@ export function SessionChatContent({
               {hasRepo ? (
                 hasExistingPr ? (
                   showCommitAction ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="relative h-8 w-8 px-0 xl:w-auto xl:px-3"
+                    <CommitActionHeaderButton
+                      label={commitActionLabel}
+                      isAutoCommitting={isAutoCommitting}
+                      hasUncommittedChanges={hasUncommittedGitChanges}
                       onClick={() => setCommitDialogOpen(true)}
-                    >
-                      <GitCommit className="h-4 w-4 xl:mr-2" />
-                      <span className="hidden xl:inline">
-                        {commitActionLabel}
-                      </span>
-                      {hasUncommittedGitChanges && (
-                        <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />
-                      )}
-                    </Button>
+                    />
                   ) : (
                     <>
                       <Button
@@ -2479,20 +2496,12 @@ export function SessionChatContent({
                     </>
                   )
                 ) : showCommitAction ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="relative h-8 w-8 px-0 xl:w-auto xl:px-3"
+                  <CommitActionHeaderButton
+                    label={commitActionLabel}
+                    isAutoCommitting={isAutoCommitting}
+                    hasUncommittedChanges={hasUncommittedGitChanges}
                     onClick={() => setCommitDialogOpen(true)}
-                  >
-                    <GitCommit className="h-4 w-4 xl:mr-2" />
-                    <span className="hidden xl:inline">
-                      {commitActionLabel}
-                    </span>
-                    {hasUncommittedGitChanges && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-orange-500" />
-                    )}
-                  </Button>
+                  />
                 ) : canCreatePr && isCreatePrBranchReady ? (
                   <Button
                     variant="outline"
@@ -2641,23 +2650,21 @@ export function SessionChatContent({
                           </DropdownMenuItem>
                         )}
                         {showCommitAction && (
-                          <DropdownMenuItem
+                          <CommitActionMenuItem
+                            label={commitActionLabel}
+                            isAutoCommitting={isAutoCommitting}
                             onClick={() => setCommitDialogOpen(true)}
-                          >
-                            <GitCommit className="mr-2 h-4 w-4" />
-                            {commitActionLabel}
-                          </DropdownMenuItem>
+                          />
                         )}
                       </>
                     ) : (
                       <>
                         {showCommitAction && (
-                          <DropdownMenuItem
+                          <CommitActionMenuItem
+                            label={commitActionLabel}
+                            isAutoCommitting={isAutoCommitting}
                             onClick={() => setCommitDialogOpen(true)}
-                          >
-                            <GitCommit className="mr-2 h-4 w-4" />
-                            {commitActionLabel}
-                          </DropdownMenuItem>
+                          />
                         )}
                         <DropdownMenuItem
                           disabled={!canCreatePr || !isCreatePrBranchReady}
