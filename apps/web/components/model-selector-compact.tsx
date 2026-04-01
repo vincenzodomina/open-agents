@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckIcon, ChevronDown } from "lucide-react";
 import { type ModelOption } from "@/lib/model-options";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
@@ -23,17 +23,69 @@ interface ModelSelectorCompactProps {
   value: string;
   modelOptions: ModelOption[];
   onChange: (modelId: string) => void;
+  disabled?: boolean;
+  onCloseAutoFocus?: () => void;
 }
 
 export function ModelSelectorCompact({
   value,
   modelOptions,
   onChange,
+  disabled = false,
+  onCloseAutoFocus,
 }: ModelSelectorCompactProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const focusSearchInput = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      const input = searchInputRef.current;
+      if (!input) {
+        return;
+      }
+      input.focus();
+      input.select();
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    focusSearchInput();
+  }, [focusSearchInput, open]);
+
+  useEffect(() => {
+    if (disabled) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isModelShortcut =
+        event.metaKey &&
+        event.altKey &&
+        !event.ctrlKey &&
+        !event.shiftKey &&
+        event.code === "Slash";
+
+      if (!isModelShortcut || event.repeat) {
+        return;
+      }
+
+      event.preventDefault();
+      setSearch("");
+      setOpen(true);
+      focusSearchInput();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [disabled, focusSearchInput]);
 
   const handleSelect = (modelId: string) => {
     onChange(modelId);
+    setSearch("");
     setOpen(false);
   };
 
@@ -41,19 +93,47 @@ export function ModelSelectorCompact({
   const displayText = selectedOption?.label ?? value;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) {
+          setSearch("");
+        }
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-neutral-500 transition-colors hover:bg-white/5 hover:text-neutral-300"
+          disabled={disabled}
+          aria-label="Change model"
+          aria-keyshortcuts="Meta+Alt+/"
+          title="Change model (⌘⌥/)"
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-neutral-500 transition-colors hover:bg-white/5 hover:text-neutral-300 disabled:pointer-events-none disabled:opacity-60"
         >
           <span className="max-w-[140px] truncate">{displayText}</span>
           <ChevronDown className="h-3 w-3" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-72 p-0" align="start">
+      <PopoverContent
+        className="w-72 p-0"
+        align="start"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          focusSearchInput();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          onCloseAutoFocus?.();
+        }}
+      >
         <Command>
-          <CommandInput placeholder="Search models..." />
+          <CommandInput
+            ref={searchInputRef}
+            value={search}
+            onValueChange={setSearch}
+            placeholder="Search models..."
+          />
           <CommandList>
             <CommandEmpty>No models found.</CommandEmpty>
             <CommandGroup>

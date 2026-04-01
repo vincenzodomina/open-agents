@@ -3642,6 +3642,29 @@ export function SessionChatContent({
                       <ModelSelectorCompact
                         value={chatInfo.modelId}
                         modelOptions={modelOptions}
+                        disabled={
+                          isChatInFlight ||
+                          isUpdatingModel ||
+                          modelOptionsLoading
+                        }
+                        onCloseAutoFocus={() => {
+                          window.requestAnimationFrame(() => {
+                            const textarea = inputRef.current;
+                            if (!textarea) {
+                              return;
+                            }
+
+                            textarea.focus();
+                            const nextCursorPosition = Math.min(
+                              cursorPosition,
+                              textarea.value.length,
+                            );
+                            textarea.setSelectionRange(
+                              nextCursorPosition,
+                              nextCursorPosition,
+                            );
+                          });
+                        }}
                         onChange={(modelId) => {
                           void handleModelChange(modelId);
                         }}
