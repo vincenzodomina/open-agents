@@ -40,6 +40,7 @@ import useSWR from "swr";
 import type { ChatRefreshResponse } from "@/app/api/sessions/[sessionId]/chats/[chatId]/route";
 import type { MergePullRequestResponse } from "@/app/api/sessions/[sessionId]/merge/route";
 import type { PrDeploymentResponse } from "@/app/api/sessions/[sessionId]/pr-deployment/route";
+import type { PullRequestCheckRun } from "@/lib/github/client";
 import type {
   WebAgentCommitDataPart,
   WebAgentPrDataPart,
@@ -118,7 +119,6 @@ import { useStreamRecovery } from "./hooks/use-stream-recovery";
 import { useAutoCommitStatus } from "./hooks/use-auto-commit-status";
 import { useCodeEditor } from "./hooks/use-code-editor";
 import { useDevServer } from "./hooks/use-dev-server";
-
 import { useGitPanel } from "./git-panel-context";
 import { GitPanel } from "./git-panel";
 import {
@@ -885,6 +885,7 @@ export function SessionChatContent({
     setShareRequested,
     setHasActionNeeded,
     setChangesCount,
+    setHasCommittedChanges,
     panelPortalRef,
     headerActionsRef,
   } = useGitPanel();
@@ -1042,8 +1043,10 @@ export function SessionChatContent({
   const {
     sandboxInfo,
     diff,
+    diffRefreshing,
     refreshDiff,
     gitStatus,
+    gitStatusLoading,
     refreshGitStatus,
     files,
     filesLoading,
@@ -1668,6 +1671,46 @@ export function SessionChatContent({
       }
     },
     [chatInfo.id, sendMessage, setChatStreaming],
+  );
+
+  const handleFixChecks = useCallback(
+    async (failedRuns: PullRequestCheckRun[]) => {
+      let text = "";
+      try {
+        const res = await fetch(`/api/sessions/${session.id}/checks/fix`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ checkRuns: failedRuns }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { message: string };
+          text = data.message;
+        }
+      } catch {
+        // Fall through to fallback
+      }
+
+      if (!text) {
+        const names = failedRuns.map((run) => run.name).join(", ");
+        text = `# Fix Failing Checks\n\nThe following checks are failing: ${names}. Please investigate and push a fix.`;
+      }
+
+      await sendMessageWithPendingState({ text });
+    },
+    [sendMessageWithPendingState, session.id],
+  );
+
+  const handleFixConflicts = useCallback(
+    async (baseBranchRef: string, closeMergeDialog = false) => {
+      if (closeMergeDialog) {
+        setMergeDialogOpen(false);
+      }
+
+      await sendMessageWithPendingState({
+        text: `# Resolve Merge Conflicts\n\nThere is a merge conflict with ${baseBranchRef}. Fetch and then fix the conflicts. Do not rebase.`,
+      });
+    },
+    [sendMessageWithPendingState],
   );
 
   const handleDeleteUserMessage = useCallback(
@@ -2620,6 +2663,13 @@ export function SessionChatContent({
   useEffect(() => {
     setChangesCount(totalChangesCount);
   }, [totalChangesCount, setChangesCount]);
+
+  // Sync the "committed changes" indicator (blue dot) — branch has diverged
+  // and there are no uncommitted changes left to deal with
+  const hasDiffData = Boolean(diff || session.cachedDiff);
+  useEffect(() => {
+    setHasCommittedChanges(hasRepo && hasDiffData && !hasUncommittedGitChanges);
+  }, [hasRepo, hasDiffData, hasUncommittedGitChanges, setHasCommittedChanges]);
   const hasOpenPr = hasExistingPr && session.prStatus === "open";
   const canCloseAndArchive = hasOpenPr && !isArchived;
   const handleCommitted = useCallback(async () => {
@@ -2722,37 +2772,19 @@ export function SessionChatContent({
       canCloseAndArchive={canCloseAndArchive}
       diffFiles={diff?.files ?? null}
       diffSummary={diff?.summary ?? null}
+      diffRefreshing={diffRefreshing}
       onCreateRepoClick={() => setRepoDialogOpen(true)}
+      refreshDiff={refreshDiff}
       onMerged={handleMerged}
       onCloseAndArchiveClick={() => setCloseDialogOpen(true)}
-      onFixChecks={async (failedRuns) => {
-        let text = "";
-        try {
-          const res = await fetch(`/api/sessions/${session.id}/checks/fix`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ checkRuns: failedRuns }),
-          });
-          if (res.ok) {
-            const data = (await res.json()) as { message: string };
-            text = data.message;
-          }
-        } catch {
-          // Fall through to fallback
-        }
-
-        if (!text) {
-          const names = failedRuns.map((r) => r.name).join(", ");
-          text = `# Fix Failing Checks\n\nThe following checks are failing: ${names}. Please investigate and push a fix.`;
-        }
-
-        void sendMessageWithPendingState({ text });
-      }}
+      onFixChecks={handleFixChecks}
+      onFixConflicts={(baseBranchRef) => handleFixConflicts(baseBranchRef)}
       hasSandbox={sandboxInfo !== null}
       gitStatus={gitStatus}
+      gitStatusLoading={gitStatusLoading}
       refreshGitStatus={refreshGitStatus}
       onCommitted={handleCommitted}
-      isAgentWorking={isChatInFlight}
+      isAgentWorking={hasPendingResponse || isChatInFlight}
       onPrDetected={(pr) => {
         updateSessionPullRequest(pr);
         void refreshGitStatus().catch(() => {});
@@ -3950,32 +3982,11 @@ export function SessionChatContent({
           isAgentWorking={hasPendingResponse || isChatInFlight}
           onFixChecks={async (failedRuns) => {
             setMergeDialogOpen(false);
-
-            let text = "";
-            try {
-              const res = await fetch(
-                `/api/sessions/${session.id}/checks/fix`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ checkRuns: failedRuns }),
-                },
-              );
-              if (res.ok) {
-                const data = (await res.json()) as { message: string };
-                text = data.message;
-              }
-            } catch {
-              // Fall through to fallback
-            }
-
-            if (!text) {
-              const names = failedRuns.map((r) => r.name).join(", ");
-              text = `# Fix Failing Checks\n\nThe following checks are failing: ${names}. Please investigate and push a fix.`;
-            }
-
-            void sendMessageWithPendingState({ text });
+            await handleFixChecks(failedRuns);
           }}
+          onFixConflicts={(baseBranchRef) =>
+            handleFixConflicts(baseBranchRef, true)
+          }
         />
       )}
 
