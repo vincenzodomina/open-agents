@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInstallationByUserAndId } from "@/lib/db/installations";
-import { fetchInstallationRepositoriesByInstallation } from "@/lib/github/installation-repos";
+import { fetchInstallationRepositories } from "@/lib/github/installation-repos";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 function parseInstallationId(value: string | null): number | null {
@@ -54,12 +54,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const repos = await fetchInstallationRepositoriesByInstallation(
+    const repos = await fetchInstallationRepositories({
       installationId,
-      installation.accountLogin,
+      owner: installation.accountLogin,
       query,
       limit,
-    );
+    });
 
     return NextResponse.json(repos);
   } catch (error) {

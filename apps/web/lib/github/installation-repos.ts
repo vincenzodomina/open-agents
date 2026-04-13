@@ -26,6 +26,13 @@ interface ListInstallationRepositoriesOptions {
   limit?: number;
 }
 
+interface FetchInstallationRepositoriesOptions {
+  installationId: number;
+  owner?: string;
+  query?: string;
+  limit?: number;
+}
+
 export interface InstallationRepository {
   name: string;
   full_name: string;
@@ -34,10 +41,6 @@ export interface InstallationRepository {
   clone_url: string;
   updated_at: string;
   language: string | null;
-}
-
-export function getInstallationReposCacheTag(installationId: number): string {
-  return `github-installation-repos-${installationId}`;
 }
 
 function normalizeLimit(limit?: number): number {
@@ -138,12 +141,12 @@ export async function listInstallationRepositories(
   }));
 }
 
-export async function fetchInstallationRepositoriesByInstallation(
-  installationId: number,
-  owner: string,
-  query?: string,
-  limit?: number,
-): Promise<InstallationRepository[]> {
+export async function fetchInstallationRepositories({
+  installationId,
+  owner,
+  query,
+  limit,
+}: FetchInstallationRepositoriesOptions): Promise<InstallationRepository[]> {
   const token = await getInstallationToken(installationId);
   return listInstallationRepositories(token, {
     owner,

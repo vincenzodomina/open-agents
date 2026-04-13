@@ -5,7 +5,7 @@ import {
   createPullRequest,
   findPullRequestByBranch,
 } from "@/lib/github/client";
-import { getCachedGitHubBranches } from "@/lib/github/cached-api";
+import { fetchGitHubBranches } from "@/lib/github/api";
 import { getRepoToken } from "@/lib/github/get-repo-token";
 import {
   buildGitHubAuthRemoteUrl,
@@ -70,21 +70,15 @@ function isSkippablePrContentError(error: string): boolean {
 
 async function resolveDefaultBranch(params: {
   sandbox: Sandbox;
-  userId: string;
   repoOwner: string;
   repoName: string;
   tokenCandidates: string[];
 }): Promise<string | null> {
-  const { sandbox, userId, repoOwner, repoName, tokenCandidates } = params;
+  const { sandbox, repoOwner, repoName, tokenCandidates } = params;
   const cwd = sandbox.workingDirectory;
 
   for (const token of tokenCandidates) {
-    const branchData = await getCachedGitHubBranches(
-      userId,
-      token,
-      repoOwner,
-      repoName,
-    );
+    const branchData = await fetchGitHubBranches(token, repoOwner, repoName);
 
     if (branchData?.defaultBranch?.trim()) {
       return branchData.defaultBranch.trim();
@@ -207,7 +201,6 @@ export async function performAutoCreatePr(
 
   const defaultBranch = await resolveDefaultBranch({
     sandbox,
-    userId,
     repoOwner,
     repoName,
     tokenCandidates,
