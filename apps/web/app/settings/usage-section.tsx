@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
 import { fetcher } from "@/lib/swr";
 import { formatDateOnly } from "@/lib/usage/date-range";
-import type { UsageDomainLeaderboard, UsageInsights } from "@/lib/usage/types";
+import type { UsageInsights } from "@/lib/usage/types";
 import { UsageInsightsSection } from "./usage/usage-insights-section";
 
 interface DailyUsageRow {
@@ -62,7 +62,6 @@ interface PieSegment {
 interface UsageResponse {
   usage: DailyUsageRow[];
   insights: UsageInsights;
-  domainLeaderboard: UsageDomainLeaderboard | null;
 }
 
 interface ModelsResponse {
@@ -482,7 +481,7 @@ function UsagePieChart({
                   style={{ backgroundColor: segment.color }}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="break-words font-medium leading-snug">
+                  <div className="wrap-break-word font-medium leading-snug">
                     {segment.label}
                   </div>
                   {segment.detail ? (
@@ -516,7 +515,7 @@ function StatBlock({
   return (
     <div className="min-w-0 rounded-xl border border-border/50 bg-muted/20 p-3 sm:p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-1 break-words text-lg font-semibold leading-tight sm:text-xl">
+      <div className="mt-1 wrap-break-word text-lg font-semibold leading-tight sm:text-xl">
         {value}
       </div>
       {detail ? (

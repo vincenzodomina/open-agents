@@ -596,71 +596,6 @@ BEGIN
 END;
 $$;
 -- ---------------------------------------------------------------------------
--- get_usage_domain_leaderboard_rows
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.get_usage_domain_leaderboard_rows (p_domain text, p_range_from date, p_range_to date, p_days int) RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER
-SET
-    search_path=public STABLE AS $$
-DECLARE
-  v_since timestamptz;
-  v_rows jsonb;
-BEGIN
-  v_since := now() - make_interval(days => COALESCE(p_days, 280));
-
-  IF p_range_from IS NOT NULL AND p_range_to IS NOT NULL THEN
-    SELECT COALESCE(
-      jsonb_agg(row_to_json(t)::jsonb),
-      '[]'::jsonb
-    )
-    INTO v_rows
-    FROM (
-      SELECT
-        u.id AS "userId",
-        u.email,
-        u.username,
-        u.name,
-        u.avatar_url AS "avatarUrl",
-        ue.model_id AS "modelId",
-        COALESCE(SUM(ue.input_tokens), 0)::double precision AS "totalInputTokens",
-        COALESCE(SUM(ue.output_tokens), 0)::double precision AS "totalOutputTokens"
-      FROM usage_events ue
-      INNER JOIN users u ON u.id = ue.user_id
-      WHERE u.email IS NOT NULL
-        AND lower(split_part(u.email, '@', 2)) = p_domain
-        AND date(ue.created_at) >= p_range_from
-        AND date(ue.created_at) <= p_range_to
-      GROUP BY u.id, u.email, u.username, u.name, u.avatar_url, ue.model_id
-    ) t;
-    RETURN v_rows;
-  END IF;
-
-  SELECT COALESCE(
-    jsonb_agg(row_to_json(t)::jsonb),
-    '[]'::jsonb
-  )
-  INTO v_rows
-  FROM (
-    SELECT
-      u.id AS "userId",
-      u.email,
-      u.username,
-      u.name,
-      u.avatar_url AS "avatarUrl",
-      ue.model_id AS "modelId",
-      COALESCE(SUM(ue.input_tokens), 0)::double precision AS "totalInputTokens",
-      COALESCE(SUM(ue.output_tokens), 0)::double precision AS "totalOutputTokens"
-    FROM usage_events ue
-    INNER JOIN users u ON u.id = ue.user_id
-    WHERE u.email IS NOT NULL
-      AND lower(split_part(u.email, '@', 2)) = p_domain
-      AND ue.created_at >= v_since
-    GROUP BY u.id, u.email, u.username, u.name, u.avatar_url, ue.model_id
-  ) t;
-
-  RETURN v_rows;
-END;
-$$;
--- ---------------------------------------------------------------------------
 -- find_sessions_by_repo_pr (GitHub webhook)
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.find_sessions_by_repo_pr (p_repo_owner text, p_repo_name text, p_pr_number int) RETURNS jsonb LANGUAGE sql SECURITY INVOKER
@@ -723,8 +658,6 @@ GRANT
 EXECUTE ON FUNCTION public.get_usage_history_rows (text, date, date, boolean, int) TO service_role;
 GRANT
 EXECUTE ON FUNCTION public.get_usage_insights_bundle (text, date, date, boolean, int) TO service_role;
-GRANT
-EXECUTE ON FUNCTION public.get_usage_domain_leaderboard_rows (text, date, date, int) TO service_role;
 GRANT
 EXECUTE ON FUNCTION public.find_sessions_by_repo_pr (text, text, int) TO service_role;
 GRANT

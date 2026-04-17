@@ -51,7 +51,6 @@ interface ModelUsage {
 interface UsageResponse {
   usage: DailyUsageRow[];
   insights: UsageInsights;
-  domainLeaderboard: unknown;
 }
 
 interface ModelsResponse {

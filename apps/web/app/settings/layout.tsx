@@ -7,7 +7,6 @@ import {
   Menu,
   Settings as SettingsIcon,
   SlidersHorizontal,
-  Trophy,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -23,7 +22,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AccountsSectionSkeleton } from "./accounts-section";
-import { LeaderboardSectionSkeleton } from "./leaderboard-section";
 import { ModelVariantsSectionSkeleton } from "./model-variants-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
 
@@ -85,12 +83,6 @@ const sidebarItems = [
     label: "Model Variants",
     href: "/settings/model-variants",
     icon: SlidersHorizontal,
-  },
-  {
-    id: "leaderboard",
-    label: "Leaderboard",
-    href: "/settings/leaderboard",
-    icon: Trophy,
   },
 ];
 
@@ -235,8 +227,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <PreferencesSectionSkeleton />
     ) : activeItem?.id === "model-variants" ? (
       <ModelVariantsSectionSkeleton />
-    ) : activeItem?.id === "leaderboard" ? (
-      <LeaderboardSectionSkeleton />
     ) : (
       <ProfilePageSkeleton />
     );
