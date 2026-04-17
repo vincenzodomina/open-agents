@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     last_login_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 CREATE UNIQUE INDEX IF NOT EXISTS users_provider_external_id_idx ON users (provider, external_id);
 CREATE TABLE IF NOT EXISTS accounts (
     id text NOT NULL PRIMARY KEY,
@@ -28,6 +29,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_user_id_provider_idx ON accounts (user_id, provider);
 CREATE TABLE IF NOT EXISTS github_installations (
     id text NOT NULL PRIMARY KEY,
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS github_installations (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE github_installations ENABLE ROW LEVEL SECURITY;
 CREATE UNIQUE INDEX IF NOT EXISTS github_installations_user_installation_idx ON github_installations (user_id, installation_id);
 CREATE UNIQUE INDEX IF NOT EXISTS github_installations_user_account_idx ON github_installations (user_id, account_login);
 CREATE TABLE IF NOT EXISTS vercel_project_links (
@@ -54,6 +57,7 @@ CREATE TABLE IF NOT EXISTS vercel_project_links (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     PRIMARY KEY (user_id, repo_owner, repo_name)
 );
+ALTER TABLE vercel_project_links ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS sessions (
     id text NOT NULL PRIMARY KEY,
     user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -91,6 +95,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions (user_id);
 CREATE TABLE IF NOT EXISTS linked_accounts (
     id text NOT NULL PRIMARY KEY,
@@ -102,6 +107,7 @@ CREATE TABLE IF NOT EXISTS linked_accounts (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE linked_accounts ENABLE ROW LEVEL SECURITY;
 CREATE UNIQUE INDEX IF NOT EXISTS linked_accounts_provider_external_workspace_idx ON linked_accounts (provider, external_id, workspace_id);
 CREATE TABLE IF NOT EXISTS user_preferences (
     id text NOT NULL PRIMARY KEY,
@@ -121,6 +127,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS usage_events (
     id text NOT NULL PRIMARY KEY,
     user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -134,6 +141,7 @@ CREATE TABLE IF NOT EXISTS usage_events (
     tool_call_count integer DEFAULT 0 NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS chats (
     id text NOT NULL PRIMARY KEY,
     session_id text NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
@@ -144,6 +152,7 @@ CREATE TABLE IF NOT EXISTS chats (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS chats_session_id_idx ON chats (session_id);
 CREATE TABLE IF NOT EXISTS chat_messages (
     id text NOT NULL PRIMARY KEY,
@@ -152,6 +161,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     parts jsonb NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS chat_reads (
     user_id text NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     chat_id text NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
@@ -160,6 +170,7 @@ CREATE TABLE IF NOT EXISTS chat_reads (
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
     PRIMARY KEY (user_id, chat_id)
 );
+ALTER TABLE chat_reads ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS chat_reads_chat_id_idx ON chat_reads (chat_id);
 CREATE TABLE IF NOT EXISTS shares (
     id text NOT NULL PRIMARY KEY,
@@ -167,6 +178,7 @@ CREATE TABLE IF NOT EXISTS shares (
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE shares ENABLE ROW LEVEL SECURITY;
 CREATE UNIQUE INDEX IF NOT EXISTS shares_chat_id_idx ON shares (chat_id);
 CREATE TABLE IF NOT EXISTS workflow_runs (
     id text NOT NULL PRIMARY KEY,
@@ -180,6 +192,7 @@ CREATE TABLE IF NOT EXISTS workflow_runs (
     total_duration_ms integer NOT NULL,
     created_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE workflow_runs ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS workflow_runs_chat_id_idx ON workflow_runs (chat_id);
 CREATE INDEX IF NOT EXISTS workflow_runs_session_id_idx ON workflow_runs (session_id);
 CREATE INDEX IF NOT EXISTS workflow_runs_user_id_idx ON workflow_runs (user_id);
@@ -194,5 +207,6 @@ CREATE TABLE IF NOT EXISTS workflow_run_steps (
     raw_finish_reason text,
     created_at timestamp without time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE workflow_run_steps ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS workflow_run_steps_run_id_idx ON workflow_run_steps (workflow_run_id);
 CREATE UNIQUE INDEX IF NOT EXISTS workflow_run_steps_run_step_idx ON workflow_run_steps (workflow_run_id, step_number);

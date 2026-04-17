@@ -14,6 +14,8 @@
       );
 
 
+alter table "public"."accounts" enable row level security;
+
 
   create table "public"."chat_messages" (
     "id" text not null,
@@ -24,6 +26,8 @@
       );
 
 
+alter table "public"."chat_messages" enable row level security;
+
 
   create table "public"."chat_reads" (
     "user_id" text not null,
@@ -33,6 +37,8 @@
     "updated_at" timestamp without time zone not null default now()
       );
 
+
+alter table "public"."chat_reads" enable row level security;
 
 
   create table "public"."chats" (
@@ -46,6 +52,8 @@
     "updated_at" timestamp without time zone not null default now()
       );
 
+
+alter table "public"."chats" enable row level security;
 
 
   create table "public"."github_installations" (
@@ -61,6 +69,8 @@
       );
 
 
+alter table "public"."github_installations" enable row level security;
+
 
   create table "public"."linked_accounts" (
     "id" text not null,
@@ -73,6 +83,8 @@
     "updated_at" timestamp without time zone not null default now()
       );
 
+
+alter table "public"."linked_accounts" enable row level security;
 
 
   create table "public"."sessions" (
@@ -114,6 +126,8 @@
       );
 
 
+alter table "public"."sessions" enable row level security;
+
 
   create table "public"."shares" (
     "id" text not null,
@@ -122,6 +136,8 @@
     "updated_at" timestamp without time zone not null default now()
       );
 
+
+alter table "public"."shares" enable row level security;
 
 
   create table "public"."usage_events" (
@@ -138,6 +154,8 @@
     "created_at" timestamp without time zone not null default now()
       );
 
+
+alter table "public"."usage_events" enable row level security;
 
 
   create table "public"."user_preferences" (
@@ -160,6 +178,8 @@
       );
 
 
+alter table "public"."user_preferences" enable row level security;
+
 
   create table "public"."users" (
     "id" text not null,
@@ -179,6 +199,8 @@
       );
 
 
+alter table "public"."users" enable row level security;
+
 
   create table "public"."vercel_project_links" (
     "user_id" text not null,
@@ -192,6 +214,8 @@
     "updated_at" timestamp without time zone not null default now()
       );
 
+
+alter table "public"."vercel_project_links" enable row level security;
 
 
   create table "public"."workflow_run_steps" (
@@ -207,6 +231,8 @@
       );
 
 
+alter table "public"."workflow_run_steps" enable row level security;
+
 
   create table "public"."workflow_runs" (
     "id" text not null,
@@ -221,6 +247,8 @@
     "created_at" timestamp without time zone not null default now()
       );
 
+
+alter table "public"."workflow_runs" enable row level security;
 
 CREATE UNIQUE INDEX accounts_pkey ON public.accounts USING btree (id);
 
