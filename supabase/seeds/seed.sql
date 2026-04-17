@@ -105,9 +105,84 @@ VALUES
         extensions.gen_random_uuid ()
     )
 ON CONFLICT (id) DO NOTHING;
--- Ensure user_profile exists for the seeded auth user (FK target for agent.user_id)
+-- -- Ensure user_profile exists for the seeded auth user (FK target for agent.user_id)
+-- INSERT INTO
+--     "public"."user_profile" ("id", "email")
+-- VALUES
+--     ('eb50450e-5e8f-43cb-97b4-336f1cce420e', 'demo@example.org')
+-- ON CONFLICT (id) DO NOTHING;
 INSERT INTO
-    "public"."user_profile" ("id", "email")
+    public.users (
+        id,
+        provider,
+        external_id,
+        access_token,
+        refresh_token,
+        scope,
+        username,
+        email,
+        name,
+        avatar_url,
+        created_at,
+        token_expires_at,
+        updated_at,
+        last_login_at
+    )
 VALUES
-    ('eb50450e-5e8f-43cb-97b4-336f1cce420e', 'demo@example.org')
+    (
+        'eb50450e-5e8f-43cb-97b4-336f1cce420e',
+        'vercel',
+        'local-dev-bypass',
+        'dev-bypass-placeholder-token',
+        NULL,
+        NULL,
+        'local-dev',
+        'demo@example.org',
+        'Local Dev',
+        NULL,
+        now(),
+        NULL,
+        now(),
+        now()
+    )
 ON CONFLICT (id) DO NOTHING;
+-- One preferences row per user (matches app defaults; openai-first for local testing)
+INSERT INTO
+    public.user_preferences (
+        id,
+        user_id,
+        default_model_id,
+        default_subagent_model_id,
+        default_sandbox_type,
+        default_diff_mode,
+        auto_commit_push,
+        auto_create_pr,
+        alerts_enabled,
+        alert_sound_enabled,
+        public_usage_enabled,
+        global_skill_refs,
+        model_variants,
+        enabled_model_ids,
+        created_at,
+        updated_at
+    )
+VALUES
+    (
+        'a0000000-0000-4000-8000-000000000001',
+        'eb50450e-5e8f-43cb-97b4-336f1cce420e',
+        'openai/gpt-5.4',
+        'openai/gpt-5.4',
+        'vercel',
+        'unified',
+        false,
+        false,
+        true,
+        true,
+        false,
+        '[]'::jsonb,
+        '[]'::jsonb,
+        '[]'::jsonb,
+        now(),
+        now()
+    )
+ON CONFLICT (user_id) DO NOTHING;
