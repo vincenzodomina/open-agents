@@ -12,17 +12,19 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Database & Migrations
 
-Schema lives in `apps/web/lib/db/schema.ts`. Migrations are managed by Drizzle Kit.
+App-level TypeScript types live in `apps/web/lib/db/schema.ts`. Optional generated Supabase types go to `apps/web/lib/db/database.types.ts` (see `db:types` below). **DDL and RPCs are authored as SQL** under `supabase/migrations/` at the repo root.
 
-**After modifying `schema.ts`, always generate a migration:**
+Scripts are in `apps/web/package.json`. Run them with `bun run --cwd apps/web <script>`. The Supabase CLI resolves `supabase/config.toml` at the monorepo root (walk up from `apps/web`). Use a **local** stack (`supabase start`) for `--local` commands.
 
-```bash
-bun run --cwd apps/web db:generate   # Creates a new .sql migration file
-```
+| Script | What it runs |
+|--------|----------------|
+| `db:diff` | `supabase db diff -f schema_update` — create a new migration file from schema drift vs the local DB (adjust the `-f` name in `package.json` if you prefer). |
+| `db:types` | `supabase gen types typescript --local > lib/db/database.types.ts` — regenerate TypeScript types from the **local** database. |
+| `db:push` | `supabase db push --local` — apply pending migrations to the **local** Supabase instance. |
+| `db:check` | `bun run scripts/check-migrations.ts` — CI guard that `supabase/migrations/` contains `.sql` files. |
+| `build` | Runs `db:push` then `next build`, so local migrations are applied before the Next.js build (requires local Supabase running when you build this way). |
 
-Commit the generated `.sql` file alongside the schema change. **Do not use `db:push`** except for local throwaway databases.
-
-Migrations run automatically during `bun run build` (via `lib/db/migrate.ts`), so every Vercel deploy — both preview and production — applies pending migrations to its own database.
+Commit new `.sql` files under `supabase/migrations/` with your changes.
 
 ### Environment isolation
 

@@ -1,19 +1,17 @@
-import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db } from "./client";
-import { users } from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-/**
- * Check if a user exists in the database by ID.
- * Returns true if found, false otherwise. Lightweight query (only fetches the ID).
- */
 export async function userExists(userId: string): Promise<boolean> {
-  const result = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return result.length > 0;
+  const { data, error } = await getSupabaseAdmin()
+    .from("users")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data != null;
 }
 
 export async function upsertUser(
@@ -31,6 +29,7 @@ export async function upsertUser(
   },
   options?: { fixedUserId?: string },
 ): Promise<string> {
+  const sb = getSupabaseAdmin();
   const {
     provider,
     externalId,
@@ -40,39 +39,61 @@ export async function upsertUser(
     tokenExpiresAt,
   } = userData;
 
-  const existingUser = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.provider, provider), eq(users.externalId, externalId)))
-    .limit(1);
+  const { data: existing, error: findErr } = await sb
+    .from("users")
+    .select("id")
+    .eq("provider", provider)
+    .eq("external_id", externalId)
+    .maybeSingle();
 
-  if (existingUser.length > 0 && existingUser[0]) {
-    await db
-      .update(users)
-      .set({
-        accessToken,
-        refreshToken,
-        scope,
-        tokenExpiresAt,
+  if (findErr) {
+    throw findErr;
+  }
+
+  if (existing?.id) {
+    const { error: updErr } = await sb
+      .from("users")
+      .update({
+        access_token: accessToken,
+        refresh_token: refreshToken ?? null,
+        scope: scope ?? null,
+        token_expires_at: tokenExpiresAt?.toISOString() ?? null,
         username: userData.username,
-        email: userData.email,
-        name: userData.name,
-        avatarUrl: userData.avatarUrl,
-        updatedAt: new Date(),
-        lastLoginAt: new Date(),
+        email: userData.email ?? null,
+        name: userData.name ?? null,
+        avatar_url: userData.avatarUrl ?? null,
+        updated_at: new Date().toISOString(),
+        last_login_at: new Date().toISOString(),
       })
-      .where(eq(users.id, existingUser[0].id));
-    return existingUser[0].id;
+      .eq("id", existing.id);
+
+    if (updErr) {
+      throw updErr;
+    }
+    return existing.id;
   }
 
   const userId = options?.fixedUserId ?? nanoid();
-  const now = new Date();
-  await db.insert(users).values({
+  const now = new Date().toISOString();
+  const { error: insErr } = await sb.from("users").insert({
     id: userId,
-    ...userData,
-    createdAt: now,
-    updatedAt: now,
-    lastLoginAt: now,
+    provider,
+    external_id: externalId,
+    access_token: accessToken,
+    refresh_token: refreshToken ?? null,
+    scope: scope ?? null,
+    username: userData.username,
+    email: userData.email ?? null,
+    name: userData.name ?? null,
+    avatar_url: userData.avatarUrl ?? null,
+    token_expires_at: tokenExpiresAt?.toISOString() ?? null,
+    created_at: now,
+    updated_at: now,
+    last_login_at: now,
   });
+
+  if (insErr) {
+    throw insErr;
+  }
   return userId;
 }

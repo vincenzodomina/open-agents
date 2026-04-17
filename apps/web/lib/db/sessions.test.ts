@@ -4,68 +4,59 @@ type UpsertMode = "inserted" | "updated" | "conflict";
 
 let upsertMode: UpsertMode = "inserted";
 
-// Rows returned by the fakeDb select() chain (used by getUsedSessionTitles)
 let fakeSelectRows: { title: string }[] = [];
 
 const fakeInsertedMessage = {
   id: "message-1",
-  chatId: "chat-1",
-  role: "assistant" as const,
+  chat_id: "chat-1",
+  role: "assistant",
   parts: { id: "message-1", role: "assistant", parts: [] },
-  createdAt: new Date(),
+  created_at: new Date().toISOString(),
 };
 
-const fakeDb = {
-  // Fluent select chain: db.select({…}).from(table).where(condition)
-  select: (_columns: unknown) => ({
-    from: (_table: unknown) => ({
-      where: async (_condition: unknown) => fakeSelectRows,
-    }),
-  }),
-
-  transaction: async <T>(
-    callback: (tx: {
-      insert: (table: unknown) => {
-        values: (input: unknown) => {
-          onConflictDoNothing: (config: unknown) => {
-            returning: () => Promise<(typeof fakeInsertedMessage)[]>;
+function createFakeSupabase() {
+  return {
+    from(_table: string) {
+      return {
+        select(_cols?: string) {
+          return {
+            eq: async (_c: string, _v: string) => ({
+              data: fakeSelectRows,
+              error: null,
+            }),
           };
-        };
+        },
       };
-      update: (table: unknown) => {
-        set: (input: unknown) => {
-          where: (condition: unknown) => {
-            returning: () => Promise<(typeof fakeInsertedMessage)[]>;
-          };
+    },
+    async rpc(name: string) {
+      if (name !== "upsert_chat_message_scoped") {
+        return { data: null, error: new Error(`unexpected rpc ${name}`) };
+      }
+      if (upsertMode === "inserted") {
+        return {
+          data: {
+            status: "inserted",
+            message: fakeInsertedMessage,
+          },
+          error: null,
         };
-      };
-    }) => Promise<T>,
-  ) => {
-    const tx = {
-      insert: (_table: unknown) => ({
-        values: (_input: unknown) => ({
-          onConflictDoNothing: (_config: unknown) => ({
-            returning: async () =>
-              upsertMode === "inserted" ? [fakeInsertedMessage] : [],
-          }),
-        }),
-      }),
-      update: (_table: unknown) => ({
-        set: (_input: unknown) => ({
-          where: (_condition: unknown) => ({
-            returning: async () =>
-              upsertMode === "updated" ? [fakeInsertedMessage] : [],
-          }),
-        }),
-      }),
-    };
+      }
+      if (upsertMode === "updated") {
+        return {
+          data: {
+            status: "updated",
+            message: fakeInsertedMessage,
+          },
+          error: null,
+        };
+      }
+      return { data: { status: "conflict" }, error: null };
+    },
+  };
+}
 
-    return callback(tx);
-  },
-};
-
-mock.module("./client", () => ({
-  db: fakeDb,
+mock.module("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: createFakeSupabase,
 }));
 
 const sessionsModulePromise = import("./sessions");
@@ -171,6 +162,7 @@ describe("upsertChatMessageScoped", () => {
       chatId: "chat-1",
       role: "assistant",
       parts: { id: "message-1", role: "assistant", parts: [] },
+      createdAt: new Date(),
     });
 
     expect(result.status).toBe("inserted");
@@ -185,6 +177,7 @@ describe("upsertChatMessageScoped", () => {
       chatId: "chat-1",
       role: "assistant",
       parts: { id: "message-1", role: "assistant", parts: [{ type: "text" }] },
+      createdAt: new Date(),
     });
 
     expect(result.status).toBe("updated");
@@ -199,6 +192,7 @@ describe("upsertChatMessageScoped", () => {
       chatId: "chat-1",
       role: "assistant",
       parts: { id: "message-1", role: "assistant", parts: [{ type: "text" }] },
+      createdAt: new Date(),
     });
 
     expect(result.status).toBe("conflict");

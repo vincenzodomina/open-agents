@@ -1,4 +1,3 @@
-import { and, eq, sql } from "drizzle-orm";
 import {
   buildUsageInsights,
   type UsageAggregateRow,
@@ -9,19 +8,8 @@ import {
   type UsageDateRange,
 } from "@/lib/usage/date-range";
 import type { UsageInsights } from "@/lib/usage/types";
-import { db } from "./client";
-import { sessions, usageEvents } from "./schema";
-
-const EMPTY_USAGE_AGGREGATE: UsageAggregateRow = {
-  totalInputTokens: 0,
-  totalCachedInputTokens: 0,
-  totalOutputTokens: 0,
-  totalToolCallCount: 0,
-  mainInputTokens: 0,
-  mainOutputTokens: 0,
-  mainAssistantTurnCount: 0,
-  largestMainTurnTokens: 0,
-};
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { parseTimestampRequired } from "./maps";
 
 export interface UsageInsightsOptions {
   days?: number;
@@ -29,49 +17,43 @@ export interface UsageInsightsOptions {
   allTime?: boolean;
 }
 
-function buildUsageEventsWhereClause(
+function rpcParams(
   userId: string,
   options?: UsageInsightsOptions,
-) {
+): {
+  p_user_id: string;
+  p_range_from: string | null;
+  p_range_to: string | null;
+  p_all_time: boolean;
+  p_days: number | null;
+} {
   if (options?.range) {
-    return sql`${usageEvents.userId} = ${userId} and date(${usageEvents.createdAt}) >= ${options.range.from} and date(${usageEvents.createdAt}) <= ${options.range.to}`;
+    return {
+      p_user_id: userId,
+      p_range_from: options.range.from,
+      p_range_to: options.range.to,
+      p_all_time: false,
+      p_days: null,
+    };
   }
 
   if (options?.allTime) {
-    return sql`${usageEvents.userId} = ${userId}`;
+    return {
+      p_user_id: userId,
+      p_range_from: null,
+      p_range_to: null,
+      p_all_time: true,
+      p_days: null,
+    };
   }
 
-  const days = options?.days ?? 280;
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  return sql`${usageEvents.userId} = ${userId} and ${usageEvents.createdAt} >= ${since.toISOString()}`;
-}
-
-function buildSessionsWhereClause(
-  userId: string,
-  options?: UsageInsightsOptions,
-) {
-  if (options?.range) {
-    return and(
-      eq(sessions.userId, userId),
-      sql`date(${sessions.updatedAt}) >= ${options.range.from}`,
-      sql`date(${sessions.updatedAt}) <= ${options.range.to}`,
-    );
-  }
-
-  if (options?.allTime) {
-    return eq(sessions.userId, userId);
-  }
-
-  const days = options?.days ?? 280;
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  return and(
-    eq(sessions.userId, userId),
-    sql`${sessions.updatedAt} >= ${since.toISOString()}`,
-  );
+  return {
+    p_user_id: userId,
+    p_range_from: null,
+    p_range_to: null,
+    p_all_time: false,
+    p_days: options?.days ?? 280,
+  };
 }
 
 function getLookbackDays(options?: UsageInsightsOptions): number {
@@ -90,39 +72,57 @@ export async function getUsageInsights(
   userId: string,
   options?: UsageInsightsOptions,
 ): Promise<UsageInsights> {
-  const [aggregateRows, sessionRows] = await Promise.all([
-    db
-      .select({
-        totalInputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::double precision`,
-        totalCachedInputTokens: sql<number>`coalesce(sum(${usageEvents.cachedInputTokens}), 0)::double precision`,
-        totalOutputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)::double precision`,
-        totalToolCallCount: sql<number>`coalesce(sum(${usageEvents.toolCallCount}), 0)::double precision`,
-        mainInputTokens: sql<number>`coalesce(sum(case when ${usageEvents.agentType} = 'main' then ${usageEvents.inputTokens} else 0 end), 0)::double precision`,
-        mainOutputTokens: sql<number>`coalesce(sum(case when ${usageEvents.agentType} = 'main' then ${usageEvents.outputTokens} else 0 end), 0)::double precision`,
-        mainAssistantTurnCount: sql<number>`coalesce(sum(case when ${usageEvents.agentType} = 'main' then 1 else 0 end), 0)::double precision`,
-        largestMainTurnTokens: sql<number>`coalesce(max(case when ${usageEvents.agentType} = 'main' then cast(${usageEvents.inputTokens} as bigint) + cast(${usageEvents.outputTokens} as bigint) end), 0)::double precision`,
-      })
-      .from(usageEvents)
-      .where(buildUsageEventsWhereClause(userId, options)),
-    db
-      .select({
-        repoOwner: sessions.repoOwner,
-        repoName: sessions.repoName,
-        prNumber: sessions.prNumber,
-        prStatus: sessions.prStatus,
-        linesAdded: sessions.linesAdded,
-        linesRemoved: sessions.linesRemoved,
-        updatedAt: sessions.updatedAt,
-      })
-      .from(sessions)
-      .where(buildSessionsWhereClause(userId, options)),
-  ]);
+  const params = rpcParams(userId, options);
+  const { data, error } = await getSupabaseAdmin().rpc(
+    "get_usage_insights_bundle",
+    params,
+  );
 
-  const aggregate = aggregateRows[0] ?? EMPTY_USAGE_AGGREGATE;
+  if (error) {
+    throw error;
+  }
+
+  let rawBundle: unknown = data;
+  if (typeof data === "string") {
+    try {
+      rawBundle = JSON.parse(data) as unknown;
+    } catch {
+      rawBundle = { aggregate: {}, sessions: [] };
+    }
+  }
+
+  const bundle = rawBundle as {
+    aggregate: Record<string, unknown>;
+    sessions: Record<string, unknown>[];
+  };
+
+  const agg = bundle.aggregate ?? {};
+  const aggregate: UsageAggregateRow = {
+    totalInputTokens: Number(agg.totalInputTokens ?? 0),
+    totalCachedInputTokens: Number(agg.totalCachedInputTokens ?? 0),
+    totalOutputTokens: Number(agg.totalOutputTokens ?? 0),
+    totalToolCallCount: Number(agg.totalToolCallCount ?? 0),
+    mainInputTokens: Number(agg.mainInputTokens ?? 0),
+    mainOutputTokens: Number(agg.mainOutputTokens ?? 0),
+    mainAssistantTurnCount: Number(agg.mainAssistantTurnCount ?? 0),
+    largestMainTurnTokens: Number(agg.largestMainTurnTokens ?? 0),
+  };
+
+  const sessionRows: UsageSessionInsightRow[] = (bundle.sessions ?? []).map(
+    (s) => ({
+      repoOwner: s.repoOwner != null ? String(s.repoOwner) : null,
+      repoName: s.repoName != null ? String(s.repoName) : null,
+      prNumber: s.prNumber != null ? Number(s.prNumber) : null,
+      prStatus: s.prStatus as UsageSessionInsightRow["prStatus"],
+      linesAdded: s.linesAdded != null ? Number(s.linesAdded) : null,
+      linesRemoved: s.linesRemoved != null ? Number(s.linesRemoved) : null,
+      updatedAt: parseTimestampRequired(s.updatedAt),
+    }),
+  );
 
   return buildUsageInsights({
     lookbackDays: getLookbackDays(options),
     aggregate,
-    sessions: sessionRows as UsageSessionInsightRow[],
+    sessions: sessionRows,
   });
 }

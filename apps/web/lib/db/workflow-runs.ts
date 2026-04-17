@@ -1,6 +1,5 @@
 import { nanoid } from "nanoid";
-import { db } from "./client";
-import { workflowRuns, workflowRunSteps } from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type WorkflowRunStatus = "completed" | "aborted" | "failed";
 
@@ -25,42 +24,34 @@ export async function recordWorkflowRun(data: {
   totalDurationMs: number;
   stepTimings: WorkflowRunStepTiming[];
 }) {
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(workflowRuns)
-      .values({
-        id: data.id,
-        chatId: data.chatId,
-        sessionId: data.sessionId,
-        userId: data.userId,
-        modelId: data.modelId ?? null,
-        status: data.status,
-        startedAt: new Date(data.startedAt),
-        finishedAt: new Date(data.finishedAt),
-        totalDurationMs: data.totalDurationMs,
-      })
-      .onConflictDoNothing({ target: workflowRuns.id });
+  const p_run = {
+    id: data.id,
+    chat_id: data.chatId,
+    session_id: data.sessionId,
+    user_id: data.userId,
+    model_id: data.modelId ?? null,
+    status: data.status,
+    started_at: data.startedAt,
+    finished_at: data.finishedAt,
+    total_duration_ms: data.totalDurationMs,
+  };
 
-    if (data.stepTimings.length === 0) {
-      return;
-    }
+  const p_steps = data.stepTimings.map((stepTiming) => ({
+    id: nanoid(),
+    step_number: stepTiming.stepNumber,
+    started_at: stepTiming.startedAt,
+    finished_at: stepTiming.finishedAt,
+    duration_ms: stepTiming.durationMs,
+    finish_reason: stepTiming.finishReason ?? null,
+    raw_finish_reason: stepTiming.rawFinishReason ?? null,
+  }));
 
-    await tx
-      .insert(workflowRunSteps)
-      .values(
-        data.stepTimings.map((stepTiming) => ({
-          id: nanoid(),
-          workflowRunId: data.id,
-          stepNumber: stepTiming.stepNumber,
-          startedAt: new Date(stepTiming.startedAt),
-          finishedAt: new Date(stepTiming.finishedAt),
-          durationMs: stepTiming.durationMs,
-          finishReason: stepTiming.finishReason ?? null,
-          rawFinishReason: stepTiming.rawFinishReason ?? null,
-        })),
-      )
-      .onConflictDoNothing({
-        target: [workflowRunSteps.workflowRunId, workflowRunSteps.stepNumber],
-      });
+  const { error } = await getSupabaseAdmin().rpc("record_workflow_run", {
+    p_run: p_run as object,
+    p_steps: p_steps.length > 0 ? (p_steps as object) : null,
   });
+
+  if (error) {
+    throw error;
+  }
 }

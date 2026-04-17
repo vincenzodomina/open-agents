@@ -1,4 +1,3 @@
-import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { modelVariantsSchema, type ModelVariant } from "@/lib/model-variants";
@@ -7,8 +6,9 @@ import {
   normalizeGlobalSkillRefs,
   type GlobalSkillRef,
 } from "@/lib/skills/global-skill-refs";
-import { db } from "./client";
-import { userPreferences, type UserPreferences } from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { mapUserPreferencesRow } from "./maps";
+import type { UserPreferences } from "./schema";
 
 export type DiffMode = "unified" | "split";
 
@@ -117,75 +117,129 @@ export function toUserPreferencesData(
   };
 }
 
-/**
- * Get user preferences, creating default preferences if none exist
- */
 export async function getUserPreferences(
   userId: string,
 ): Promise<UserPreferencesData> {
-  const [existing] = await db
-    .select()
-    .from(userPreferences)
-    .where(eq(userPreferences.userId, userId))
-    .limit(1);
+  const { data, error } = await getSupabaseAdmin()
+    .from("user_preferences")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  return toUserPreferencesData(existing);
+  if (error) {
+    throw error;
+  }
+
+  return toUserPreferencesData(
+    data ? mapUserPreferencesRow(data as Record<string, unknown>) : undefined,
+  );
 }
 
-/**
- * Update user preferences, creating if they don't exist
- */
 export async function updateUserPreferences(
   userId: string,
   updates: Partial<UserPreferencesData>,
 ): Promise<UserPreferencesData> {
-  const [existing] = await db
-    .select()
-    .from(userPreferences)
-    .where(eq(userPreferences.userId, userId))
-    .limit(1);
+  const sb = getSupabaseAdmin();
+  const { data: existing, error: findErr } = await sb
+    .from("user_preferences")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  if (existing) {
-    const [updated] = await db
-      .update(userPreferences)
-      .set({
-        ...updates,
-        updatedAt: new Date(),
-      })
-      .where(eq(userPreferences.userId, userId))
-      .returning();
-
-    return toUserPreferencesData(updated);
+  if (findErr) {
+    throw findErr;
   }
 
-  // Create new preferences
-  const [created] = await db
-    .insert(userPreferences)
-    .values({
-      id: nanoid(),
-      userId,
-      defaultModelId:
-        updates.defaultModelId ?? DEFAULT_PREFERENCES.defaultModelId,
-      defaultSubagentModelId: updates.defaultSubagentModelId ?? null,
-      defaultSandboxType:
-        updates.defaultSandboxType ?? DEFAULT_PREFERENCES.defaultSandboxType,
-      defaultDiffMode:
-        updates.defaultDiffMode ?? DEFAULT_PREFERENCES.defaultDiffMode,
-      autoCommitPush:
-        updates.autoCommitPush ?? DEFAULT_PREFERENCES.autoCommitPush,
-      autoCreatePr: updates.autoCreatePr ?? DEFAULT_PREFERENCES.autoCreatePr,
-      alertsEnabled: updates.alertsEnabled ?? DEFAULT_PREFERENCES.alertsEnabled,
-      alertSoundEnabled:
-        updates.alertSoundEnabled ?? DEFAULT_PREFERENCES.alertSoundEnabled,
-      publicUsageEnabled:
-        updates.publicUsageEnabled ?? DEFAULT_PREFERENCES.publicUsageEnabled,
-      globalSkillRefs:
-        updates.globalSkillRefs ?? DEFAULT_PREFERENCES.globalSkillRefs,
-      modelVariants: updates.modelVariants ?? DEFAULT_PREFERENCES.modelVariants,
-      enabledModelIds:
-        updates.enabledModelIds ?? DEFAULT_PREFERENCES.enabledModelIds,
-    })
-    .returning();
+  const patchSnake: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (updates.defaultModelId !== undefined) {
+    patchSnake.default_model_id = updates.defaultModelId;
+  }
+  if (updates.defaultSubagentModelId !== undefined) {
+    patchSnake.default_subagent_model_id = updates.defaultSubagentModelId;
+  }
+  if (updates.defaultSandboxType !== undefined) {
+    patchSnake.default_sandbox_type = updates.defaultSandboxType;
+  }
+  if (updates.defaultDiffMode !== undefined) {
+    patchSnake.default_diff_mode = updates.defaultDiffMode;
+  }
+  if (updates.autoCommitPush !== undefined) {
+    patchSnake.auto_commit_push = updates.autoCommitPush;
+  }
+  if (updates.autoCreatePr !== undefined) {
+    patchSnake.auto_create_pr = updates.autoCreatePr;
+  }
+  if (updates.alertsEnabled !== undefined) {
+    patchSnake.alerts_enabled = updates.alertsEnabled;
+  }
+  if (updates.alertSoundEnabled !== undefined) {
+    patchSnake.alert_sound_enabled = updates.alertSoundEnabled;
+  }
+  if (updates.publicUsageEnabled !== undefined) {
+    patchSnake.public_usage_enabled = updates.publicUsageEnabled;
+  }
+  if (updates.globalSkillRefs !== undefined) {
+    patchSnake.global_skill_refs = updates.globalSkillRefs;
+  }
+  if (updates.modelVariants !== undefined) {
+    patchSnake.model_variants = updates.modelVariants;
+  }
+  if (updates.enabledModelIds !== undefined) {
+    patchSnake.enabled_model_ids = updates.enabledModelIds;
+  }
 
-  return toUserPreferencesData(created);
+  if (existing) {
+    const { data: updated, error } = await sb
+      .from("user_preferences")
+      .update(patchSnake)
+      .eq("user_id", userId)
+      .select()
+      .single();
+
+    if (error) {
+      throw error;
+    }
+    return toUserPreferencesData(
+      mapUserPreferencesRow(updated as Record<string, unknown>),
+    );
+  }
+
+  const base = toUserPreferencesData();
+  const merged: UserPreferencesData = {
+    ...base,
+    ...updates,
+  };
+
+  const { data: created, error } = await sb
+    .from("user_preferences")
+    .insert({
+      id: nanoid(),
+      user_id: userId,
+      default_model_id: merged.defaultModelId,
+      default_subagent_model_id: merged.defaultSubagentModelId,
+      default_sandbox_type: merged.defaultSandboxType,
+      default_diff_mode: merged.defaultDiffMode,
+      auto_commit_push: merged.autoCommitPush,
+      auto_create_pr: merged.autoCreatePr,
+      alerts_enabled: merged.alertsEnabled,
+      alert_sound_enabled: merged.alertSoundEnabled,
+      public_usage_enabled: merged.publicUsageEnabled,
+      global_skill_refs: merged.globalSkillRefs,
+      model_variants: merged.modelVariants,
+      enabled_model_ids: merged.enabledModelIds,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return toUserPreferencesData(
+    mapUserPreferencesRow(created as Record<string, unknown>),
+  );
 }

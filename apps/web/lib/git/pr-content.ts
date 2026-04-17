@@ -1,13 +1,11 @@
 import type { Sandbox } from "@open-harness/sandbox";
 import { gateway } from "@open-harness/agent";
 import { generateText, NoObjectGeneratedError, Output } from "ai";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { getConversationContext } from "@/app/api/generate-pr/_lib/generate-pr-helpers";
 import { getGitHubAccount } from "@/lib/db/accounts";
-import { db } from "@/lib/db/client";
 import { getChatsBySessionId, getSessionById } from "@/lib/db/sessions";
-import { users } from "@/lib/db/schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 const prContentSchema = z.object({
   title: z
@@ -92,16 +90,20 @@ export async function resolvePullRequestContextSection(params: {
   }
 
   if (sessionRecord) {
-    const [userRecord, githubAccount] = await Promise.all([
-      db.query.users.findFirst({
-        where: eq(users.id, sessionRecord.userId),
-        columns: {
-          name: true,
-          username: true,
-        },
-      }),
+    const [{ data: userRow }, githubAccount] = await Promise.all([
+      getSupabaseAdmin()
+        .from("users")
+        .select("name, username")
+        .eq("id", sessionRecord.userId)
+        .maybeSingle(),
       getGitHubAccount(sessionRecord.userId),
     ]);
+    const userRecord = userRow
+      ? {
+          name: (userRow as { name: string | null }).name,
+          username: String((userRow as { username: string }).username),
+        }
+      : null;
     const githubUsername = githubAccount?.username?.trim() || null;
     const displayName =
       userRecord?.name?.trim() ||

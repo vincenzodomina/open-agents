@@ -1,12 +1,10 @@
-import { eq, sql } from "drizzle-orm";
 import type { UsageDateRange } from "@/lib/usage/date-range";
 import { getUsageLeaderboardDomain } from "@/lib/usage/leaderboard-domain";
 import type {
   UsageDomainLeaderboard,
   UsageDomainLeaderboardRow,
 } from "@/lib/usage/types";
-import { db } from "./client";
-import { usageEvents, users } from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export { getUsageLeaderboardDomain };
 
@@ -26,19 +24,30 @@ export interface UsageDomainLeaderboardOptions {
   range?: UsageDateRange;
 }
 
-function buildUsageDomainLeaderboardWhereClause(
+function rpcParams(
   domain: string,
   options?: UsageDomainLeaderboardOptions,
-) {
+): {
+  p_domain: string;
+  p_range_from: string | null;
+  p_range_to: string | null;
+  p_days: number | null;
+} {
   if (options?.range) {
-    return sql`${users.email} is not null and lower(split_part(${users.email}, '@', 2)) = ${domain} and date(${usageEvents.createdAt}) >= ${options.range.from} and date(${usageEvents.createdAt}) <= ${options.range.to}`;
+    return {
+      p_domain: domain,
+      p_range_from: options.range.from,
+      p_range_to: options.range.to,
+      p_days: null,
+    };
   }
 
-  const days = options?.days ?? 280;
-  const since = new Date();
-  since.setDate(since.getDate() - days);
-
-  return sql`${users.email} is not null and lower(split_part(${users.email}, '@', 2)) = ${domain} and ${usageEvents.createdAt} >= ${since.toISOString()}`;
+  return {
+    p_domain: domain,
+    p_range_from: null,
+    p_range_to: null,
+    p_days: options?.days ?? 280,
+  };
 }
 
 function shouldReplaceMostUsedModel(params: {
@@ -138,31 +147,42 @@ export async function getUsageDomainLeaderboard(
     return null;
   }
 
-  const rows = await db
-    .select({
-      userId: users.id,
-      email: users.email,
-      username: users.username,
-      name: users.name,
-      avatarUrl: users.avatarUrl,
-      modelId: usageEvents.modelId,
-      totalInputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::double precision`,
-      totalOutputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)::double precision`,
-    })
-    .from(usageEvents)
-    .innerJoin(users, eq(usageEvents.userId, users.id))
-    .where(buildUsageDomainLeaderboardWhereClause(domain, options))
-    .groupBy(
-      users.id,
-      users.email,
-      users.username,
-      users.name,
-      users.avatarUrl,
-      usageEvents.modelId,
-    );
+  const params = rpcParams(domain, options);
+  const { data, error } = await getSupabaseAdmin().rpc(
+    "get_usage_domain_leaderboard_rows",
+    params,
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  let parsed: unknown = data;
+  if (typeof data === "string") {
+    try {
+      parsed = JSON.parse(data) as unknown;
+    } catch {
+      parsed = [];
+    }
+  }
+  const rows = (Array.isArray(parsed) ? parsed : []) as Record<
+    string,
+    unknown
+  >[];
+
+  const mapped: UsageDomainLeaderboardQueryRow[] = rows.map((row) => ({
+    userId: String(row.userId),
+    email: row.email != null ? String(row.email) : null,
+    username: String(row.username),
+    name: row.name != null ? String(row.name) : null,
+    avatarUrl: row.avatarUrl != null ? String(row.avatarUrl) : null,
+    modelId: row.modelId != null ? String(row.modelId) : null,
+    totalInputTokens: Number(row.totalInputTokens),
+    totalOutputTokens: Number(row.totalOutputTokens),
+  }));
 
   return {
     domain,
-    rows: buildUsageDomainLeaderboardRows(rows),
+    rows: buildUsageDomainLeaderboardRows(mapped),
   };
 }

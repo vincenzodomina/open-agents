@@ -66,18 +66,23 @@ mock.module("@/lib/db/sessions-cache", () => ({
   getSessionByIdCached: async () => sessionRecord,
 }));
 
-mock.module("@/lib/db/client", () => ({
-  db: {
-    query: {
-      users: {
-        findFirst: async () => ({
-          username: "testuser",
-          name: "Test User",
-          avatarUrl: "https://example.com/avatar.png",
+mock.module("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: {
+              username: "testuser",
+              name: "Test User",
+              avatar_url: "https://example.com/avatar.png",
+            },
+            error: null,
+          }),
         }),
-      },
-    },
-  },
+      }),
+    }),
+  }),
 }));
 
 mock.module("@/lib/db/sessions", () => ({

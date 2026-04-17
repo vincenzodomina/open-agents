@@ -1,5 +1,4 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import { and, eq, sql } from "drizzle-orm";
 import { after } from "next/server";
 import { z } from "zod";
 import {
@@ -8,9 +7,9 @@ import {
   updateInstallationsByInstallationId,
   upsertInstallation,
 } from "@/lib/db/installations";
+import { mapSessionRow } from "@/lib/db/maps";
 import { updateSession } from "@/lib/db/sessions";
-import { db } from "@/lib/db/client";
-import { sessions } from "@/lib/db/schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { archiveSession } from "@/lib/sandbox/archive-session";
 
 const installationWebhookSchema = z.object({
@@ -80,13 +79,30 @@ async function handlePullRequestWebhook(
         : "closed"
       : "open";
 
-  const linkedSessions = await db.query.sessions.findMany({
-    where: and(
-      sql`lower(${sessions.repoOwner}) = ${repoOwner.toLowerCase()}`,
-      sql`lower(${sessions.repoName}) = ${repoName.toLowerCase()}`,
-      eq(sessions.prNumber, prNumber),
-    ),
-  });
+  const { data: sessionJson, error: sessionLookupError } =
+    await getSupabaseAdmin().rpc("find_sessions_by_repo_pr", {
+      p_repo_owner: repoOwner,
+      p_repo_name: repoName,
+      p_pr_number: prNumber,
+    });
+
+  if (sessionLookupError) {
+    throw sessionLookupError;
+  }
+
+  let parsedSessions: unknown = sessionJson;
+  if (typeof sessionJson === "string") {
+    try {
+      parsedSessions = JSON.parse(sessionJson) as unknown;
+    } catch {
+      parsedSessions = [];
+    }
+  }
+
+  const rawRows = Array.isArray(parsedSessions) ? parsedSessions : [];
+  const linkedSessions = rawRows.map((r) =>
+    mapSessionRow(r as Record<string, unknown>),
+  );
 
   if (linkedSessions.length === 0) {
     return Response.json({

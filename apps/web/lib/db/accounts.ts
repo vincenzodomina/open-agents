@@ -1,7 +1,6 @@
-import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db } from "./client";
-import { accounts } from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { parseTimestamp } from "./maps";
 
 export async function upsertGitHubAccount(data: {
   userId: string;
@@ -12,45 +11,58 @@ export async function upsertGitHubAccount(data: {
   scope?: string;
   username: string;
 }): Promise<string> {
-  const existing = await db
-    .select({ id: accounts.id })
-    .from(accounts)
-    .where(
-      and(eq(accounts.userId, data.userId), eq(accounts.provider, "github")),
-    )
-    .limit(1);
+  const sb = getSupabaseAdmin();
 
-  if (existing.length > 0 && existing[0]) {
-    await db
-      .update(accounts)
-      .set({
-        externalUserId: data.externalUserId,
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken ?? null,
-        expiresAt: data.expiresAt ?? null,
-        scope: data.scope,
+  const { data: existing, error: findErr } = await sb
+    .from("accounts")
+    .select("id")
+    .eq("user_id", data.userId)
+    .eq("provider", "github")
+    .maybeSingle();
+
+  if (findErr) {
+    throw findErr;
+  }
+
+  if (existing?.id) {
+    const { error } = await sb
+      .from("accounts")
+      .update({
+        external_user_id: data.externalUserId,
+        access_token: data.accessToken,
+        refresh_token: data.refreshToken ?? null,
+        expires_at: data.expiresAt?.toISOString() ?? null,
+        scope: data.scope ?? null,
         username: data.username,
-        updatedAt: new Date(),
+        updated_at: new Date().toISOString(),
       })
-      .where(eq(accounts.id, existing[0].id));
-    return existing[0].id;
+      .eq("id", existing.id);
+
+    if (error) {
+      throw error;
+    }
+    return existing.id;
   }
 
   const id = nanoid();
-  const now = new Date();
-  await db.insert(accounts).values({
+  const now = new Date().toISOString();
+  const { error } = await sb.from("accounts").insert({
     id,
-    userId: data.userId,
+    user_id: data.userId,
     provider: "github",
-    externalUserId: data.externalUserId,
-    accessToken: data.accessToken,
-    refreshToken: data.refreshToken,
-    expiresAt: data.expiresAt,
-    scope: data.scope,
+    external_user_id: data.externalUserId,
+    access_token: data.accessToken,
+    refresh_token: data.refreshToken ?? null,
+    expires_at: data.expiresAt?.toISOString() ?? null,
+    scope: data.scope ?? null,
     username: data.username,
-    createdAt: now,
-    updatedAt: now,
+    created_at: now,
+    updated_at: now,
   });
+
+  if (error) {
+    throw error;
+  }
   return id;
 }
 
@@ -61,19 +73,30 @@ export async function getGitHubAccount(userId: string): Promise<{
   username: string;
   externalUserId: string;
 } | null> {
-  const result = await db
-    .select({
-      accessToken: accounts.accessToken,
-      refreshToken: accounts.refreshToken,
-      expiresAt: accounts.expiresAt,
-      username: accounts.username,
-      externalUserId: accounts.externalUserId,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.userId, userId), eq(accounts.provider, "github")))
-    .limit(1);
+  const { data, error } = await getSupabaseAdmin()
+    .from("accounts")
+    .select(
+      "access_token, refresh_token, expires_at, username, external_user_id",
+    )
+    .eq("user_id", userId)
+    .eq("provider", "github")
+    .maybeSingle();
 
-  return result[0] ?? null;
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    return null;
+  }
+
+  const row = data as Record<string, unknown>;
+  return {
+    accessToken: String(row.access_token),
+    refreshToken: row.refresh_token != null ? String(row.refresh_token) : null,
+    expiresAt: parseTimestamp(row.expires_at),
+    username: String(row.username),
+    externalUserId: String(row.external_user_id),
+  };
 }
 
 export async function updateGitHubAccountTokens(
@@ -84,19 +107,30 @@ export async function updateGitHubAccountTokens(
     expiresAt?: Date;
   },
 ): Promise<void> {
-  await db
-    .update(accounts)
-    .set({
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken ?? null,
-      expiresAt: data.expiresAt ?? null,
-      updatedAt: new Date(),
+  const { error } = await getSupabaseAdmin()
+    .from("accounts")
+    .update({
+      access_token: data.accessToken,
+      refresh_token: data.refreshToken ?? null,
+      expires_at: data.expiresAt?.toISOString() ?? null,
+      updated_at: new Date().toISOString(),
     })
-    .where(and(eq(accounts.userId, userId), eq(accounts.provider, "github")));
+    .eq("user_id", userId)
+    .eq("provider", "github");
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function deleteGitHubAccount(userId: string): Promise<void> {
-  await db
-    .delete(accounts)
-    .where(and(eq(accounts.userId, userId), eq(accounts.provider, "github")));
+  const { error } = await getSupabaseAdmin()
+    .from("accounts")
+    .delete()
+    .eq("user_id", userId)
+    .eq("provider", "github");
+
+  if (error) {
+    throw error;
+  }
 }

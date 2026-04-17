@@ -1,17 +1,24 @@
 import type { SandboxState } from "@open-harness/sandbox";
-import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
-import { db } from "./client";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
-  chatMessages,
-  chatReads,
-  chats,
-  type NewChat,
-  type NewChatMessage,
-  type NewChatRead,
-  type NewSession,
-  type NewShare,
-  sessions,
-  shares,
+  mapChatMessageRow,
+  mapChatRow,
+  mapSessionRow,
+  mapShareRow,
+  newChatToSnakeInsert,
+  newSessionToRpcJson,
+  partialChatToSnakeUpdate,
+  partialSessionToSnakeUpdate,
+  parseTimestamp,
+  parseTimestampRequired,
+} from "./maps";
+import type {
+  Chat,
+  ChatMessage,
+  NewChatMessage,
+  NewSession,
+  NewShare,
+  Session,
 } from "./schema";
 
 export function normalizeLegacySandboxState(
@@ -60,119 +67,174 @@ function normalizeSessionRecord<T extends { sandboxState: unknown }>(
   };
 }
 
+function sb() {
+  return getSupabaseAdmin();
+}
+
 export async function createSession(data: NewSession) {
-  const [session] = await db.insert(sessions).values(data).returning();
-  if (!session) {
+  const row = newSessionToRpcJson(data);
+  const { data: inserted, error } = await sb()
+    .from("sessions")
+    .insert(row)
+    .select()
+    .single();
+  if (error) {
+    throw error;
+  }
+  if (!inserted) {
     throw new Error("Failed to create session");
   }
-  return normalizeSessionRecord(session);
+  return normalizeSessionRecord(mapSessionRow(inserted as Record<string, unknown>));
 }
 
 interface CreateSessionWithInitialChatInput {
   session: NewSession;
-  initialChat: Pick<NewChat, "id" | "title" | "modelId">;
+  initialChat: Pick<Chat, "id" | "title" | "modelId">;
 }
 
 export async function createSessionWithInitialChat(
   input: CreateSessionWithInitialChatInput,
 ) {
-  return db.transaction(async (tx) => {
-    const [session] = await tx
-      .insert(sessions)
-      .values(input.session)
-      .returning();
-    if (!session) {
-      throw new Error("Failed to create session");
-    }
-
-    const [chat] = await tx
-      .insert(chats)
-      .values({
-        id: input.initialChat.id,
-        sessionId: session.id,
-        title: input.initialChat.title,
-        modelId: input.initialChat.modelId,
-      })
-      .returning();
-    if (!chat) {
-      throw new Error("Failed to create chat");
-    }
-
-    return { session: normalizeSessionRecord(session), chat };
+  const { data, error } = await sb().rpc("create_session_with_initial_chat", {
+    p_session: newSessionToRpcJson(input.session) as object,
+    p_initial_chat: {
+      id: input.initialChat.id,
+      title: input.initialChat.title,
+      model_id: input.initialChat.modelId ?? null,
+    } as object,
   });
+
+  if (error) {
+    throw error;
+  }
+
+  const payload = data as {
+    session: Record<string, unknown>;
+    chat: Record<string, unknown>;
+  };
+
+  return {
+    session: normalizeSessionRecord(mapSessionRow(payload.session)),
+    chat: mapChatRow(payload.chat),
+  };
 }
 
 export async function getSessionById(sessionId: string) {
-  const session = await db.query.sessions.findFirst({
-    where: eq(sessions.id, sessionId),
-  });
+  const { data, error } = await sb()
+    .from("sessions")
+    .select("*")
+    .eq("id", sessionId)
+    .maybeSingle();
 
-  return session ? normalizeSessionRecord(session) : session;
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    return null;
+  }
+  return normalizeSessionRecord(mapSessionRow(data as Record<string, unknown>));
 }
 
 export async function getShareById(shareId: string) {
-  return db.query.shares.findFirst({
-    where: eq(shares.id, shareId),
-  });
+  const { data, error } = await sb()
+    .from("shares")
+    .select("*")
+    .eq("id", shareId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data ? mapShareRow(data as Record<string, unknown>) : null;
 }
 
 export async function getShareByChatId(chatId: string) {
-  return db.query.shares.findFirst({
-    where: eq(shares.chatId, chatId),
-  });
+  const { data, error } = await sb()
+    .from("shares")
+    .select("*")
+    .eq("chat_id", chatId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data ? mapShareRow(data as Record<string, unknown>) : null;
 }
 
 export async function createShareIfNotExists(data: NewShare) {
-  const [share] = await db
-    .insert(shares)
-    .values(data)
-    .onConflictDoNothing({ target: shares.chatId })
-    .returning();
+  const row = {
+    id: data.id,
+    chat_id: data.chatId,
+    created_at: data.createdAt?.toISOString() ?? new Date().toISOString(),
+    updated_at: data.updatedAt?.toISOString() ?? new Date().toISOString(),
+  };
 
-  if (share) {
-    return share;
+  const { data: inserted, error } = await sb()
+    .from("shares")
+    .insert(row)
+    .select()
+    .maybeSingle();
+
+  if (!error && inserted) {
+    return mapShareRow(inserted as Record<string, unknown>);
+  }
+
+  if (error && (error as { code?: string }).code !== "23505") {
+    throw error;
   }
 
   return getShareByChatId(data.chatId);
 }
 
 export async function deleteShareByChatId(chatId: string) {
-  await db.delete(shares).where(eq(shares.chatId, chatId));
+  const { error } = await sb().from("shares").delete().eq("chat_id", chatId);
+  if (error) {
+    throw error;
+  }
 }
 
 export async function getSessionsByUserId(userId: string) {
-  const records = await db.query.sessions.findMany({
-    where: eq(sessions.userId, userId),
-    orderBy: [desc(sessions.createdAt)],
-  });
+  const { data, error } = await sb()
+    .from("sessions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
 
-  return records.map((session) => normalizeSessionRecord(session));
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) =>
+    normalizeSessionRecord(mapSessionRow(r as Record<string, unknown>)),
+  );
 }
 
 export async function countSessionsByUserId(userId: string): Promise<number> {
-  const [result] = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
-    .from(sessions)
-    .where(eq(sessions.userId, userId));
+  const { count, error } = await sb()
+    .from("sessions")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId);
 
-  return result?.count ?? 0;
+  if (error) {
+    throw error;
+  }
+  return count ?? 0;
 }
 
 export async function countUserMessagesByUserId(
   userId: string,
 ): Promise<number> {
-  const [result] = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
-    .from(chatMessages)
-    .innerJoin(chats, eq(chats.id, chatMessages.chatId))
-    .innerJoin(sessions, eq(sessions.id, chats.sessionId))
-    .where(and(eq(sessions.userId, userId), eq(chatMessages.role, "user")));
+  const { data, error } = await sb().rpc("count_user_messages_by_user_id", {
+    p_user_id: userId,
+  });
 
-  return result?.count ?? 0;
+  if (error) {
+    throw error;
+  }
+  return typeof data === "number" ? data : Number(data ?? 0);
 }
 
 type SessionSidebarFields = Pick<
-  typeof sessions.$inferSelect,
+  Session,
   | "id"
   | "title"
   | "status"
@@ -199,278 +261,318 @@ type GetSessionsWithUnreadByUserIdOptions = {
   offset?: number;
 };
 
-/**
- * Returns sessions for a user, each annotated with a `hasUnread` flag
- * that is true when any chat in the session has unread assistant messages.
- *
- * The sidebar only needs lightweight fields, so we intentionally avoid
- * selecting heavyweight JSON columns like `sandboxState` and `cachedDiff`.
- */
 export async function getSessionsWithUnreadByUserId(
   userId: string,
   options?: GetSessionsWithUnreadByUserIdOptions,
 ): Promise<SessionWithUnread[]> {
   const status = options?.status ?? "all";
-  const statusFilter =
-    status === "active"
-      ? ne(sessions.status, "archived")
-      : status === "archived"
-        ? eq(sessions.status, "archived")
-        : undefined;
 
-  const baseQuery = db
-    .select({
-      id: sessions.id,
-      title: sessions.title,
-      status: sessions.status,
-      repoOwner: sessions.repoOwner,
-      repoName: sessions.repoName,
-      branch: sessions.branch,
-      linesAdded: sessions.linesAdded,
-      linesRemoved: sessions.linesRemoved,
-      prNumber: sessions.prNumber,
-      prStatus: sessions.prStatus,
-      createdAt: sessions.createdAt,
-      lastActivityAt: sql<Date>`COALESCE(MAX(${chats.updatedAt}), ${sessions.createdAt})`,
-      hasUnread: sql<boolean>`COALESCE(BOOL_OR(
-        CASE
-          WHEN ${chats.lastAssistantMessageAt} IS NULL THEN false
-          WHEN ${chatReads.lastReadAt} IS NULL THEN true
-          WHEN ${chats.lastAssistantMessageAt} > ${chatReads.lastReadAt} THEN true
-          ELSE false
-        END
-      ), false)`,
-      hasStreaming: sql<boolean>`COALESCE(BOOL_OR(${chats.activeStreamId} IS NOT NULL), false)`,
-      latestChatId: sql<string | null>`(
-        ARRAY_AGG(${chats.id} ORDER BY ${chats.updatedAt} DESC, ${chats.createdAt} DESC)
-        FILTER (WHERE ${chats.id} IS NOT NULL)
-      )[1]`,
-    })
-    .from(sessions)
-    .leftJoin(chats, eq(chats.sessionId, sessions.id))
-    .leftJoin(
-      chatReads,
-      and(eq(chatReads.chatId, chats.id), eq(chatReads.userId, userId)),
-    )
-    .where(
-      statusFilter
-        ? and(eq(sessions.userId, userId), statusFilter)
-        : eq(sessions.userId, userId),
-    )
-    .groupBy(sessions.id)
-    .orderBy(desc(sessions.createdAt));
+  const { data, error } = await sb().rpc("get_sessions_with_unread", {
+    p_user_id: userId,
+    p_status: status,
+    p_limit: options?.limit ?? null,
+    p_offset: options?.offset ?? null,
+  });
 
-  const withOffset =
-    typeof options?.offset === "number" && options.offset > 0
-      ? baseQuery.offset(options.offset)
-      : baseQuery;
+  if (error) {
+    throw error;
+  }
 
-  const rows =
-    typeof options?.limit === "number"
-      ? await withOffset.limit(options.limit)
-      : await withOffset;
+  let parsed: unknown = data;
+  if (typeof data === "string") {
+    try {
+      parsed = JSON.parse(data) as unknown;
+    } catch {
+      parsed = [];
+    }
+  }
+  const rows = (Array.isArray(parsed) ? parsed : []) as Record<
+    string,
+    unknown
+  >[];
 
-  return rows;
+  return rows.map((row) => ({
+    id: String(row.id),
+    title: String(row.title),
+    status: row.status as Session["status"],
+    repoOwner: row.repoOwner != null ? String(row.repoOwner) : null,
+    repoName: row.repoName != null ? String(row.repoName) : null,
+    branch: row.branch != null ? String(row.branch) : null,
+    linesAdded: row.linesAdded != null ? Number(row.linesAdded) : null,
+    linesRemoved: row.linesRemoved != null ? Number(row.linesRemoved) : null,
+    prNumber: row.prNumber != null ? Number(row.prNumber) : null,
+    prStatus: row.prStatus as Session["prStatus"],
+    createdAt: parseTimestampRequired(row.createdAt),
+    lastActivityAt: parseTimestampRequired(row.lastActivityAt),
+    hasUnread: Boolean(row.hasUnread),
+    hasStreaming: Boolean(row.hasStreaming),
+    latestChatId:
+      row.latestChatId != null && row.latestChatId !== ""
+        ? String(row.latestChatId)
+        : null,
+  }));
 }
 
 export async function getArchivedSessionCountByUserId(
   userId: string,
 ): Promise<number> {
-  const [result] = await db
-    .select({ count: sql<number>`COUNT(*)::int` })
-    .from(sessions)
-    .where(and(eq(sessions.userId, userId), eq(sessions.status, "archived")));
+  const { count, error } = await sb()
+    .from("sessions")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("status", "archived");
 
-  return result?.count ?? 0;
+  if (error) {
+    throw error;
+  }
+  return count ?? 0;
 }
 
-/**
- * Returns a Set of all session titles for a given user.
- * Used to avoid duplicate random city names when creating new sessions.
- */
 export async function getUsedSessionTitles(
   userId: string,
 ): Promise<Set<string>> {
-  const rows = await db
-    .select({ title: sessions.title })
-    .from(sessions)
-    .where(eq(sessions.userId, userId));
-  return new Set(rows.map((r) => r.title));
+  const { data, error } = await sb()
+    .from("sessions")
+    .select("title")
+    .eq("user_id", userId);
+
+  if (error) {
+    throw error;
+  }
+  return new Set((data ?? []).map((r) => String((r as { title: string }).title)));
 }
 
 export async function updateSession(
   sessionId: string,
   data: Partial<Omit<NewSession, "id" | "userId" | "createdAt">>,
 ) {
-  const [session] = await db
-    .update(sessions)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(sessions.id, sessionId))
-    .returning();
+  const patch = partialSessionToSnakeUpdate(data);
+  const { data: updated, error } = await sb()
+    .from("sessions")
+    .update(patch)
+    .eq("id", sessionId)
+    .select()
+    .maybeSingle();
 
-  return session ? normalizeSessionRecord(session) : session;
+  if (error) {
+    throw error;
+  }
+  return updated
+    ? normalizeSessionRecord(mapSessionRow(updated as Record<string, unknown>))
+    : null;
 }
 
-/**
- * Atomically claims the session lifecycle lease when no run is currently
- * recorded. Returns true when the claim succeeds.
- */
 export async function claimSessionLifecycleRunId(
   sessionId: string,
   runId: string,
 ) {
-  const [updated] = await db
-    .update(sessions)
-    .set({ lifecycleRunId: runId, updatedAt: new Date() })
-    .where(and(eq(sessions.id, sessionId), isNull(sessions.lifecycleRunId)))
-    .returning({ id: sessions.id });
+  const { data, error } = await sb()
+    .from("sessions")
+    .update({
+      lifecycle_run_id: runId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sessionId)
+    .is("lifecycle_run_id", null)
+    .select("id")
+    .maybeSingle();
 
-  return Boolean(updated);
+  if (error) {
+    throw error;
+  }
+  return Boolean(data);
 }
 
 export async function deleteSession(sessionId: string) {
-  await db.delete(sessions).where(eq(sessions.id, sessionId));
+  const { error } = await sb().from("sessions").delete().eq("id", sessionId);
+  if (error) {
+    throw error;
+  }
 }
 
-export async function createChat(data: NewChat) {
-  const [chat] = await db.insert(chats).values(data).returning();
-  if (!chat) {
+export async function createChat(data: {
+  id: string;
+  sessionId: string;
+  title: string;
+  modelId?: string | null;
+  activeStreamId?: string | null;
+  lastAssistantMessageAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}) {
+  const row = newChatToSnakeInsert(data);
+  const { data: inserted, error } = await sb()
+    .from("chats")
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+  if (!inserted) {
     throw new Error("Failed to create chat");
   }
-  return chat;
+  return mapChatRow(inserted as Record<string, unknown>);
 }
 
 export async function getChatById(chatId: string) {
-  return db.query.chats.findFirst({
-    where: eq(chats.id, chatId),
-  });
+  const { data, error } = await sb()
+    .from("chats")
+    .select("*")
+    .eq("id", chatId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data ? mapChatRow(data as Record<string, unknown>) : null;
 }
 
-/**
- * Get all chats for a session, ordered by most recent activity first.
- * Activity is tracked on chats.updatedAt and updated when new messages arrive.
- */
 export async function getChatsBySessionId(sessionId: string) {
-  return db.query.chats.findMany({
-    where: eq(chats.sessionId, sessionId),
-    orderBy: [desc(chats.updatedAt), desc(chats.createdAt)],
-  });
+  const { data, error } = await sb()
+    .from("chats")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) => mapChatRow(r as Record<string, unknown>));
 }
 
-export type ChatSummary = typeof chats.$inferSelect & {
+export type ChatSummary = Chat & {
   hasUnread: boolean;
   isStreaming: boolean;
 };
 
-/**
- * Returns chats with per-user unread flags for sidebar rendering.
- */
 export async function getChatSummariesBySessionId(
   sessionId: string,
   userId: string,
 ): Promise<ChatSummary[]> {
-  const rows = await db
-    .select({
-      id: chats.id,
-      sessionId: chats.sessionId,
-      title: chats.title,
-      modelId: chats.modelId,
-      activeStreamId: chats.activeStreamId,
-      lastAssistantMessageAt: chats.lastAssistantMessageAt,
-      createdAt: chats.createdAt,
-      updatedAt: chats.updatedAt,
-      hasUnread: sql<boolean>`
-        CASE
-          WHEN ${chats.lastAssistantMessageAt} IS NULL THEN false
-          WHEN ${chatReads.lastReadAt} IS NULL THEN true
-          WHEN ${chats.lastAssistantMessageAt} > ${chatReads.lastReadAt} THEN true
-          ELSE false
-        END
-      `,
-      isStreaming: sql<boolean>`${chats.activeStreamId} IS NOT NULL`,
-    })
-    .from(chats)
-    .leftJoin(
-      chatReads,
-      and(eq(chatReads.chatId, chats.id), eq(chatReads.userId, userId)),
-    )
-    .where(eq(chats.sessionId, sessionId))
-    .orderBy(chats.createdAt);
+  const { data, error } = await sb().rpc("get_chat_summaries_for_session", {
+    p_session_id: sessionId,
+    p_user_id: userId,
+  });
 
-  return rows;
+  if (error) {
+    throw error;
+  }
+
+  let parsed: unknown = data;
+  if (typeof data === "string") {
+    try {
+      parsed = JSON.parse(data) as unknown;
+    } catch {
+      parsed = [];
+    }
+  }
+  const rows = (Array.isArray(parsed) ? parsed : []) as Record<
+    string,
+    unknown
+  >[];
+
+  return rows.map((row) => ({
+    id: String(row.id),
+    sessionId: String(row.sessionId),
+    title: String(row.title),
+    modelId: row.modelId != null ? String(row.modelId) : null,
+    activeStreamId:
+      row.activeStreamId != null ? String(row.activeStreamId) : null,
+    lastAssistantMessageAt: parseTimestamp(row.lastAssistantMessageAt),
+    createdAt: parseTimestampRequired(row.createdAt),
+    updatedAt: parseTimestampRequired(row.updatedAt),
+    hasUnread: Boolean(row.hasUnread),
+    isStreaming: Boolean(row.isStreaming),
+  }));
 }
 
 export async function updateChat(
   chatId: string,
-  data: Partial<Omit<NewChat, "id" | "sessionId" | "createdAt">>,
+  data: Partial<Omit<Chat, "id" | "sessionId" | "createdAt">>,
 ) {
-  const [chat] = await db
-    .update(chats)
-    .set({ ...data, updatedAt: new Date() })
-    .where(eq(chats.id, chatId))
-    .returning();
-  return chat;
+  const patch = partialChatToSnakeUpdate(data);
+  const { data: updated, error } = await sb()
+    .from("chats")
+    .update(patch)
+    .eq("id", chatId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return updated ? mapChatRow(updated as Record<string, unknown>) : null;
 }
 
 export async function touchChat(chatId: string, activityAt = new Date()) {
-  const [chat] = await db
-    .update(chats)
-    .set({ updatedAt: activityAt })
-    .where(eq(chats.id, chatId))
-    .returning();
-  return chat;
+  return updateChat(chatId, { updatedAt: activityAt });
 }
 
 export async function updateChatAssistantActivity(
   chatId: string,
   activityAt: Date,
 ) {
-  const [chat] = await db
-    .update(chats)
-    .set({
-      lastAssistantMessageAt: activityAt,
-      updatedAt: activityAt,
+  const { data: updated, error } = await sb()
+    .from("chats")
+    .update({
+      last_assistant_message_at: activityAt.toISOString(),
+      updated_at: activityAt.toISOString(),
     })
-    .where(eq(chats.id, chatId))
-    .returning();
-  return chat;
+    .eq("id", chatId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return updated ? mapChatRow(updated as Record<string, unknown>) : null;
 }
 
 export async function updateChatActiveStreamId(
   chatId: string,
   streamId: string | null,
 ) {
-  await db
-    .update(chats)
-    .set({ activeStreamId: streamId })
-    .where(eq(chats.id, chatId));
+  const { error } = await sb()
+    .from("chats")
+    .update({ active_stream_id: streamId })
+    .eq("id", chatId);
+
+  if (error) {
+    throw error;
+  }
 }
 
-/**
- * Atomically updates activeStreamId only when the current value matches
- * `expectedStreamId`. Returns true when the update succeeds.
- */
 export async function compareAndSetChatActiveStreamId(
   chatId: string,
   expectedStreamId: string | null,
   nextStreamId: string | null,
 ) {
-  const activeStreamMatch =
+  const builder = sb()
+    .from("chats")
+    .update({ active_stream_id: nextStreamId })
+    .eq("id", chatId);
+
+  const filtered =
     expectedStreamId === null
-      ? isNull(chats.activeStreamId)
-      : eq(chats.activeStreamId, expectedStreamId);
+      ? builder.is("active_stream_id", null)
+      : builder.eq("active_stream_id", expectedStreamId);
 
-  const [updated] = await db
-    .update(chats)
-    .set({ activeStreamId: nextStreamId })
-    .where(and(eq(chats.id, chatId), activeStreamMatch))
-    .returning({ id: chats.id });
+  const { data, error } = await filtered.select("id").maybeSingle();
 
-  return Boolean(updated);
+  if (error) {
+    throw error;
+  }
+  return Boolean(data);
 }
 
 export async function deleteChat(chatId: string) {
-  await db.delete(chats).where(eq(chats.id, chatId));
+  const { error } = await sb().from("chats").delete().eq("id", chatId);
+  if (error) {
+    throw error;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -493,189 +595,231 @@ type ForkChatThroughMessageInput = {
   userId: string;
   sourceChatId: string;
   throughMessageId: string;
-  forkedChat: Pick<NewChat, "id" | "sessionId" | "title" | "modelId">;
+  forkedChat: Pick<Chat, "id" | "sessionId" | "title" | "modelId">;
 };
 
 type ForkChatThroughMessageResult =
-  | { status: "created"; chat: typeof chats.$inferSelect }
+  | { status: "created"; chat: Chat }
   | { status: "message_not_found" }
   | { status: "not_assistant_message" };
 
 export async function forkChatThroughMessage(
   input: ForkChatThroughMessageInput,
 ): Promise<ForkChatThroughMessageResult> {
-  return db.transaction(async (tx) => {
-    const sourceMessages = await tx
-      .select({
-        id: chatMessages.id,
-        role: chatMessages.role,
-        parts: chatMessages.parts,
-        createdAt: chatMessages.createdAt,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.chatId, input.sourceChatId))
-      .orderBy(chatMessages.createdAt, chatMessages.id);
+  const { data: msgRows, error: msgErr } = await sb()
+    .from("chat_messages")
+    .select("id, role, parts, created_at")
+    .eq("chat_id", input.sourceChatId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
 
-    const throughMessageIndex = sourceMessages.findIndex(
-      (message) => message.id === input.throughMessageId,
-    );
-    if (throughMessageIndex < 0) {
-      return { status: "message_not_found" };
-    }
+  if (msgErr) {
+    throw msgErr;
+  }
 
-    const throughMessage = sourceMessages[throughMessageIndex];
-    if (!throughMessage || throughMessage.role !== "assistant") {
-      return { status: "not_assistant_message" };
-    }
-
-    const now = new Date();
-    const [forkedChat] = await tx
-      .insert(chats)
-      .values({
-        ...input.forkedChat,
-        activeStreamId: null,
-        lastAssistantMessageAt: throughMessage.createdAt,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    if (!forkedChat) {
-      throw new Error("Failed to create forked chat");
-    }
-
-    const messagesToCopy = sourceMessages.slice(0, throughMessageIndex + 1);
-    if (messagesToCopy.length > 0) {
-      await tx.insert(chatMessages).values(
-        messagesToCopy.map((message) => {
-          const forkedMessageId = crypto.randomUUID();
-          return {
-            id: forkedMessageId,
-            chatId: forkedChat.id,
-            role: message.role,
-            parts: cloneChatMessagePartsWithId(message.parts, forkedMessageId),
-            createdAt: message.createdAt,
-          };
-        }),
-      );
-    }
-
-    await tx
-      .insert(chatReads)
-      .values({
-        userId: input.userId,
-        chatId: forkedChat.id,
-        lastReadAt: now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [chatReads.userId, chatReads.chatId],
-        set: {
-          lastReadAt: now,
-          updatedAt: now,
-        },
-      });
-
+  const sourceMessages = (msgRows ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
     return {
-      status: "created",
-      chat: forkedChat,
+      id: String(row.id),
+      role: row.role as "user" | "assistant",
+      parts: row.parts,
+      createdAt: parseTimestampRequired(row.created_at),
     };
   });
+
+  const throughMessageIndex = sourceMessages.findIndex(
+    (message) => message.id === input.throughMessageId,
+  );
+  if (throughMessageIndex < 0) {
+    return { status: "message_not_found" };
+  }
+
+  const throughMessage = sourceMessages[throughMessageIndex];
+  if (!throughMessage || throughMessage.role !== "assistant") {
+    return { status: "not_assistant_message" };
+  }
+
+  const now = new Date();
+  const forkedChatPayload = {
+    id: input.forkedChat.id,
+    session_id: input.forkedChat.sessionId,
+    title: input.forkedChat.title,
+    model_id: input.forkedChat.modelId ?? "anthropic/claude-haiku-4.5",
+    last_assistant_message_at: throughMessage.createdAt.toISOString(),
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  };
+
+  const messagesToCopy = sourceMessages.slice(0, throughMessageIndex + 1);
+  const messagesJson = messagesToCopy.map((message) => {
+    const forkedMessageId = crypto.randomUUID();
+    return {
+      id: forkedMessageId,
+      role: message.role,
+      parts: cloneChatMessagePartsWithId(message.parts, forkedMessageId),
+      created_at: message.createdAt.toISOString(),
+    };
+  });
+
+  const { data, error } = await sb().rpc("fork_chat_apply", {
+    p_user_id: input.userId,
+    p_forked_chat: forkedChatPayload as object,
+    p_messages: messagesJson as object,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  const payload = data as { chat: Record<string, unknown> };
+  return {
+    status: "created",
+    chat: mapChatRow(payload.chat),
+  };
 }
 
 export async function createChatMessage(data: NewChatMessage) {
-  const [message] = await db.insert(chatMessages).values(data).returning();
-  if (!message) {
+  const createdAt = data.createdAt ?? new Date();
+  const row = {
+    id: data.id,
+    chat_id: data.chatId,
+    role: data.role,
+    parts: data.parts,
+    created_at: createdAt.toISOString(),
+  };
+  const { data: inserted, error } = await sb()
+    .from("chat_messages")
+    .insert(row)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+  if (!inserted) {
     throw new Error("Failed to create chat message");
   }
-  return message;
+  return mapChatMessageRow(inserted as Record<string, unknown>);
 }
 
-/**
- * Creates a chat message if it doesn't already exist (idempotent insert).
- * Uses onConflictDoNothing to handle race conditions gracefully.
- * Returns the message if created, or undefined if it already existed.
- */
 export async function createChatMessageIfNotExists(data: NewChatMessage) {
-  const [message] = await db
-    .insert(chatMessages)
-    .values(data)
-    .onConflictDoNothing({ target: chatMessages.id })
-    .returning();
-  return message;
+  const createdAt = data.createdAt ?? new Date();
+  const row = {
+    id: data.id,
+    chat_id: data.chatId,
+    role: data.role,
+    parts: data.parts,
+    created_at: createdAt.toISOString(),
+  };
+  const { data: inserted, error } = await sb()
+    .from("chat_messages")
+    .insert(row)
+    .select()
+    .maybeSingle();
+
+  if (!error && inserted) {
+    return mapChatMessageRow(inserted as Record<string, unknown>);
+  }
+  if (error && (error as { code?: string }).code !== "23505") {
+    throw error;
+  }
+  return undefined;
 }
 
-/**
- * Upserts a chat message - inserts if new, updates parts if already exists.
- * Use this for assistant messages that may have tool results added client-side.
- */
 export async function upsertChatMessage(data: NewChatMessage) {
-  const [message] = await db
-    .insert(chatMessages)
-    .values(data)
-    .onConflictDoUpdate({
-      target: chatMessages.id,
-      set: { parts: data.parts },
-    })
-    .returning();
-  return message;
+  const createdAt = data.createdAt ?? new Date();
+  const { data: inserted, error } = await sb()
+    .from("chat_messages")
+    .upsert(
+      {
+        id: data.id,
+        chat_id: data.chatId,
+        role: data.role,
+        parts: data.parts,
+        created_at: createdAt.toISOString(),
+      },
+      { onConflict: "id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+  if (!inserted) {
+    throw new Error("upsert failed");
+  }
+  return mapChatMessageRow(inserted as Record<string, unknown>);
 }
 
 type UpsertChatMessageScopedResult =
-  | { status: "inserted"; message: typeof chatMessages.$inferSelect }
-  | { status: "updated"; message: typeof chatMessages.$inferSelect }
+  | { status: "inserted"; message: ChatMessage }
+  | { status: "updated"; message: ChatMessage }
   | { status: "conflict" };
 
-/**
- * Upserts a chat message only when the existing row matches the same chat and role.
- * This prevents accidental overwrite when an ID collision occurs across chats/roles.
- */
 export async function upsertChatMessageScoped(
   data: NewChatMessage,
 ): Promise<UpsertChatMessageScopedResult> {
-  return db.transaction(async (tx) => {
-    const [inserted] = await tx
-      .insert(chatMessages)
-      .values(data)
-      .onConflictDoNothing({ target: chatMessages.id })
-      .returning();
-
-    if (inserted) {
-      return { status: "inserted", message: inserted };
-    }
-
-    const [updated] = await tx
-      .update(chatMessages)
-      .set({ parts: data.parts })
-      .where(
-        and(
-          eq(chatMessages.id, data.id),
-          eq(chatMessages.chatId, data.chatId),
-          eq(chatMessages.role, data.role),
-        ),
-      )
-      .returning();
-
-    if (updated) {
-      return { status: "updated", message: updated };
-    }
-
-    return { status: "conflict" };
+  const createdAt = data.createdAt ?? new Date();
+  const { data: result, error } = await sb().rpc("upsert_chat_message_scoped", {
+    p_msg: {
+      id: data.id,
+      chat_id: data.chatId,
+      role: data.role,
+      parts: data.parts,
+      created_at: createdAt.toISOString(),
+    } as object,
   });
+
+  if (error) {
+    throw error;
+  }
+
+  const payload = result as {
+    status: string;
+    message?: Record<string, unknown>;
+  };
+
+  if (payload.status === "inserted" && payload.message) {
+    return {
+      status: "inserted",
+      message: mapChatMessageRow(payload.message),
+    };
+  }
+  if (payload.status === "updated" && payload.message) {
+    return {
+      status: "updated",
+      message: mapChatMessageRow(payload.message),
+    };
+  }
+  return { status: "conflict" };
 }
 
 export async function getChatMessageById(messageId: string) {
-  return db.query.chatMessages.findFirst({
-    where: eq(chatMessages.id, messageId),
-  });
+  const { data, error } = await sb()
+    .from("chat_messages")
+    .select("*")
+    .eq("id", messageId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return data ? mapChatMessageRow(data as Record<string, unknown>) : null;
 }
 
 export async function getChatMessages(chatId: string) {
-  return db.query.chatMessages.findMany({
-    where: eq(chatMessages.chatId, chatId),
-    orderBy: [chatMessages.createdAt, chatMessages.id],
-  });
+  const { data, error } = await sb()
+    .from("chat_messages")
+    .select("*")
+    .eq("chat_id", chatId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) => mapChatMessageRow(r as Record<string, unknown>));
 }
 
 type DeleteChatMessageAndFollowingResult =
@@ -687,99 +831,84 @@ export async function deleteChatMessageAndFollowing(
   chatId: string,
   messageId: string,
 ): Promise<DeleteChatMessageAndFollowingResult> {
-  return db.transaction(async (tx) => {
-    const orderedMessages = await tx
-      .select({
-        id: chatMessages.id,
-        role: chatMessages.role,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.chatId, chatId))
-      .orderBy(chatMessages.createdAt, chatMessages.id);
+  const { data, error } = await sb().rpc("delete_chat_message_and_following", {
+    p_chat_id: chatId,
+    p_message_id: messageId,
+  });
 
-    const startIndex = orderedMessages.findIndex(
-      (message) => message.id === messageId,
-    );
-    if (startIndex < 0) {
-      return { status: "not_found" };
-    }
+  if (error) {
+    throw error;
+  }
 
-    const targetMessage = orderedMessages[startIndex];
-    if (!targetMessage || targetMessage.role !== "user") {
-      return { status: "not_user_message" };
-    }
+  const payload = data as {
+    status: string;
+    deleted_message_ids?: string[];
+  };
 
-    const idsToDelete = orderedMessages
-      .slice(startIndex)
-      .map((message) => message.id);
-
-    await tx
-      .delete(chatMessages)
-      .where(
-        and(
-          eq(chatMessages.chatId, chatId),
-          inArray(chatMessages.id, idsToDelete),
-        ),
-      );
-
-    const [latestAssistantMessage] = await tx
-      .select({ createdAt: chatMessages.createdAt })
-      .from(chatMessages)
-      .where(
-        and(
-          eq(chatMessages.chatId, chatId),
-          eq(chatMessages.role, "assistant"),
-        ),
-      )
-      .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
-      .limit(1);
-
-    await tx
-      .update(chats)
-      .set({
-        lastAssistantMessageAt: latestAssistantMessage?.createdAt ?? null,
-        updatedAt: new Date(),
-      })
-      .where(eq(chats.id, chatId));
-
+  if (payload.status === "not_found") {
+    return { status: "not_found" };
+  }
+  if (payload.status === "not_user_message") {
+    return { status: "not_user_message" };
+  }
+  if (payload.status === "deleted") {
     return {
       status: "deleted",
-      deletedMessageIds: idsToDelete,
+      deletedMessageIds: payload.deleted_message_ids ?? [],
     };
-  });
+  }
+  return { status: "not_found" };
 }
 
 export async function isFirstChatMessage(chatId: string, messageId: string) {
-  const rows = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
-    .where(eq(chatMessages.chatId, chatId))
-    .orderBy(chatMessages.createdAt, chatMessages.id)
+  const { data, error } = await sb()
+    .from("chat_messages")
+    .select("id")
+    .eq("chat_id", chatId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
     .limit(2);
 
-  return rows.length === 1 && rows[0]?.id === messageId;
+  if (error) {
+    throw error;
+  }
+  const rows = data ?? [];
+  return (
+    rows.length === 1 && String((rows[0] as { id: string }).id) === messageId
+  );
 }
 
 export async function markChatRead(
-  data: Pick<NewChatRead, "userId" | "chatId">,
+  data: Pick<import("./schema").ChatRead, "userId" | "chatId">,
 ) {
-  const now = new Date();
-  const [chatRead] = await db
-    .insert(chatReads)
-    .values({
-      userId: data.userId,
-      chatId: data.chatId,
-      lastReadAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [chatReads.userId, chatReads.chatId],
-      set: {
-        lastReadAt: now,
-        updatedAt: now,
-      },
-    })
-    .returning();
+  const now = new Date().toISOString();
+  const row = {
+    user_id: data.userId,
+    chat_id: data.chatId,
+    last_read_at: now,
+    created_at: now,
+    updated_at: now,
+  };
 
-  return chatRead;
+  const { data: upserted, error } = await sb()
+    .from("chat_reads")
+    .upsert(row, { onConflict: "user_id,chat_id" })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+  if (!upserted) {
+    throw new Error("markChatRead failed");
+  }
+
+  const r = upserted as Record<string, unknown>;
+  return {
+    userId: String(r.user_id),
+    chatId: String(r.chat_id),
+    lastReadAt: parseTimestampRequired(r.last_read_at),
+    createdAt: parseTimestampRequired(r.created_at),
+    updatedAt: parseTimestampRequired(r.updated_at),
+  };
 }

@@ -1,11 +1,7 @@
-import { and, asc, eq, notInArray, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { db } from "./client";
-import {
-  type GitHubInstallation,
-  githubInstallations,
-  type NewGitHubInstallation,
-} from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { mapGitHubInstallationRow } from "./maps";
+import type { GitHubInstallation, NewGitHubInstallation } from "./schema";
 
 export interface UpsertInstallationInput {
   userId: string;
@@ -19,41 +15,46 @@ export interface UpsertInstallationInput {
 export async function upsertInstallation(
   data: UpsertInstallationInput,
 ): Promise<GitHubInstallation> {
-  const existing = await db
-    .select({ id: githubInstallations.id })
-    .from(githubInstallations)
-    .where(
-      and(
-        eq(githubInstallations.userId, data.userId),
-        or(
-          eq(githubInstallations.installationId, data.installationId),
-          eq(githubInstallations.accountLogin, data.accountLogin),
-        ),
-      ),
+  const sb = getSupabaseAdmin();
+
+  const { data: existingRows, error: findErr } = await sb
+    .from("github_installations")
+    .select("id")
+    .eq("user_id", data.userId)
+    .or(
+      `installation_id.eq.${data.installationId},account_login.eq.${data.accountLogin}`,
     )
     .limit(1);
 
-  const now = new Date();
+  if (findErr) {
+    throw findErr;
+  }
 
-  if (existing[0]) {
-    const [updated] = await db
-      .update(githubInstallations)
-      .set({
-        installationId: data.installationId,
-        accountLogin: data.accountLogin,
-        accountType: data.accountType,
-        repositorySelection: data.repositorySelection,
-        installationUrl: data.installationUrl ?? null,
-        updatedAt: now,
+  const existing = existingRows?.[0] as { id: string } | undefined;
+  const now = new Date().toISOString();
+
+  if (existing) {
+    const { data: updated, error } = await sb
+      .from("github_installations")
+      .update({
+        installation_id: data.installationId,
+        account_login: data.accountLogin,
+        account_type: data.accountType,
+        repository_selection: data.repositorySelection,
+        installation_url: data.installationUrl ?? null,
+        updated_at: now,
       })
-      .where(eq(githubInstallations.id, existing[0].id))
-      .returning();
+      .eq("id", existing.id)
+      .select()
+      .single();
 
+    if (error) {
+      throw error;
+    }
     if (!updated) {
       throw new Error("Failed to update GitHub installation");
     }
-
-    return updated;
+    return mapGitHubInstallationRow(updated as Record<string, unknown>);
   }
 
   const installation: NewGitHubInstallation = {
@@ -64,97 +65,135 @@ export async function upsertInstallation(
     accountType: data.accountType,
     repositorySelection: data.repositorySelection,
     installationUrl: data.installationUrl ?? null,
-    createdAt: now,
-    updatedAt: now,
+    createdAt: new Date(now),
+    updatedAt: new Date(now),
   };
 
-  const [created] = await db
-    .insert(githubInstallations)
-    .values(installation)
-    .returning();
+  const { data: created, error } = await sb
+    .from("github_installations")
+    .insert({
+      id: installation.id,
+      user_id: installation.userId,
+      installation_id: installation.installationId,
+      account_login: installation.accountLogin,
+      account_type: installation.accountType,
+      repository_selection: installation.repositorySelection,
+      installation_url: installation.installationUrl,
+      created_at: now,
+      updated_at: now,
+    })
+    .select()
+    .single();
 
+  if (error) {
+    throw error;
+  }
   if (!created) {
     throw new Error("Failed to create GitHub installation");
   }
 
-  return created;
+  return mapGitHubInstallationRow(created as Record<string, unknown>);
 }
 
 export async function getInstallationsByUserId(
   userId: string,
 ): Promise<GitHubInstallation[]> {
-  return db
-    .select()
-    .from(githubInstallations)
-    .where(eq(githubInstallations.userId, userId))
-    .orderBy(asc(githubInstallations.accountLogin));
+  const { data, error } = await getSupabaseAdmin()
+    .from("github_installations")
+    .select("*")
+    .eq("user_id", userId)
+    .order("account_login", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) =>
+    mapGitHubInstallationRow(r as Record<string, unknown>),
+  );
 }
 
 export async function getInstallationByAccountLogin(
   userId: string,
   accountLogin: string,
 ): Promise<GitHubInstallation | undefined> {
-  const [installation] = await db
-    .select()
-    .from(githubInstallations)
-    .where(
-      and(
-        eq(githubInstallations.userId, userId),
-        eq(githubInstallations.accountLogin, accountLogin),
-      ),
-    )
-    .limit(1);
+  const { data, error } = await getSupabaseAdmin()
+    .from("github_installations")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("account_login", accountLogin)
+    .maybeSingle();
 
-  return installation;
+  if (error) {
+    throw error;
+  }
+  return data
+    ? mapGitHubInstallationRow(data as Record<string, unknown>)
+    : undefined;
 }
 
 export async function getInstallationByUserAndId(
   userId: string,
   installationId: number,
 ): Promise<GitHubInstallation | undefined> {
-  const [installation] = await db
-    .select()
-    .from(githubInstallations)
-    .where(
-      and(
-        eq(githubInstallations.userId, userId),
-        eq(githubInstallations.installationId, installationId),
-      ),
-    )
-    .limit(1);
+  const { data, error } = await getSupabaseAdmin()
+    .from("github_installations")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("installation_id", installationId)
+    .maybeSingle();
 
-  return installation;
+  if (error) {
+    throw error;
+  }
+  return data
+    ? mapGitHubInstallationRow(data as Record<string, unknown>)
+    : undefined;
 }
 
 export async function getInstallationsByInstallationId(
   installationId: number,
 ): Promise<GitHubInstallation[]> {
-  return db
-    .select()
-    .from(githubInstallations)
-    .where(eq(githubInstallations.installationId, installationId));
+  const { data, error } = await getSupabaseAdmin()
+    .from("github_installations")
+    .select("*")
+    .eq("installation_id", installationId);
+
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) =>
+    mapGitHubInstallationRow(r as Record<string, unknown>),
+  );
 }
 
 export async function deleteInstallationByInstallationId(
   installationId: number,
 ): Promise<number> {
-  const deleted = await db
-    .delete(githubInstallations)
-    .where(eq(githubInstallations.installationId, installationId))
-    .returning({ id: githubInstallations.id });
+  const { data, error } = await getSupabaseAdmin()
+    .from("github_installations")
+    .delete()
+    .eq("installation_id", installationId)
+    .select("id");
 
-  return deleted.length;
+  if (error) {
+    throw error;
+  }
+  return data?.length ?? 0;
 }
 
 export async function deleteInstallationsByUserId(
   userId: string,
 ): Promise<number> {
-  const deleted = await db
-    .delete(githubInstallations)
-    .where(eq(githubInstallations.userId, userId))
-    .returning({ id: githubInstallations.id });
+  const { data, error } = await getSupabaseAdmin()
+    .from("github_installations")
+    .delete()
+    .eq("user_id", userId)
+    .select("id");
 
-  return deleted.length;
+  if (error) {
+    throw error;
+  }
+  return data?.length ?? 0;
 }
 
 export async function deleteInstallationsNotInList(
@@ -165,17 +204,37 @@ export async function deleteInstallationsNotInList(
     return deleteInstallationsByUserId(userId);
   }
 
-  const deleted = await db
-    .delete(githubInstallations)
-    .where(
-      and(
-        eq(githubInstallations.userId, userId),
-        notInArray(githubInstallations.installationId, installationIds),
-      ),
-    )
-    .returning({ id: githubInstallations.id });
+  const sb = getSupabaseAdmin();
+  const { data: rows, error: selErr } = await sb
+    .from("github_installations")
+    .select("id, installation_id")
+    .eq("user_id", userId);
 
-  return deleted.length;
+  if (selErr) {
+    throw selErr;
+  }
+
+  const keep = new Set(installationIds);
+  const toRemove = (rows ?? [])
+    .filter(
+      (r) => !keep.has(Number((r as { installation_id: number }).installation_id)),
+    )
+    .map((r) => (r as { id: string }).id);
+
+  if (toRemove.length === 0) {
+    return 0;
+  }
+
+  const { data: deleted, error } = await sb
+    .from("github_installations")
+    .delete()
+    .in("id", toRemove)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+  return deleted?.length ?? 0;
 }
 
 export async function updateInstallationsByInstallationId(
@@ -196,14 +255,30 @@ export async function updateInstallationsByInstallationId(
     return 0;
   }
 
-  const updated = await db
-    .update(githubInstallations)
-    .set({
-      ...updates,
-      updatedAt: new Date(),
-    })
-    .where(eq(githubInstallations.installationId, installationId))
-    .returning({ id: githubInstallations.id });
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (updates.accountLogin !== undefined) {
+    patch.account_login = updates.accountLogin;
+  }
+  if (updates.accountType !== undefined) {
+    patch.account_type = updates.accountType;
+  }
+  if (updates.repositorySelection !== undefined) {
+    patch.repository_selection = updates.repositorySelection;
+  }
+  if (updates.installationUrl !== undefined) {
+    patch.installation_url = updates.installationUrl;
+  }
 
-  return updated.length;
+  const { data, error } = await getSupabaseAdmin()
+    .from("github_installations")
+    .update(patch)
+    .eq("installation_id", installationId)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+  return data?.length ?? 0;
 }

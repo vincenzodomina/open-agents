@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { eq } from "drizzle-orm";
 import type { WebAgentUIMessage } from "@/app/types";
-import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema";
 import { getChatById, getChatMessages } from "@/lib/db/sessions";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getSessionByIdCached,
   getShareByIdCached,
@@ -78,15 +76,19 @@ export default async function SharedPage({ params }: SharedPageProps) {
     notFound();
   }
 
-  // Fetch the user who owns this session (public profile info only)
-  const sessionUser = await db.query.users.findFirst({
-    where: eq(users.id, session.userId),
-    columns: {
-      username: true,
-      name: true,
-      avatarUrl: true,
-    },
-  });
+  const { data: sessionUserRow } = await getSupabaseAdmin()
+    .from("users")
+    .select("username, name, avatar_url")
+    .eq("id", session.userId)
+    .maybeSingle();
+
+  const sessionUser = sessionUserRow
+    ? {
+        username: String((sessionUserRow as { username: string }).username),
+        name: (sessionUserRow as { name: string | null }).name,
+        avatarUrl: (sessionUserRow as { avatar_url: string | null }).avatar_url,
+      }
+    : null;
 
   const dbMessages = await getChatMessages(sharedChat.id);
 

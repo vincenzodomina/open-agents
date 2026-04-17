@@ -1,12 +1,11 @@
 import { cache } from "react";
-import { eq, sql } from "drizzle-orm";
 import type { UsageInsights, UsageRepositoryInsight } from "@/lib/usage/types";
 import {
   parsePublicUsageDate,
   type PublicUsageDateSelection,
 } from "@/lib/usage/date-range";
-import { db } from "./client";
-import { userPreferences, users } from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { parseTimestamp } from "./maps";
 import { getUsageInsights } from "./usage-insights";
 import { getUsageHistory, type DailyUsage } from "./usage";
 
@@ -244,19 +243,41 @@ export const getPublicUsageProfile = cache(
     dateValue: string | null,
   ): Promise<PublicUsageProfile | null> => {
     const normalizedUsername = username.trim().toLowerCase();
-    const userCandidates = await db
-      .select({
-        id: users.id,
-        username: users.username,
-        name: users.name,
-        avatarUrl: users.avatarUrl,
-        lastLoginAt: users.lastLoginAt,
-        publicUsageEnabled: userPreferences.publicUsageEnabled,
-      })
-      .from(users)
-      .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
-      .where(sql`lower(${users.username}) = ${normalizedUsername}`)
-      .limit(10);
+
+    const { data: rpcData, error } = await getSupabaseAdmin().rpc(
+      "find_public_usage_user_candidates",
+      { p_username_normalized: normalizedUsername },
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    let parsed: unknown = rpcData;
+    if (typeof rpcData === "string") {
+      try {
+        parsed = JSON.parse(rpcData) as unknown;
+      } catch {
+        parsed = [];
+      }
+    }
+    const raw = (Array.isArray(parsed) ? parsed : []) as Record<
+      string,
+      unknown
+    >[];
+
+    const userCandidates: PublicUsageUserCandidate[] = raw.map((row) => ({
+      id: String(row.id),
+      username: String(row.username),
+      name: row.name != null ? String(row.name) : null,
+      avatarUrl: row.avatarUrl != null ? String(row.avatarUrl) : null,
+      lastLoginAt: parseTimestamp(row.lastLoginAt),
+      publicUsageEnabled:
+        row.publicUsageEnabled === null || row.publicUsageEnabled === undefined
+          ? null
+          : Boolean(row.publicUsageEnabled),
+    }));
+
     const user = pickPublicUsageUserCandidate(userCandidates, username);
 
     if (!user) {

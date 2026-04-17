@@ -6,7 +6,9 @@ The following environment variables are required:
 
 | Variable | Description |
 |----------|-------------|
-| `POSTGRES_URL` | PostgreSQL connection string. Required for builds — migrations run automatically during `next build` via `lib/db/migrate.ts`. Preview deployments use a Neon branch database; production uses the main database. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (server-only; never expose to the client). |
+| `POSTGRES_URL` | Optional direct Postgres URL if you use tooling outside Supabase that needs it. |
 
 ## Getting Started
 

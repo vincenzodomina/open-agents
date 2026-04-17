@@ -16,6 +16,7 @@
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
         "NEXT_PUBLIC_SUPABASE_URL",
         "POSTGRES_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
         "REDIS_URL"
       ],
       "outputs": ["dist/**"]

@@ -1,8 +1,6 @@
 import { ImageResponse } from "next/og";
-import { eq, sql } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { chatMessages, users, workflowRuns } from "@/lib/db/schema";
 import { getChatById } from "@/lib/db/sessions";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   getSessionByIdCached,
   getShareByIdCached,
@@ -47,37 +45,36 @@ export default async function Image({
   const session = await getSessionByIdCached(chat.sessionId);
   if (!session) return fallbackImage();
 
-  // Parallel fetch: owner, duration from workflow_runs, message count
-  const [ownerResult, durationResult, messageStats] = await Promise.all([
-    db
-      .select({
-        username: users.username,
-        name: users.name,
-        avatarUrl: users.avatarUrl,
-      })
-      .from(users)
-      .where(eq(users.id, session.userId))
-      .limit(1),
-    db
-      .select({
-        totalMs: sql<number>`coalesce(sum(${workflowRuns.totalDurationMs}), 0)`,
-      })
-      .from(workflowRuns)
-      .where(eq(workflowRuns.chatId, chat.id)),
-    db
-      .select({
-        count: sql<number>`count(*)`,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.chatId, chat.id)),
+  const sb = getSupabaseAdmin();
+  const [ownerResult, runsResult, messageCountResult] = await Promise.all([
+    sb
+      .from("users")
+      .select("username, name, avatar_url")
+      .eq("id", session.userId)
+      .maybeSingle(),
+    sb
+      .from("workflow_runs")
+      .select("total_duration_ms")
+      .eq("chat_id", chat.id),
+    sb
+      .from("chat_messages")
+      .select("*", { count: "exact", head: true })
+      .eq("chat_id", chat.id),
   ]);
 
-  const owner = ownerResult[0];
+  const owner = ownerResult.data;
   if (!owner) return fallbackImage();
 
-  const displayName = owner.name?.trim() || owner.username;
-  const totalDurationMs = durationResult[0]?.totalMs ?? 0;
-  const messageCount = messageStats[0]?.count ?? 0;
+  const displayName =
+    (owner as { name: string | null }).name?.trim() ||
+    String((owner as { username: string }).username);
+  const avatarUrl = (owner as { avatar_url: string | null }).avatar_url;
+  const runs = runsResult.data ?? [];
+  const totalDurationMs = (runs as { total_duration_ms: number }[]).reduce(
+    (acc, r) => acc + Number(r.total_duration_ms ?? 0),
+    0,
+  );
+  const messageCount = messageCountResult.count ?? 0;
 
   const repoLabel =
     session.repoOwner && session.repoName
@@ -252,10 +249,10 @@ export default async function Image({
         >
           {/* Left: Avatar + name */}
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            {owner.avatarUrl ? (
+            {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={owner.avatarUrl}
+                src={avatarUrl}
                 alt=""
                 width={44}
                 height={44}

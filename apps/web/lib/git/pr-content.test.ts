@@ -44,14 +44,16 @@ mock.module("@/lib/db/accounts", () => ({
   getGitHubAccount: async () => githubAccount,
 }));
 
-mock.module("@/lib/db/client", () => ({
-  db: {
-    query: {
-      users: {
-        findFirst: async () => userRecord,
-      },
-    },
-  },
+mock.module("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: userRecord, error: null }),
+        }),
+      }),
+    }),
+  }),
 }));
 
 const prContentModulePromise = import("./pr-content");

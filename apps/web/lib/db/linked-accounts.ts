@@ -1,54 +1,70 @@
-import { db } from "./client";
-import {
-  linkedAccounts,
-  type LinkedAccount,
-  type NewLinkedAccount,
-} from "./schema";
-import { eq, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { mapLinkedAccountRow } from "./maps";
+import type { LinkedAccount, NewLinkedAccount } from "./schema";
 
 export async function createLinkedAccount(
   data: Omit<NewLinkedAccount, "id" | "createdAt" | "updatedAt">,
 ): Promise<LinkedAccount> {
   const id = nanoid();
-  const now = new Date();
+  const now = new Date().toISOString();
 
-  const [account] = await db
-    .insert(linkedAccounts)
-    .values({
+  const { data: account, error } = await getSupabaseAdmin()
+    .from("linked_accounts")
+    .insert({
       id,
-      ...data,
-      createdAt: now,
-      updatedAt: now,
+      user_id: data.userId,
+      provider: data.provider,
+      external_id: data.externalId,
+      workspace_id: data.workspaceId ?? null,
+      metadata: data.metadata ?? null,
+      created_at: now,
+      updated_at: now,
     })
-    .returning();
+    .select()
+    .single();
 
+  if (error) {
+    throw error;
+  }
   if (!account) {
     throw new Error("Failed to create linked account");
   }
 
-  return account;
+  return mapLinkedAccountRow(account as Record<string, unknown>);
 }
 
 export async function getLinkedAccountById(
   id: string,
 ): Promise<LinkedAccount | undefined> {
-  const [account] = await db
-    .select()
-    .from(linkedAccounts)
-    .where(eq(linkedAccounts.id, id))
-    .limit(1);
+  const { data, error } = await getSupabaseAdmin()
+    .from("linked_accounts")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
 
-  return account;
+  if (error) {
+    throw error;
+  }
+  return data
+    ? mapLinkedAccountRow(data as Record<string, unknown>)
+    : undefined;
 }
 
 export async function getLinkedAccountsByUserId(
   userId: string,
 ): Promise<LinkedAccount[]> {
-  return db
-    .select()
-    .from(linkedAccounts)
-    .where(eq(linkedAccounts.userId, userId));
+  const { data, error } = await getSupabaseAdmin()
+    .from("linked_accounts")
+    .select("*")
+    .eq("user_id", userId);
+
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) =>
+    mapLinkedAccountRow(r as Record<string, unknown>),
+  );
 }
 
 export async function getLinkedAccountByProviderAndExternalId(
@@ -56,56 +72,76 @@ export async function getLinkedAccountByProviderAndExternalId(
   externalId: string,
   workspaceId?: string,
 ): Promise<LinkedAccount | undefined> {
-  const conditions = [
-    eq(linkedAccounts.provider, provider),
-    eq(linkedAccounts.externalId, externalId),
-  ];
+  let q = getSupabaseAdmin()
+    .from("linked_accounts")
+    .select("*")
+    .eq("provider", provider)
+    .eq("external_id", externalId);
 
   if (workspaceId !== undefined) {
-    conditions.push(eq(linkedAccounts.workspaceId, workspaceId));
+    q = q.eq("workspace_id", workspaceId);
   }
 
-  const [account] = await db
-    .select()
-    .from(linkedAccounts)
-    .where(and(...conditions))
-    .limit(1);
+  const { data, error } = await q.limit(1).maybeSingle();
 
-  return account;
+  if (error) {
+    throw error;
+  }
+  return data
+    ? mapLinkedAccountRow(data as Record<string, unknown>)
+    : undefined;
 }
 
 export async function updateLinkedAccount(
   id: string,
   data: Partial<Pick<LinkedAccount, "metadata">>,
 ): Promise<LinkedAccount | undefined> {
-  const [account] = await db
-    .update(linkedAccounts)
-    .set({
-      ...data,
-      updatedAt: new Date(),
-    })
-    .where(eq(linkedAccounts.id, id))
-    .returning();
+  const patch: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (data.metadata !== undefined) {
+    patch.metadata = data.metadata;
+  }
 
-  return account;
+  const { data: account, error } = await getSupabaseAdmin()
+    .from("linked_accounts")
+    .update(patch)
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return account
+    ? mapLinkedAccountRow(account as Record<string, unknown>)
+    : undefined;
 }
 
 export async function deleteLinkedAccount(id: string): Promise<boolean> {
-  const result = await db
-    .delete(linkedAccounts)
-    .where(eq(linkedAccounts.id, id))
-    .returning({ id: linkedAccounts.id });
+  const { data, error } = await getSupabaseAdmin()
+    .from("linked_accounts")
+    .delete()
+    .eq("id", id)
+    .select("id");
 
-  return result.length > 0;
+  if (error) {
+    throw error;
+  }
+  return (data?.length ?? 0) > 0;
 }
 
 export async function deleteLinkedAccountsByUserId(
   userId: string,
 ): Promise<number> {
-  const result = await db
-    .delete(linkedAccounts)
-    .where(eq(linkedAccounts.userId, userId))
-    .returning({ id: linkedAccounts.id });
+  const { data, error } = await getSupabaseAdmin()
+    .from("linked_accounts")
+    .delete()
+    .eq("user_id", userId)
+    .select("id");
 
-  return result.length;
+  if (error) {
+    throw error;
+  }
+  return data?.length ?? 0;
 }

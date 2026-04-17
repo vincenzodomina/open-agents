@@ -1,29 +1,27 @@
-import { and, desc, eq, isNotNull } from "drizzle-orm";
-import { db } from "./client";
-import { sessions } from "./schema";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-/**
- * Returns the repo info from the user's most recently created session
- * that was started from a repository, or null if none exists.
- */
 export async function getLastRepoByUserId(userId: string) {
-  const row = await db.query.sessions.findFirst({
-    where: and(
-      eq(sessions.userId, userId),
-      isNotNull(sessions.repoOwner),
-      isNotNull(sessions.repoName),
-    ),
-    orderBy: [desc(sessions.createdAt)],
-    columns: {
-      repoOwner: true,
-      repoName: true,
-    },
-  });
+  const { data, error } = await getSupabaseAdmin()
+    .from("sessions")
+    .select("repo_owner, repo_name")
+    .eq("user_id", userId)
+    .not("repo_owner", "is", null)
+    .not("repo_name", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (!row?.repoOwner || !row?.repoName) return null;
+  if (error) {
+    throw error;
+  }
+
+  const row = data as { repo_owner: string; repo_name: string } | null;
+  if (!row?.repo_owner || !row?.repo_name) {
+    return null;
+  }
 
   return {
-    owner: row.repoOwner,
-    repo: row.repoName,
+    owner: row.repo_owner,
+    repo: row.repo_name,
   };
 }

@@ -3423,7 +3423,7 @@ export function SessionChatContent({
                                       {m.role === "user" ? (
                                         <div className="group relative w-fit min-w-0 max-w-[80%]">
                                           <div className="rounded-3xl bg-secondary px-4 py-2">
-                                            <p className="whitespace-pre-wrap break-words">
+                                            <p className="whitespace-pre-wrap wrap-break-word">
                                               {p.text}
                                             </p>
                                           </div>

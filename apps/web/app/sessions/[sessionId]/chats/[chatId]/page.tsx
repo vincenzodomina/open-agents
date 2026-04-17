@@ -72,7 +72,7 @@ async function getChatByIdWithRetry(
       await sleep(OPTIMISTIC_CHAT_RETRY_DELAY_MS);
     }
   }
-  return undefined;
+  return null;
 }
 
 export async function generateMetadata({
