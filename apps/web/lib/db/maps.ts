@@ -297,12 +297,16 @@ export function newSessionToRpcJson(
     snapshot_size_bytes: s.snapshotSizeBytes,
     cached_diff: s.cachedDiff ?? null,
     cached_diff_updated_at: ts(s.cachedDiffUpdatedAt),
-    ...(s.createdAt !== undefined
-      ? { created_at: s.createdAt.toISOString() }
-      : {}),
-    ...(s.updatedAt !== undefined
-      ? { updated_at: s.updatedAt.toISOString() }
-      : {}),
+    // `create_session_with_initial_chat` uses jsonb_populate_record; omitted keys
+    // become NULL, so NOT NULL columns must always be set for new sessions.
+    created_at:
+      s.createdAt !== undefined
+        ? s.createdAt.toISOString()
+        : new Date().toISOString(),
+    updated_at:
+      s.updatedAt !== undefined
+        ? s.updatedAt.toISOString()
+        : new Date().toISOString(),
   };
 }
 
