@@ -50,7 +50,7 @@ let ownedSessionChatResult: OwnedSessionChatResult = {
   },
 };
 let currentSession: {
-  authProvider?: "vercel" | "github";
+  authProvider?: "supabase";
   user: { id: string; email?: string; username?: string; avatar?: string };
 } | null = {
   user: { id: "user-1" },

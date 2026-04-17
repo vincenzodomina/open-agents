@@ -27,7 +27,7 @@ interface TestChatRecord {
 let sessionRecord: TestSessionRecord | null;
 let chatRecord: TestChatRecord | null;
 let currentAuthSession: {
-  authProvider?: "vercel" | "github";
+  authProvider?: "supabase";
   user: {
     id: string;
     email?: string;
@@ -303,7 +303,7 @@ describe("/api/chat route", () => {
   test("blocks a sixth message for non-Vercel trial users on the managed deployment", async () => {
     const { POST } = await routeModulePromise;
     currentAuthSession = {
-      authProvider: "vercel",
+      authProvider: "supabase",
       user: {
         id: "user-1",
         email: "person@example.com",

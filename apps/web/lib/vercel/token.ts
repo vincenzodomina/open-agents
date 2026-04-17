@@ -1,9 +1,8 @@
 import "server-only";
 import { and, eq } from "drizzle-orm";
-import { decrypt, encrypt } from "@/lib/crypto";
+import { decrypt } from "@/lib/crypto";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
-import { refreshVercelToken } from "./oauth";
 
 interface UserVercelAuthRow {
   accessToken: string;
@@ -47,51 +46,9 @@ function toAuthInfo(params: {
   };
 }
 
-async function refreshUserVercelAuthInfo(
-  userId: string,
-  row: UserVercelAuthRow,
-): Promise<UserVercelAuthInfo | null> {
-  if (!row.refreshToken) {
-    return null;
-  }
-
-  const clientId = process.env.NEXT_PUBLIC_VERCEL_APP_CLIENT_ID;
-  const clientSecret = process.env.VERCEL_APP_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    return null;
-  }
-
-  const decryptedRefresh = decrypt(row.refreshToken);
-  const tokens = await refreshVercelToken({
-    refreshToken: decryptedRefresh,
-    clientId,
-    clientSecret,
-  });
-
-  const newExpiresAt = new Date(Date.now() + tokens.expires_in * 1000);
-
-  await db
-    .update(users)
-    .set({
-      accessToken: encrypt(tokens.access_token),
-      refreshToken: tokens.refresh_token
-        ? encrypt(tokens.refresh_token)
-        : row.refreshToken,
-      tokenExpiresAt: newExpiresAt,
-      updatedAt: new Date(),
-    })
-    .where(eq(users.id, userId));
-
-  return toAuthInfo({
-    token: tokens.access_token,
-    tokenExpiresAt: newExpiresAt,
-    externalId: row.externalId,
-  });
-}
-
 /**
- * Get a valid Vercel access token plus CLI-relevant metadata for the given user.
- * If the token is expired, or its expiry is unknown, refreshes inline when possible.
+ * Returns a stored Vercel OAuth access token for legacy `users.provider === "vercel"` rows.
+ * Does not refresh expired tokens (Supabase-only sign-in has no Vercel OAuth to renew).
  */
 export async function getUserVercelAuthInfo(
   userId: string,
@@ -104,9 +61,11 @@ export async function getUserVercelAuthInfo(
 
     const now = Date.now();
     const tokenExpiresAtMs = row.tokenExpiresAt?.getTime() ?? null;
-    const isExpired = tokenExpiresAtMs !== null && tokenExpiresAtMs < now;
+    if (tokenExpiresAtMs !== null && tokenExpiresAtMs < now) {
+      return null;
+    }
 
-    if (!isExpired && row.tokenExpiresAt) {
+    if (row.tokenExpiresAt) {
       return toAuthInfo({
         token: decrypt(row.accessToken),
         tokenExpiresAt: row.tokenExpiresAt,
@@ -114,7 +73,12 @@ export async function getUserVercelAuthInfo(
       });
     }
 
-    return refreshUserVercelAuthInfo(userId, row);
+    const nowSec = Math.floor(Date.now() / 1000);
+    return {
+      token: decrypt(row.accessToken),
+      expiresAt: nowSec + 86_400,
+      externalId: row.externalId,
+    };
   } catch (error) {
     console.error("Error fetching Vercel auth:", error);
     return null;
@@ -122,8 +86,7 @@ export async function getUserVercelAuthInfo(
 }
 
 /**
- * Get a valid Vercel access token for the given user.
- * If the token is expired and a refresh token exists, refreshes inline and updates the DB.
+ * Returns a stored Vercel access token when still valid, otherwise null.
  */
 export async function getUserVercelToken(
   userId: string,

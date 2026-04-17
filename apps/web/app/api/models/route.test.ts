@@ -14,7 +14,7 @@ const requestedUrls: string[] = [];
 let gatewayError: unknown = null;
 let modelsDevApiData: unknown = {};
 let currentSession: {
-  authProvider?: "vercel" | "github";
+  authProvider?: "supabase";
   user: { id: string; email?: string; username?: string; avatar?: string };
 } | null = null;
 
@@ -145,7 +145,7 @@ describe("/api/models context window enrichment", () => {
       },
     );
     currentSession = {
-      authProvider: "vercel",
+      authProvider: "supabase",
       user: { id: "user-1", email: "person@example.com" },
     };
 

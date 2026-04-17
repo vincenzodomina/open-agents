@@ -9,7 +9,7 @@ import {
 } from "./model-access";
 
 const managedTrialSession = {
-  authProvider: "vercel" as const,
+  authProvider: "supabase" as const,
   user: {
     id: "user-1",
     username: "alice",
@@ -19,7 +19,7 @@ const managedTrialSession = {
 };
 
 const vercelSession = {
-  authProvider: "vercel" as const,
+  authProvider: "supabase" as const,
   user: {
     id: "user-2",
     username: "vercel-user",

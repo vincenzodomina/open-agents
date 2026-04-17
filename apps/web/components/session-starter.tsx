@@ -62,7 +62,7 @@ export function SessionStarter({
     string | null | undefined
   >(undefined);
 
-  const { session, loading: sessionLoading, hasGitHub } = useSession();
+  const { loading: sessionLoading, hasGitHub } = useSession();
   const { reconnectRequired, isLoading: githubConnectionLoading } =
     useGitHubConnectionStatus({
       enabled: hasGitHub,
@@ -77,13 +77,15 @@ export function SessionStarter({
   const sandboxName =
     SANDBOX_OPTIONS.find((s) => s.id === sandboxType)?.name ?? sandboxType;
 
+  const canPickLinkedVercelProject = false;
+
   const shouldLoadVercelProjects =
+    canPickLinkedVercelProject &&
     mode === "repo" &&
     !githubConnectionLoading &&
     !reconnectRequired &&
     !!selectedOwner &&
-    !!selectedRepo &&
-    session?.authProvider === "vercel";
+    !!selectedRepo;
   const {
     data: repoProjects,
     loading: repoProjectsLoading,
@@ -162,12 +164,13 @@ export function SessionStarter({
   const effectiveAutoCommitPush = autoCommitPush ?? defaultAutoCommitPush;
   const effectiveAutoCreatePr = autoCreatePr ?? defaultAutoCreatePr;
   const showVercelProjectSection =
+    canPickLinkedVercelProject &&
     mode === "repo" &&
     !githubConnectionLoading &&
     !reconnectRequired &&
     !!selectedOwner &&
     !!selectedRepo &&
-    (sessionLoading || session?.authProvider === "vercel");
+    sessionLoading;
 
   const handleSubmit = () => {
     if (isSubmitDisabled) return;

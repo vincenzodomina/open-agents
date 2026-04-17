@@ -1,6 +1,5 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { SESSION_COOKIE_NAME } from "@/lib/session/constants";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { HomePage } from "./home-page";
 
@@ -17,10 +16,7 @@ export default async function Home() {
   }
 
   const store = await cookies();
-  const all = store.getAll();
-  const hasSessionCookie =
-    Boolean(store.get(SESSION_COOKIE_NAME)?.value) ||
-    hasSupabaseAuthCookie(all);
+  const hasSessionCookie = hasSupabaseAuthCookie(store.getAll());
 
   return <HomePage hasSessionCookie={hasSessionCookie} lastRepo={null} />;
 }

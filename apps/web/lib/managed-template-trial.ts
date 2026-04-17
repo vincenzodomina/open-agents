@@ -66,7 +66,7 @@ export function isManagedTemplateTrialUser(
   url: string | URL,
 ) {
   const auth = session?.authProvider;
-  const isTrialEligibleAuth = auth === "vercel" || auth === "supabase";
+  const isTrialEligibleAuth = auth === "supabase";
   return (
     isTrialEligibleAuth &&
     isManagedTemplateDeployment(url) &&

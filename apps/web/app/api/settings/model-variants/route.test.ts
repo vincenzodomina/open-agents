@@ -6,7 +6,7 @@ mock.module("server-only", () => ({}));
 const PROVIDER_OPTIONS_MAX_BYTES = 16 * 1024;
 
 let currentSession: {
-  authProvider?: "vercel" | "github";
+  authProvider?: "supabase";
   user: {
     id: string;
     username: string;
@@ -108,7 +108,7 @@ describe("/api/settings/model-variants", () => {
       },
     ];
     currentSession = {
-      authProvider: "vercel",
+      authProvider: "supabase",
       user: {
         id: "user-1",
         username: "alice",
@@ -168,7 +168,7 @@ describe("/api/settings/model-variants", () => {
 
   test("POST rejects Opus-backed variants for managed trial users", async () => {
     currentSession = {
-      authProvider: "vercel",
+      authProvider: "supabase",
       user: {
         id: "user-1",
         username: "alice",

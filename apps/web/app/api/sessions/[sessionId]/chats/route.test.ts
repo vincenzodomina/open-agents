@@ -38,7 +38,7 @@ let ownedSessionResult: OwnedSessionResult = {
   sessionRecord: { id: "session-1" },
 };
 let currentSession: {
-  authProvider?: "vercel" | "github";
+  authProvider?: "supabase";
   user: { id: string; email?: string; username?: string; avatar?: string };
 } | null = {
   user: { id: "user-1" },

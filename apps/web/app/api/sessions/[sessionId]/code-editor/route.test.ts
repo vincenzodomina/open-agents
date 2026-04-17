@@ -19,7 +19,7 @@ let portProbeStatusCode: string | null = null;
 let lastLaunchCommand: string | null = null;
 let lastLaunchCwd: string | null = null;
 let currentAuthSession: {
-  authProvider?: "vercel" | "github";
+  authProvider?: "supabase";
   user: {
     id: string;
     email?: string;
@@ -236,7 +236,7 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
 
   test("POST returns 403 for managed-template trial users", async () => {
     currentAuthSession = {
-      authProvider: "vercel",
+      authProvider: "supabase",
       user: {
         id: "user-1",
         email: "person@example.com",

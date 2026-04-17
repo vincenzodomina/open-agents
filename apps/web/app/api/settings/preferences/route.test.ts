@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 let currentSession: {
-  authProvider?: "vercel" | "github";
+  authProvider?: "supabase";
   user: { id: string; email?: string };
 } | null = {
   user: { id: "user-1" },
@@ -92,7 +92,7 @@ describe("/api/settings/preferences", () => {
     const { GET } = await routeModulePromise;
 
     currentSession = {
-      authProvider: "vercel",
+      authProvider: "supabase",
       user: { id: "user-1", email: "person@example.com" },
     };
     preferencesState.defaultModelId = "anthropic/claude-opus-4.6";

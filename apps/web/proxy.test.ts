@@ -11,7 +11,9 @@ function makeRequest(path: string, accept: string, method = "GET") {
 
 describe("shared page content negotiation proxy", () => {
   test("rewrites markdown requests for shared pages", async () => {
-    const response = await proxy(makeRequest("/shared/share-1", "text/markdown"));
+    const response = await proxy(
+      makeRequest("/shared/share-1", "text/markdown"),
+    );
 
     expect(response.headers.get("x-middleware-rewrite")).toBe(
       "http://localhost/api/shared/share-1/markdown",
