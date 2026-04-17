@@ -6,6 +6,7 @@ import type {
   ChatMessage,
   ChatRead,
   GitHubInstallation,
+  Json,
   LinkedAccount,
   NewSession,
   Session,
@@ -182,7 +183,7 @@ export function mapLinkedAccountRow(row: Record<string, unknown>): LinkedAccount
     externalId: String(row.external_id),
     workspaceId:
       row.workspace_id != null ? String(row.workspace_id) : null,
-    metadata: row.metadata as Record<string, unknown> | null | undefined,
+    metadata: row.metadata as Json | null,
     createdAt: parseTimestampRequired(row.created_at),
     updatedAt: parseTimestampRequired(row.updated_at),
   };

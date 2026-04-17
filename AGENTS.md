@@ -12,7 +12,7 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Database & Migrations
 
-App-level TypeScript types live in `apps/web/lib/db/schema.ts`. Optional generated Supabase types go to `apps/web/lib/db/database.types.ts` (see `db:types` below). **DDL and RPCs are authored as SQL** under `supabase/migrations/` at the repo root.
+**`apps/web/lib/db/database.types.ts`** is generated (`bun run --cwd apps/web db:types`). **`apps/web/lib/db/schema.ts`** re-exports `Database` / `Json`, exposes `TableRow` / `TableInsert` / `TableUpdate`, and defines app-layer models (camelCase + `Date`) derived from those rows where possible. **DDL and RPCs are authored as SQL** under `supabase/migrations/` at the repo root.
 
 Scripts are in `apps/web/package.json`. Run them with `bun run --cwd apps/web <script>`. The Supabase CLI resolves `supabase/config.toml` at the monorepo root (walk up from `apps/web`). Use a **local** stack (`supabase start`) for `--local` commands.
 
