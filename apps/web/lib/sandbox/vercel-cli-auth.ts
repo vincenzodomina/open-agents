@@ -4,7 +4,6 @@ import {
   resolveSandboxHomeDirectory,
   shellEscape,
 } from "@/lib/sandbox/home-directory";
-import { getUserVercelAuthInfo } from "@/lib/vercel/token";
 
 const FILE_CLEANUP_TIMEOUT_MS = 5_000;
 const VERCEL_CLI_CONFIG_DIRECTORY = ".local/share/com.vercel.cli";
@@ -25,12 +24,6 @@ export interface VercelCliSandboxSetup {
   projectLink: VercelCliProjectLink | null;
 }
 
-interface SessionVercelCliContext {
-  vercelProjectId: string | null;
-  vercelProjectName: string | null;
-  vercelTeamId: string | null;
-}
-
 async function removeFileIfPresent(
   sandbox: Sandbox,
   filePath: string,
@@ -48,42 +41,13 @@ async function removeFileIfPresent(
   }
 }
 
-function buildProjectLink(params: {
-  orgId: string | null;
-  projectId: string | null;
-  projectName: string | null;
-}): VercelCliProjectLink | null {
-  if (!params.orgId || !params.projectId) {
-    return null;
-  }
-
-  return {
-    orgId: params.orgId,
-    projectId: params.projectId,
-    ...(params.projectName ? { projectName: params.projectName } : {}),
-  };
-}
-
-export async function getVercelCliSandboxSetup(params: {
+export async function getVercelCliSandboxSetup(_params: {
   userId: string;
-  sessionRecord: SessionVercelCliContext;
+  sessionRecord: unknown;
 }): Promise<VercelCliSandboxSetup> {
-  const authInfo = await getUserVercelAuthInfo(params.userId);
-  const orgId =
-    params.sessionRecord.vercelTeamId ?? authInfo?.externalId ?? null;
-
   return {
-    auth: authInfo
-      ? {
-          token: authInfo.token,
-          expiresAt: authInfo.expiresAt,
-        }
-      : null,
-    projectLink: buildProjectLink({
-      orgId,
-      projectId: params.sessionRecord.vercelProjectId,
-      projectName: params.sessionRecord.vercelProjectName,
-    }),
+    auth: null,
+    projectLink: null,
   };
 }
 

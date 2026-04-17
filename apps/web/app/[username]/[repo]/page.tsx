@@ -5,7 +5,6 @@ import {
   createSessionWithInitialChat,
   getUsedSessionTitles,
 } from "@/lib/db/sessions";
-import { getVercelProjectLinkByRepo } from "@/lib/db/vercel-project-links";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
@@ -58,11 +57,6 @@ export default async function RepoPage({ params }: RepoPageProps) {
   }
 
   const preferencesPromise = getUserPreferences(session.user.id);
-  const savedVercelProjectPromise = getVercelProjectLinkByRepo(
-    session.user.id,
-    username,
-    repo,
-  );
 
   // Get a GitHub token (if available) for private repo access
   const token = await getUserGitHubToken(session.user.id)
@@ -86,10 +80,7 @@ export default async function RepoPage({ params }: RepoPageProps) {
 
   // Use the user's preferred sandbox type and model
   const requestHost = (await nextHeaders()).get("host") ?? "";
-  const [rawPreferences, savedVercelProject] = await Promise.all([
-    preferencesPromise,
-    savedVercelProjectPromise,
-  ]);
+  const rawPreferences = await preferencesPromise;
   const preferences = sanitizeUserPreferencesForSession(
     rawPreferences,
     session,
@@ -111,10 +102,6 @@ export default async function RepoPage({ params }: RepoPageProps) {
       repoName: repo,
       branch: repoInfo.default_branch,
       cloneUrl,
-      vercelProjectId: savedVercelProject?.projectId ?? null,
-      vercelProjectName: savedVercelProject?.projectName ?? null,
-      vercelTeamId: savedVercelProject?.teamId ?? null,
-      vercelTeamSlug: savedVercelProject?.teamSlug ?? null,
       isNewBranch: false,
       autoCommitPushOverride: preferences.autoCommitPush,
       autoCreatePrOverride: preferences.autoCommitPush

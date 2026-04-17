@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { VercelProjectSelection } from "@/lib/vercel/types";
 
 let currentSession: {
   authProvider?: "supabase";
@@ -17,11 +16,7 @@ let currentSession: {
   },
 };
 let existingSessionCount = 0;
-let savedLink: VercelProjectSelection | null = null;
-let currentVercelToken: string | null = "vercel-token";
-let matchingProjects: VercelProjectSelection[] = [];
 const createCalls: Array<Record<string, unknown>> = [];
-const upsertCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => currentSession,
@@ -46,21 +41,6 @@ mock.module("@/lib/db/user-preferences", () => ({
     modelVariants: [],
     enabledModelIds: [],
   }),
-}));
-
-mock.module("@/lib/db/vercel-project-links", () => ({
-  getVercelProjectLinkByRepo: async () => savedLink,
-  upsertVercelProjectLink: async (input: Record<string, unknown>) => {
-    upsertCalls.push(input);
-  },
-}));
-
-mock.module("@/lib/vercel/token", () => ({
-  getUserVercelToken: async () => currentVercelToken,
-}));
-
-mock.module("@/lib/vercel/projects", () => ({
-  listMatchingVercelProjects: async () => matchingProjects,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
@@ -104,7 +84,7 @@ function createJsonRequest(
   });
 }
 
-describe("/api/sessions POST vercel project linking", () => {
+describe("/api/sessions POST", () => {
   beforeEach(() => {
     currentSession = {
       user: {
@@ -114,11 +94,7 @@ describe("/api/sessions POST vercel project linking", () => {
       },
     };
     existingSessionCount = 0;
-    savedLink = null;
-    currentVercelToken = "vercel-token";
-    matchingProjects = [];
     createCalls.length = 0;
-    upsertCalls.length = 0;
   });
 
   test("blocks additional sessions for non-Vercel trial users on the managed deployment", async () => {
@@ -153,161 +129,6 @@ describe("/api/sessions POST vercel project linking", () => {
       "This hosted deployment includes 1 trial session for non-Vercel accounts. Deploy your own copy to start more.",
     );
     expect(createCalls).toHaveLength(0);
-  });
-
-  test("explicit Vercel project is validated against live repo matches before it is persisted", async () => {
-    const { POST } = await routeModulePromise;
-
-    const vercelProject: VercelProjectSelection = {
-      projectId: "project-1",
-      projectName: "tampered-name",
-      teamId: "team-x",
-      teamSlug: "tampered-team",
-    };
-    matchingProjects = [
-      {
-        projectId: "project-1",
-        projectName: "app",
-        teamId: "team-1",
-        teamSlug: "acme",
-      },
-    ];
-
-    const response = await POST(
-      createJsonRequest({
-        repoOwner: "Vercel",
-        repoName: "Open-Harness",
-        branch: "main",
-        cloneUrl: "https://github.com/Vercel/Open-Harness",
-        vercelProject,
-      }),
-    );
-    const body = (await response.json()) as {
-      session: Record<string, unknown>;
-    };
-
-    expect(response.status).toBe(200);
-    expect(upsertCalls).toEqual([
-      {
-        userId: "user-1",
-        repoOwner: "Vercel",
-        repoName: "Open-Harness",
-        project: matchingProjects[0],
-      },
-    ]);
-    expect(createCalls[0]).toMatchObject({
-      repoOwner: "Vercel",
-      repoName: "Open-Harness",
-      vercelProjectId: "project-1",
-      vercelProjectName: "app",
-      vercelTeamId: "team-1",
-      vercelTeamSlug: "acme",
-    });
-    expect(body.session.vercelProjectId).toBe("project-1");
-    expect(body.session.vercelProjectName).toBe("app");
-  });
-
-  test("rejects explicit Vercel projects that are not a live match for the repo", async () => {
-    const { POST } = await routeModulePromise;
-
-    matchingProjects = [
-      {
-        projectId: "project-2",
-        projectName: "dashboard",
-        teamId: null,
-        teamSlug: null,
-      },
-    ];
-
-    const response = await POST(
-      createJsonRequest({
-        repoOwner: "vercel",
-        repoName: "open-harness",
-        branch: "main",
-        cloneUrl: "https://github.com/vercel/open-harness",
-        vercelProject: {
-          projectId: "project-999",
-          projectName: "rogue-project",
-          teamId: null,
-          teamSlug: null,
-        },
-      }),
-    );
-    const body = (await response.json()) as { error: string };
-
-    expect(response.status).toBe(400);
-    expect(body.error).toBe(
-      "Selected Vercel project no longer matches this repository",
-    );
-    expect(upsertCalls).toHaveLength(0);
-    expect(createCalls).toHaveLength(0);
-  });
-
-  test("omitting vercelProject falls back to the saved repo link", async () => {
-    const { POST } = await routeModulePromise;
-
-    savedLink = {
-      projectId: "project-2",
-      projectName: "dashboard",
-      teamId: null,
-      teamSlug: null,
-    };
-
-    const response = await POST(
-      createJsonRequest({
-        repoOwner: "vercel",
-        repoName: "open-harness",
-        branch: "main",
-        cloneUrl: "https://github.com/vercel/open-harness",
-      }),
-    );
-    const body = (await response.json()) as {
-      session: Record<string, unknown>;
-    };
-
-    expect(response.status).toBe(200);
-    expect(upsertCalls).toHaveLength(0);
-    expect(createCalls[0]).toMatchObject({
-      vercelProjectId: "project-2",
-      vercelProjectName: "dashboard",
-      vercelTeamId: null,
-      vercelTeamSlug: null,
-    });
-    expect(body.session.vercelProjectName).toBe("dashboard");
-  });
-
-  test("explicit null suppresses Vercel linking for that session", async () => {
-    const { POST } = await routeModulePromise;
-
-    savedLink = {
-      projectId: "project-2",
-      projectName: "dashboard",
-      teamId: null,
-      teamSlug: null,
-    };
-
-    const response = await POST(
-      createJsonRequest({
-        repoOwner: "vercel",
-        repoName: "open-harness",
-        branch: "main",
-        cloneUrl: "https://github.com/vercel/open-harness",
-        vercelProject: null,
-      }),
-    );
-    const body = (await response.json()) as {
-      session: Record<string, unknown>;
-    };
-
-    expect(response.status).toBe(200);
-    expect(upsertCalls).toHaveLength(0);
-    expect(createCalls[0]).toMatchObject({
-      vercelProjectId: null,
-      vercelProjectName: null,
-      vercelTeamId: null,
-      vercelTeamSlug: null,
-    });
-    expect(body.session.vercelProjectId).toBeNull();
   });
 
   test("new sessions snapshot the user global skill refs", async () => {

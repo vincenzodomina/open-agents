@@ -3,18 +3,6 @@ import type { Sandbox } from "@open-harness/sandbox";
 
 mock.module("server-only", () => ({}));
 
-interface TestVercelAuthInfo {
-  token: string;
-  expiresAt: number;
-  externalId: string;
-}
-
-let currentAuthInfo: TestVercelAuthInfo | null = null;
-
-mock.module("@/lib/vercel/token", () => ({
-  getUserVercelAuthInfo: async () => currentAuthInfo,
-}));
-
 const vercelCliAuthModulePromise = import("./vercel-cli-auth");
 
 function createSandbox() {
@@ -74,108 +62,32 @@ function createSandbox() {
 }
 
 describe("vercel-cli-auth", () => {
-  beforeEach(() => {
-    currentAuthInfo = {
-      token: "vca_token_123",
-      expiresAt: 1_700_000_000,
-      externalId: "user_ext_123",
-    };
-  });
+  beforeEach(() => {});
 
-  test("builds a team-scoped CLI setup when the session is linked to a team project", async () => {
+  test("does not provision Vercel CLI auth or project link from the session", async () => {
     const { getVercelCliSandboxSetup } = await vercelCliAuthModulePromise;
 
     const setup = await getVercelCliSandboxSetup({
       userId: "user-1",
       sessionRecord: {
-        vercelProjectId: "prj_123",
-        vercelProjectName: "open-harness-web",
-        vercelTeamId: "team_123",
+        id: "sess-1",
       },
     });
 
     expect(setup).toEqual({
-      auth: {
-        token: "vca_token_123",
-        expiresAt: 1700000000,
-      },
-      projectLink: {
-        orgId: "team_123",
-        projectId: "prj_123",
-        projectName: "open-harness-web",
-      },
+      auth: null,
+      projectLink: null,
     });
-  });
-
-  test("falls back to the user's Vercel external ID for personal projects", async () => {
-    const { getVercelCliSandboxSetup } = await vercelCliAuthModulePromise;
-
-    const setup = await getVercelCliSandboxSetup({
-      userId: "user-1",
-      sessionRecord: {
-        vercelProjectId: "prj_123",
-        vercelProjectName: null,
-        vercelTeamId: null,
-      },
-    });
-
-    expect(setup.projectLink).toEqual({
-      orgId: "user_ext_123",
-      projectId: "prj_123",
-    });
-  });
-
-  test("syncs CLI auth and project metadata without persisting a refresh token", async () => {
-    const { getVercelCliSandboxSetup, syncVercelCliAuthToSandbox } =
-      await vercelCliAuthModulePromise;
-    const { sandbox, writeFileCalls, execCalls } = createSandbox();
-
-    const setup = await getVercelCliSandboxSetup({
-      userId: "user-1",
-      sessionRecord: {
-        vercelProjectId: "prj_123",
-        vercelProjectName: "open-harness-web",
-        vercelTeamId: "team_123",
-      },
-    });
-
-    await syncVercelCliAuthToSandbox({ sandbox, setup });
-
-    expect(execCalls).toEqual([
-      {
-        command: 'printf %s "$HOME"',
-        cwd: "/workspace",
-        timeoutMs: 5000,
-      },
-    ]);
-    expect(writeFileCalls).toEqual([
-      {
-        path: "/home/tester/.local/share/com.vercel.cli/auth.json",
-        content:
-          '{\n  "token": "vca_token_123",\n  "expiresAt": 1700000000\n}\n',
-      },
-      {
-        path: "/workspace/.vercel/project.json",
-        content:
-          '{\n  "orgId": "team_123",\n  "projectId": "prj_123",\n  "projectName": "open-harness-web"\n}\n',
-      },
-    ]);
-    expect(writeFileCalls[0]?.content).not.toContain("refreshToken");
   });
 
   test("removes stale CLI auth and project metadata when no auth or link is available", async () => {
-    currentAuthInfo = null;
     const { getVercelCliSandboxSetup, syncVercelCliAuthToSandbox } =
       await vercelCliAuthModulePromise;
     const { sandbox, writeFileCalls, execCalls } = createSandbox();
 
     const setup = await getVercelCliSandboxSetup({
       userId: "user-1",
-      sessionRecord: {
-        vercelProjectId: null,
-        vercelProjectName: null,
-        vercelTeamId: null,
-      },
+      sessionRecord: {},
     });
 
     await syncVercelCliAuthToSandbox({ sandbox, setup });
