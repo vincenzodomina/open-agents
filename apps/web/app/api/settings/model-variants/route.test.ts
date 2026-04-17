@@ -32,7 +32,7 @@ let preferences: MockPreferences;
 
 function resetPreferences() {
   preferences = {
-    defaultModelId: "anthropic/claude-haiku-4.5",
+    defaultModelId: "openai/gpt-5-mini",
     defaultSubagentModelId: null,
     defaultSandboxType: "vercel",
     defaultDiffMode: "unified",
@@ -98,12 +98,12 @@ describe("/api/settings/model-variants", () => {
     expect(response.status).toBe(401);
   });
 
-  test("GET hides Opus-backed variants for managed trial users", async () => {
+  test("GET includes Pro-backed variants for managed trial users", async () => {
     preferences.modelVariants = [
       {
-        id: "variant:user-opus",
-        name: "User Opus",
-        baseModelId: "anthropic/claude-opus-4.6",
+        id: "variant:user-pro",
+        name: "User Pro",
+        baseModelId: "openai/gpt-5.4-pro",
         providerOptions: {},
       },
     ];
@@ -124,6 +124,8 @@ describe("/api/settings/model-variants", () => {
 
     expect(body.modelVariants.map((variant) => variant.id)).toEqual([
       "variant:builtin:gpt-5.4-xhigh",
+      "variant:builtin:gpt-5.4-medium",
+      "variant:user-pro",
     ]);
   });
 
@@ -166,7 +168,7 @@ describe("/api/settings/model-variants", () => {
     expect(body.modelVariants[2]?.name).toBe("OpenAI Medium");
   });
 
-  test("POST rejects Opus-backed variants for managed trial users", async () => {
+  test("POST accepts Pro-backed variants for managed trial users", async () => {
     currentSession = {
       authProvider: "supabase",
       user: {
@@ -182,14 +184,19 @@ describe("/api/settings/model-variants", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "User Opus",
-          baseModelId: "anthropic/claude-opus-4.6",
+          name: "User Pro",
+          baseModelId: "openai/gpt-5.4-pro",
           providerOptions: {},
         }),
       }),
     );
 
-    expect(response.status).toBe(403);
+    expect(response.ok).toBe(true);
+
+    const body = (await response.json()) as { modelVariants: ModelVariant[] };
+    expect(body.modelVariants).toHaveLength(3);
+    expect(body.modelVariants[2]?.name).toBe("User Pro");
+    expect(body.modelVariants[2]?.baseModelId).toBe("openai/gpt-5.4-pro");
   });
 
   test("POST accepts provider options exactly at 16KB", async () => {
@@ -383,7 +390,7 @@ describe("/api/settings/model-variants", () => {
       {
         id: "variant:remove-me",
         name: "To remove",
-        baseModelId: "anthropic/claude-haiku-4.5",
+        baseModelId: "openai/gpt-5-mini",
         providerOptions: {},
       },
     ];

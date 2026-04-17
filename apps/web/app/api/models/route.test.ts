@@ -1,17 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-interface MockGatewayModel extends Record<string, unknown> {
-  id: string;
-  name?: string;
-  description?: string | null;
-  modelType: string;
-  context_window?: number;
-}
-
-const gatewayModels: MockGatewayModel[] = [];
 const requestedUrls: string[] = [];
 
-let gatewayError: unknown = null;
 let modelsDevApiData: unknown = {};
 let currentSession: {
   authProvider?: "supabase";
@@ -30,18 +20,6 @@ function getRequestUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
-mock.module("ai", () => ({
-  gateway: {
-    getAvailableModels: async () => {
-      if (gatewayError) {
-        throw gatewayError;
-      }
-
-      return { models: gatewayModels };
-    },
-  },
-}));
-
 mock.module("server-only", () => ({}));
 
 mock.module("@/lib/session/get-server-session", () => ({
@@ -54,11 +32,9 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe("/api/models context window enrichment", () => {
+describe("/api/models (models.dev OpenAI catalog)", () => {
   beforeEach(() => {
-    gatewayModels.length = 0;
     requestedUrls.length = 0;
-    gatewayError = null;
     modelsDevApiData = {};
     currentSession = null;
 
@@ -73,211 +49,25 @@ describe("/api/models context window enrichment", () => {
     }) as unknown as typeof fetch;
   });
 
-  test("overrides gateway context windows from models.dev", async () => {
-    gatewayModels.push(
-      {
-        id: "openai/gpt-5.3-codex",
-        modelType: "language",
-        context_window: 200_000,
-      },
-      {
-        id: "anthropic/claude-opus-4.6",
-        modelType: "language",
-        context_window: 200_000,
-      },
-      {
-        id: "openai/gpt-4o-mini",
-        modelType: "language",
-        context_window: 128_000,
-      },
-      {
-        id: "openai/image-gen",
-        modelType: "image",
-        context_window: 200_000,
-      },
-    );
-
+  test("returns OpenAI language models from models.dev with cost and context", async () => {
     modelsDevApiData = {
       openai: {
         models: {
-          "gpt-5.3-codex": {
+          "gpt-5.4": {
+            id: "gpt-5.4",
+            name: "GPT-5.4",
+            description: "Flagship model",
+            modalities: { input: ["text"], output: ["text"] },
             limit: { context: 400_000 },
+            cost: { input: 1.25, output: 10 },
+          },
+          "gpt-5-mini": {
+            id: "gpt-5-mini",
+            name: "GPT-5 Mini",
+            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: 200_000 },
           },
         },
-      },
-      anthropic: {
-        models: {
-          "claude-opus-4.6": {
-            limit: { context: 1_000_000 },
-          },
-        },
-      },
-    };
-
-    const { GET } = await routeModulePromise;
-    const response = await GET(new Request("http://localhost/api/models"));
-
-    expect(response.ok).toBe(true);
-
-    const body = (await response.json()) as {
-      models: Array<{ id: string; context_window?: number }>;
-    };
-    const contextById = new Map(
-      body.models.map((model) => [model.id, model.context_window]),
-    );
-
-    expect(contextById.get("openai/gpt-5.3-codex")).toBe(400_000);
-    expect(contextById.get("anthropic/claude-opus-4.6")).toBe(1_000_000);
-    expect(contextById.get("openai/gpt-4o-mini")).toBe(128_000);
-    expect(contextById.has("openai/image-gen")).toBe(false);
-    expect(requestedUrls).toContain("https://models.dev/api.json");
-  });
-
-  test("hides Claude Opus models for managed trial users", async () => {
-    gatewayModels.push(
-      {
-        id: "anthropic/claude-opus-4.6",
-        modelType: "language",
-      },
-      {
-        id: "anthropic/claude-haiku-4.5",
-        modelType: "language",
-      },
-    );
-    currentSession = {
-      authProvider: "supabase",
-      user: { id: "user-1", email: "person@example.com" },
-    };
-
-    const { GET } = await routeModulePromise;
-    const response = await GET(
-      new Request("https://open-agents.dev/api/models"),
-    );
-    const body = (await response.json()) as {
-      models: Array<{ id: string }>;
-    };
-
-    expect(body.models.map((model) => model.id)).toEqual([
-      "anthropic/claude-haiku-4.5",
-    ]);
-  });
-
-  test("keeps gateway context window when models.dev only has related ids", async () => {
-    gatewayModels.push({
-      id: "openai/gpt-5.3-codex-2026-02-15",
-      modelType: "language",
-      context_window: 200_000,
-    });
-
-    modelsDevApiData = {
-      openai: {
-        models: {
-          "gpt-5": {
-            limit: { context: 272_000 },
-          },
-          "gpt-5.3-codex": {
-            limit: { context: 400_000 },
-          },
-        },
-      },
-    };
-
-    const { GET } = await routeModulePromise;
-    const response = await GET(new Request("http://localhost/api/models"));
-
-    expect(response.ok).toBe(true);
-
-    const body = (await response.json()) as {
-      models: Array<{ id: string; context_window?: number }>;
-    };
-
-    expect(body.models).toHaveLength(1);
-    expect(body.models[0]?.context_window).toBe(200_000);
-  });
-
-  test("keeps valid models.dev metadata when sibling fields are invalid", async () => {
-    gatewayModels.push({
-      id: "openai/gpt-5.3-codex",
-      modelType: "language",
-      context_window: 200_000,
-    });
-
-    modelsDevApiData = {
-      invalidProvider: "bad",
-      openai: {
-        models: {
-          "gpt-5.3-codex": {
-            limit: { context: "400_000" },
-            cost: {
-              input: 1.25,
-              output: 10,
-              context_over_200k: {
-                input: 2.5,
-              },
-            },
-          },
-          broken: {
-            limit: { context: "not-a-number" },
-            cost: { input: "expensive" },
-          },
-        },
-      },
-    };
-
-    const { GET } = await routeModulePromise;
-    const response = await GET(new Request("http://localhost/api/models"));
-
-    expect(response.ok).toBe(true);
-
-    const body = (await response.json()) as {
-      models: Array<{
-        id: string;
-        context_window?: number;
-        cost?: {
-          input?: number;
-          output?: number;
-          context_over_200k?: {
-            input?: number;
-          };
-        };
-      }>;
-    };
-
-    expect(body.models).toHaveLength(1);
-    expect(body.models[0]).toMatchObject({
-      id: "openai/gpt-5.3-codex",
-      context_window: 200_000,
-      cost: {
-        input: 1.25,
-        output: 10,
-        context_over_200k: {
-          input: 2.5,
-        },
-      },
-    });
-  });
-
-  test("recovers from gateway validation errors when response still includes models", async () => {
-    gatewayError = {
-      response: {
-        models: [
-          {
-            id: "openai/gpt-5.4",
-            name: "GPT 5.4",
-            description: "Latest GPT model",
-            modelType: "language",
-          },
-          {
-            id: "openai/gpt-5.4-broken",
-            modelType: "language",
-          },
-          {
-            id: "cohere/rerank-v3.5",
-            name: "Cohere Rerank 3.5",
-            description: "Reranking model",
-            modelType: "reranking",
-          },
-        ],
       },
     };
 
@@ -290,18 +80,120 @@ describe("/api/models context window enrichment", () => {
       models: Array<{
         id: string;
         name: string;
-        description?: string | null;
-        modelType?: string;
+        context_window?: number;
+        cost?: { input?: number; output?: number };
       }>;
     };
 
-    expect(body.models).toEqual([
-      {
-        id: "openai/gpt-5.4",
-        name: "GPT 5.4",
-        description: "Latest GPT model",
-        modelType: "language",
-      },
+    expect(requestedUrls).toContain("https://models.dev/api.json");
+    expect(body.models.map((m) => m.id).sort()).toEqual([
+      "openai/gpt-5-mini",
+      "openai/gpt-5.4",
     ]);
+
+    const gpt54 = body.models.find((m) => m.id === "openai/gpt-5.4");
+    expect(gpt54?.context_window).toBe(400_000);
+    expect(gpt54?.cost).toEqual({ input: 1.25, output: 10 });
+  });
+
+  test("excludes non-text models", async () => {
+    modelsDevApiData = {
+      openai: {
+        models: {
+          "dall-e-3": {
+            id: "dall-e-3",
+            name: "DALL-E 3",
+            modalities: { input: ["text"], output: ["image"] },
+          },
+          "gpt-4o": {
+            id: "gpt-4o",
+            name: "GPT-4o",
+            modalities: { input: ["text", "image"], output: ["text"] },
+          },
+        },
+      },
+    };
+
+    const { GET } = await routeModulePromise;
+    const response = await GET(new Request("http://localhost/api/models"));
+    const body = (await response.json()) as { models: Array<{ id: string }> };
+
+    expect(body.models.map((m) => m.id)).toEqual(["openai/gpt-4o"]);
+  });
+
+  test("includes GPT-5.4 Pro models for managed trial users", async () => {
+    modelsDevApiData = {
+      openai: {
+        models: {
+          "gpt-5.4-pro": {
+            id: "gpt-5.4-pro",
+            name: "GPT-5.4 Pro",
+            modalities: { input: ["text"], output: ["text"] },
+          },
+          "gpt-5-mini": {
+            id: "gpt-5-mini",
+            name: "GPT-5 Mini",
+            modalities: { input: ["text"], output: ["text"] },
+          },
+        },
+      },
+    };
+    currentSession = {
+      authProvider: "supabase",
+      user: { id: "user-1", email: "person@example.com" },
+    };
+
+    const { GET } = await routeModulePromise;
+    const response = await GET(
+      new Request("https://open-agents.dev/api/models"),
+    );
+    const body = (await response.json()) as { models: Array<{ id: string }> };
+
+    expect(body.models.map((m) => m.id)).toEqual([
+      "openai/gpt-5-mini",
+      "openai/gpt-5.4-pro",
+    ]);
+  });
+
+  test("returns empty list when models.dev fetch fails", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(new Response("error", { status: 500 })),
+    ) as unknown as typeof fetch;
+
+    const { GET } = await routeModulePromise;
+    const response = await GET(new Request("http://localhost/api/models"));
+    const body = (await response.json()) as { models: unknown[] };
+
+    expect(response.ok).toBe(true);
+    expect(body.models).toEqual([]);
+  });
+
+  test("keeps valid models.dev metadata when sibling fields are invalid", async () => {
+    modelsDevApiData = {
+      openai: {
+        models: {
+          "gpt-5.3-codex": {
+            id: "gpt-5.3-codex",
+            name: "Codex",
+            modalities: { input: ["text"], output: ["text"] },
+            limit: { context: "not-a-number" },
+            cost: { input: 1.25, output: 10 },
+          },
+        },
+      },
+    };
+
+    const { GET } = await routeModulePromise;
+    const response = await GET(new Request("http://localhost/api/models"));
+    const body = (await response.json()) as {
+      models: Array<{
+        id: string;
+        cost?: { input?: number; output?: number };
+      }>;
+    };
+
+    expect(body.models).toHaveLength(1);
+    expect(body.models[0]?.id).toBe("openai/gpt-5.3-codex");
+    expect(body.models[0]?.cost).toEqual({ input: 1.25, output: 10 });
   });
 });

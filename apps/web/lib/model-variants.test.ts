@@ -36,7 +36,7 @@ describe("model variants", () => {
   });
 
   test("toProviderOptionsByProvider returns undefined for non-OpenAI variants with no provider options", () => {
-    const result = toProviderOptionsByProvider("anthropic/claude-opus-4.6", {});
+    const result = toProviderOptionsByProvider("meta/llama-3.3-70b", {});
     expect(result).toBeUndefined();
   });
 

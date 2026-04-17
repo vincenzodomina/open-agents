@@ -88,10 +88,7 @@ export function mapChatRow(row: Record<string, unknown>): Chat {
     id: String(row.id),
     sessionId: String(row.session_id),
     title: String(row.title),
-    modelId:
-      row.model_id != null
-        ? String(row.model_id)
-        : "anthropic/claude-haiku-4.5",
+    modelId: row.model_id != null ? String(row.model_id) : "openai/gpt-5.4",
     activeStreamId:
       row.active_stream_id != null ? String(row.active_stream_id) : null,
     lastAssistantMessageAt: parseTimestamp(row.last_assistant_message_at),
@@ -167,7 +164,8 @@ export function mapGitHubInstallationRow(
     installationId: Number(row.installation_id),
     accountLogin: String(row.account_login),
     accountType: row.account_type as GitHubInstallation["accountType"],
-    repositorySelection: row.repository_selection as GitHubInstallation["repositorySelection"],
+    repositorySelection:
+      row.repository_selection as GitHubInstallation["repositorySelection"],
     installationUrl:
       row.installation_url != null ? String(row.installation_url) : null,
     createdAt: parseTimestampRequired(row.created_at),
@@ -175,14 +173,15 @@ export function mapGitHubInstallationRow(
   };
 }
 
-export function mapLinkedAccountRow(row: Record<string, unknown>): LinkedAccount {
+export function mapLinkedAccountRow(
+  row: Record<string, unknown>,
+): LinkedAccount {
   return {
     id: String(row.id),
     userId: String(row.user_id),
     provider: row.provider as LinkedAccount["provider"],
     externalId: String(row.external_id),
-    workspaceId:
-      row.workspace_id != null ? String(row.workspace_id) : null,
+    workspaceId: row.workspace_id != null ? String(row.workspace_id) : null,
     metadata: row.metadata as Json | null,
     createdAt: parseTimestampRequired(row.created_at),
     updatedAt: parseTimestampRequired(row.updated_at),
@@ -198,13 +197,15 @@ export function mapUserPreferencesRow(
     defaultModelId:
       row.default_model_id != null
         ? String(row.default_model_id)
-        : "anthropic/claude-haiku-4.5",
+        : "openai/gpt-5-mini",
     defaultSubagentModelId:
       row.default_subagent_model_id != null
         ? String(row.default_subagent_model_id)
         : null,
-    defaultSandboxType: row.default_sandbox_type as UserPreferences["defaultSandboxType"],
-    defaultDiffMode: row.default_diff_mode as UserPreferences["defaultDiffMode"],
+    defaultSandboxType:
+      row.default_sandbox_type as UserPreferences["defaultSandboxType"],
+    defaultDiffMode:
+      row.default_diff_mode as UserPreferences["defaultDiffMode"],
     autoCommitPush: Boolean(row.auto_commit_push ?? false),
     autoCreatePr: Boolean(row.auto_create_pr ?? false),
     alertsEnabled: Boolean(row.alerts_enabled ?? true),
@@ -244,8 +245,7 @@ export function mapWorkflowRunStepRow(
     startedAt: parseTimestampRequired(row.started_at),
     finishedAt: parseTimestampRequired(row.finished_at),
     durationMs: Number(row.duration_ms),
-    finishReason:
-      row.finish_reason != null ? String(row.finish_reason) : null,
+    finishReason: row.finish_reason != null ? String(row.finish_reason) : null,
     rawFinishReason:
       row.raw_finish_reason != null ? String(row.raw_finish_reason) : null,
     createdAt: parseTimestampRequired(row.created_at),
@@ -263,7 +263,9 @@ function ts(value: Date | null | undefined): string | null | undefined {
 }
 
 /** Payload for `create_session_with_initial_chat` (snake_case JSON keys). */
-export function newSessionToRpcJson(session: NewSession): Record<string, unknown> {
+export function newSessionToRpcJson(
+  session: NewSession,
+): Record<string, unknown> {
   const s = session;
   return {
     ...(s.id !== undefined ? { id: s.id } : {}),
@@ -295,8 +297,12 @@ export function newSessionToRpcJson(session: NewSession): Record<string, unknown
     snapshot_size_bytes: s.snapshotSizeBytes,
     cached_diff: s.cachedDiff ?? null,
     cached_diff_updated_at: ts(s.cachedDiffUpdatedAt),
-    ...(s.createdAt !== undefined ? { created_at: s.createdAt.toISOString() } : {}),
-    ...(s.updatedAt !== undefined ? { updated_at: s.updatedAt.toISOString() } : {}),
+    ...(s.createdAt !== undefined
+      ? { created_at: s.createdAt.toISOString() }
+      : {}),
+    ...(s.updatedAt !== undefined
+      ? { updated_at: s.updatedAt.toISOString() }
+      : {}),
   };
 }
 
@@ -408,7 +414,7 @@ export function newChatToSnakeInsert(data: {
     id: data.id,
     session_id: data.sessionId,
     title: data.title,
-    model_id: data.modelId ?? "anthropic/claude-haiku-4.5",
+    model_id: data.modelId ?? "openai/gpt-5-mini",
     active_stream_id: data.activeStreamId ?? null,
     last_assistant_message_at:
       data.lastAssistantMessageAt?.toISOString() ?? null,

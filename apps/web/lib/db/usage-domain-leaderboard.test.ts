@@ -1,8 +1,13 @@
-import { describe, expect, test } from "bun:test";
-import {
-  buildUsageDomainLeaderboardRows,
-  getUsageLeaderboardDomain,
-} from "./usage-domain-leaderboard";
+import { describe, expect, mock, test } from "bun:test";
+
+mock.module("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    rpc: mock(() => Promise.resolve({ data: [], error: null })),
+  }),
+}));
+
+const { buildUsageDomainLeaderboardRows, getUsageLeaderboardDomain } =
+  await import("./usage-domain-leaderboard");
 
 describe("getUsageLeaderboardDomain", () => {
   test("accepts verified internal domains", () => {
@@ -27,7 +32,7 @@ describe("buildUsageDomainLeaderboardRows", () => {
         username: "alice",
         name: "Alice",
         avatarUrl: "https://example.com/alice.png",
-        modelId: "anthropic/claude-sonnet-4",
+        modelId: "openai/gpt-5.4",
         totalInputTokens: 80,
         totalOutputTokens: 20,
       },
@@ -80,7 +85,7 @@ describe("buildUsageDomainLeaderboardRows", () => {
         name: "Alice",
         avatarUrl: "https://example.com/alice.png",
         totalTokens: 160,
-        mostUsedModelId: "anthropic/claude-sonnet-4",
+        mostUsedModelId: "openai/gpt-5.4",
         mostUsedModelTokens: 100,
       },
       {

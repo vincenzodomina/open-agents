@@ -1,6 +1,6 @@
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 
-const DISABLED_MODEL_IDS = new Set(["openai/gpt-5.4-pro"]);
+const DISABLED_MODEL_IDS = new Set<string>();
 
 export function isModelDisabled(modelId: string): boolean {
   return DISABLED_MODEL_IDS.has(modelId);

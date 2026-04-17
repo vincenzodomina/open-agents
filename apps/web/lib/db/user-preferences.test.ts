@@ -1,5 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 
+mock.module("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    rpc: mock(() => Promise.resolve({ data: [], error: null })),
+  }),
+}));
+
 mock.module("./client", () => ({
   db: {},
 }));

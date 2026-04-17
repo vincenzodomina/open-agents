@@ -69,6 +69,10 @@ mock.module("@/lib/db/usage", () => ({
   recordUsage: spies.recordUsage,
 }));
 
+mock.module("@/lib/db/workflow-runs", () => ({
+  recordWorkflowRun: mock(() => Promise.resolve()),
+}));
+
 mock.module("@/lib/sandbox/lifecycle", () => ({
   buildActiveLifecycleUpdate: spies.buildActiveLifecycleUpdate,
   buildLifecycleActivityUpdate: spies.buildLifecycleActivityUpdate,

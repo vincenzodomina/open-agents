@@ -12,6 +12,27 @@ type MockPublicUser = {
 const findPublicUsersByUsernameMock = mock(
   async (): Promise<MockPublicUser[]> => [],
 );
+
+/** Mirrors `getPublicUsageProfile` → `getSupabaseAdmin().rpc("find_public_usage_user_candidates", ...)`. */
+const supabaseRpcMock = mock(
+  async (
+    fnName: string,
+    _params: { p_username_normalized: string },
+  ): Promise<{ data: unknown; error: null }> => {
+    void fnName;
+    const users = await findPublicUsersByUsernameMock();
+    const rows = users.map((u) => ({
+      id: u.id,
+      username: u.username,
+      name: u.name,
+      avatarUrl: u.avatarUrl,
+      lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
+      publicUsageEnabled: u.publicUsageEnabled,
+    }));
+    return { data: rows, error: null };
+  },
+);
+
 const getUsageHistoryMock = mock(async () => []);
 const getUsageInsightsMock = mock(async () => ({
   lookbackDays: 0,
@@ -38,18 +59,10 @@ const getUsageInsightsMock = mock(async () => ({
   topRepositories: [],
 }));
 
-mock.module("./client", () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        leftJoin: () => ({
-          where: () => ({
-            limit: findPublicUsersByUsernameMock,
-          }),
-        }),
-      }),
-    }),
-  },
+mock.module("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    rpc: supabaseRpcMock,
+  }),
 }));
 
 mock.module("./usage", () => ({
@@ -64,6 +77,7 @@ const publicUsageProfileModulePromise = import("./public-usage-profile");
 
 beforeEach(() => {
   findPublicUsersByUsernameMock.mockClear();
+  supabaseRpcMock.mockClear();
   getUsageHistoryMock.mockClear();
   getUsageInsightsMock.mockClear();
 
@@ -106,8 +120,8 @@ describe("buildPublicUsageProfileData", () => {
           date: "2026-02-01",
           source: "web",
           agentType: "main",
-          provider: "anthropic",
-          modelId: "anthropic/claude-sonnet-4",
+          provider: "openai",
+          modelId: "openai/gpt-5.4",
           inputTokens: 100,
           cachedInputTokens: 20,
           outputTokens: 50,
@@ -130,8 +144,8 @@ describe("buildPublicUsageProfileData", () => {
           date: "2026-02-03",
           source: "web",
           agentType: "main",
-          provider: "anthropic",
-          modelId: "anthropic/claude-sonnet-4",
+          provider: "openai",
+          modelId: "openai/gpt-5.4",
           inputTokens: 20,
           cachedInputTokens: 10,
           outputTokens: 10,
@@ -190,9 +204,9 @@ describe("buildPublicUsageProfileData", () => {
       },
       topModels: [
         {
-          modelId: "anthropic/claude-sonnet-4",
-          provider: "anthropic",
-          label: "claude-sonnet-4",
+          modelId: "openai/gpt-5.4",
+          provider: "openai",
+          label: "gpt-5.4",
           totalTokens: 180,
           inputTokens: 120,
           cachedInputTokens: 30,

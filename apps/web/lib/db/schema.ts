@@ -289,10 +289,7 @@ export type User = {
   lastLoginAt: Date;
 };
 
-export type NewUser = Omit<
-  User,
-  "createdAt" | "updatedAt" | "lastLoginAt"
-> & {
+export type NewUser = Omit<User, "createdAt" | "updatedAt" | "lastLoginAt"> & {
   id?: string;
   createdAt?: Date;
   updatedAt?: Date;

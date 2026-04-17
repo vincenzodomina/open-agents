@@ -1,28 +1,32 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { ProviderOptionsByProvider } from "./models";
 
-mock.module("ai", () => {
-  const gateway = (modelId: string) => ({ modelId });
-
-  return {
-    createGateway: () => gateway,
-    defaultSettingsMiddleware: (_settings: unknown) => ({
-      kind: "default-settings-middleware",
-    }),
-    gateway,
-    wrapLanguageModel: ({ model }: { model: unknown }) => model,
-  };
-});
-
-mock.module("@ai-sdk/devtools", () => ({
-  devToolsMiddleware: () => ({ kind: "devtools-middleware" }),
+mock.module("@ai-sdk/openai", () => ({
+  createOpenAI: () => (modelId: string) =>
+    ({ modelId, provider: "openai" }) as unknown,
 }));
 
+process.env.OPENAI_API_KEY = "test-key-for-models";
+
 const {
+  gateway,
   getProviderOptionsForModel,
   mergeProviderOptions,
   shouldApplyOpenAIReasoningDefaults,
 } = await import("./models");
+
+describe("gateway", () => {
+  test("rejects non-openai model ids", () => {
+    expect(() => gateway("anthropic/claude-3-5-haiku-latest")).toThrow(
+      /Only OpenAI models are supported/,
+    );
+  });
+
+  test("resolves openai/ model ids", () => {
+    const m = gateway("openai/gpt-5.4");
+    expect(m).toBeDefined();
+  });
+});
 
 describe("shouldApplyOpenAIReasoningDefaults", () => {
   test("returns true for existing GPT-5 variants", () => {
@@ -40,41 +44,6 @@ describe("shouldApplyOpenAIReasoningDefaults", () => {
 });
 
 describe("getProviderOptionsForModel", () => {
-  test("applies adaptive thinking defaults to Anthropic 4.6 models", () => {
-    const result = getProviderOptionsForModel("anthropic/claude-sonnet-4.6");
-
-    expect(result).toEqual({
-      anthropic: {
-        effort: "medium",
-        thinking: { type: "adaptive" },
-      },
-    });
-  });
-
-  test("applies adaptive thinking defaults to Anthropic 4.7 models", () => {
-    const result = getProviderOptionsForModel("anthropic/claude-opus-4.7");
-
-    expect(result).toEqual({
-      anthropic: {
-        effort: "medium",
-        thinking: { type: "adaptive" },
-      },
-    });
-  });
-
-  test("preserves legacy thinking defaults for older Anthropic models", () => {
-    const result = getProviderOptionsForModel("anthropic/claude-opus-4.5");
-
-    expect(result).toEqual({
-      anthropic: {
-        thinking: {
-          type: "enabled",
-          budgetTokens: 8000,
-        },
-      },
-    });
-  });
-
   test("merges OpenAI defaults with custom variant options", () => {
     const result = getProviderOptionsForModel("openai/gpt-5", {
       openai: {
@@ -164,28 +133,21 @@ describe("mergeProviderOptions", () => {
 
   test("deep merges nested provider options", () => {
     const defaults: ProviderOptionsByProvider = {
-      anthropic: {
-        thinking: {
-          type: "enabled",
-          budgetTokens: 8000,
-        },
+      openai: {
+        reasoningEffort: "high",
       },
     };
 
     const overrides: ProviderOptionsByProvider = {
-      anthropic: {
-        thinking: {
-          budgetTokens: 4000,
-        },
+      openai: {
+        store: false,
       },
     };
 
     expect(mergeProviderOptions(defaults, overrides)).toEqual({
-      anthropic: {
-        thinking: {
-          type: "enabled",
-          budgetTokens: 4000,
-        },
+      openai: {
+        reasoningEffort: "high",
+        store: false,
       },
     });
   });
@@ -198,17 +160,15 @@ describe("mergeProviderOptions", () => {
     };
 
     const overrides: ProviderOptionsByProvider = {
-      anthropic: {
-        effort: "low",
+      openai: {
+        reasoningEffort: "low",
       },
     };
 
     expect(mergeProviderOptions(defaults, overrides)).toEqual({
       openai: {
         store: false,
-      },
-      anthropic: {
-        effort: "low",
+        reasoningEffort: "low",
       },
     });
   });

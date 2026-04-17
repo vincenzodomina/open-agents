@@ -6,6 +6,10 @@ import type { ToolNeedsApprovalFunction } from "./utils";
 
 const sandboxRegistry = new Map<string, Record<string, unknown>>();
 
+mock.module("../models", () => ({
+  gateway: (modelId: string) => ({ modelId, provider: "openai" }),
+}));
+
 mock.module("ai", () => {
   class MockToolLoopAgent {
     constructor(_config: unknown) {}
@@ -17,11 +21,8 @@ mock.module("ai", () => {
     }
   }
 
-  const gateway = (modelId: string) => ({ modelId });
-
   return {
     tool: <T extends Record<string, unknown>>(definition: T) => definition,
-    gateway,
     stepCountIs: (count: number) => ({ count }),
     ToolLoopAgent: MockToolLoopAgent,
     getToolName: (part: { toolName?: string; type?: string }) => {

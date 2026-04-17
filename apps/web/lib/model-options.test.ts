@@ -70,18 +70,18 @@ describe("model options", () => {
   test("buildModelOptions strips provider prefix for shortLabel", () => {
     const models: AvailableModel[] = [
       createModel({
-        id: "anthropic/claude-opus-4.6",
-        name: "Claude Opus 4.6",
+        id: "openai/gpt-5.4",
+        name: "GPT-5.4",
       }),
     ];
 
     const options = buildModelOptions(models, []);
 
-    expect(options[0].shortLabel).toBe("Opus 4.6");
-    expect(options[0].label).toBe("Claude Opus 4.6");
+    expect(options[0].shortLabel).toBe("GPT-5.4");
+    expect(options[0].label).toBe("GPT-5.4");
   });
 
-  test("groupByProvider puts anthropic and openai first, preserves insertion order", () => {
+  test("groupByProvider puts openai first, preserves insertion order", () => {
     const options = [
       {
         id: "google/gemini-2.5",
@@ -98,31 +98,27 @@ describe("model options", () => {
         provider: "openai",
       },
       {
-        id: "variant:opus-custom",
-        label: "Opus Custom",
-        shortLabel: "Opus Custom",
+        id: "variant:gpt-custom",
+        label: "GPT Custom",
+        shortLabel: "GPT Custom",
         isVariant: true,
-        provider: "anthropic",
+        provider: "openai",
       },
       {
-        id: "anthropic/claude-opus-4.6",
-        label: "Claude Opus 4.6",
-        shortLabel: "Opus 4.6",
+        id: "openai/gpt-5.4",
+        label: "GPT-5.4",
+        shortLabel: "GPT-5.4",
         isVariant: false,
-        provider: "anthropic",
+        provider: "openai",
       },
     ];
 
     const groups = groupByProvider(options);
 
-    expect(groups.map((g) => g.provider)).toEqual([
-      "anthropic",
-      "openai",
-      "google",
-    ]);
-    // Within anthropic: preserves original order (variant first, base second)
-    expect(groups[0].options[0].id).toBe("variant:opus-custom");
-    expect(groups[0].options[1].id).toBe("anthropic/claude-opus-4.6");
+    expect(groups.map((g) => g.provider)).toEqual(["openai", "google"]);
+    expect(groups[0].options[0].id).toBe("openai/gpt-5");
+    expect(groups[0].options[1].id).toBe("variant:gpt-custom");
+    expect(groups[0].options[2].id).toBe("openai/gpt-5.4");
   });
 
   test("withMissingModelOption appends missing variant option", () => {
@@ -177,7 +173,7 @@ describe("model options", () => {
         label: "GPT-5.4",
         shortLabel: "GPT-5.4",
         isVariant: false,
-        provider: "anthropic",
+        provider: "openai",
       },
       {
         id: "openai/gpt-5",

@@ -56,6 +56,10 @@ mock.module("@/lib/supabase/admin", () => ({
   }),
 }));
 
+mock.module("@open-harness/agent", () => ({
+  gateway: (modelId: string) => ({ modelId }),
+}));
+
 const prContentModulePromise = import("./pr-content");
 
 describe("pr-content", () => {

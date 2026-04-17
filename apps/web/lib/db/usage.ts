@@ -33,18 +33,20 @@ export async function recordUsage(
   const modelId =
     typeof data.model === "string" ? data.model : data.model.modelId;
 
-  const { error } = await getSupabaseAdmin().from("usage_events").insert({
-    id: nanoid(),
-    user_id: userId,
-    source: data.source,
-    agent_type: data.agentType ?? "main",
-    provider: provider ?? null,
-    model_id: modelId ?? null,
-    input_tokens: data.usage.inputTokens,
-    cached_input_tokens: data.usage.cachedInputTokens,
-    output_tokens: data.usage.outputTokens,
-    tool_call_count: toolCallCount,
-  });
+  const { error } = await getSupabaseAdmin()
+    .from("usage_events")
+    .insert({
+      id: nanoid(),
+      user_id: userId,
+      source: data.source,
+      agent_type: data.agentType ?? "main",
+      provider: provider ?? null,
+      model_id: modelId ?? null,
+      input_tokens: data.usage.inputTokens,
+      cached_input_tokens: data.usage.cachedInputTokens,
+      output_tokens: data.usage.outputTokens,
+      tool_call_count: toolCallCount,
+    });
 
   if (error) {
     throw error;

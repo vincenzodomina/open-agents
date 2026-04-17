@@ -217,7 +217,8 @@ export async function deleteInstallationsNotInList(
   const keep = new Set(installationIds);
   const toRemove = (rows ?? [])
     .filter(
-      (r) => !keep.has(Number((r as { installation_id: number }).installation_id)),
+      (r) =>
+        !keep.has(Number((r as { installation_id: number }).installation_id)),
     )
     .map((r) => (r as { id: string }).id);
 

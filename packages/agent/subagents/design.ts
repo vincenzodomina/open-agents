@@ -1,5 +1,6 @@
 import type { LanguageModel } from "ai";
-import { gateway, stepCountIs, ToolLoopAgent } from "ai";
+import { stepCountIs, ToolLoopAgent } from "ai";
+import { gateway } from "../models";
 import { z } from "zod";
 import { bashTool } from "../tools/bash";
 import { globTool } from "../tools/glob";
@@ -89,7 +90,7 @@ const callOptionsSchema = z.object({
 export type DesignCallOptions = z.infer<typeof callOptionsSchema>;
 
 export const designSubagent = new ToolLoopAgent({
-  model: gateway("anthropic/claude-opus-4.6"),
+  model: gateway("openai/gpt-5.4"),
   instructions: DESIGN_SYSTEM_PROMPT,
   tools: {
     read: readFileTool(),

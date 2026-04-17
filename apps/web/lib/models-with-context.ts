@@ -1,41 +1,17 @@
 import "server-only";
 
-import { gateway } from "ai";
 import { z } from "zod";
 import { filterDisabledModels } from "./model-availability";
 import type {
   AvailableModel,
   AvailableModelCost,
   AvailableModelCostTier,
-  GatewayAvailableModel,
 } from "./models";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const MODELS_DEV_TIMEOUT_MS = 750;
 
-type GatewayModel = GatewayAvailableModel;
-
-interface ModelsDevMetadata {
-  contextWindow?: number;
-  cost?: AvailableModelCost;
-}
-
 const recordSchema = z.object({}).catchall(z.unknown());
-
-const gatewayModelSchema = z
-  .object({
-    id: z.string(),
-    name: z.string(),
-    description: z.string().nullish(),
-    modelType: z.string().nullish(),
-  })
-  .passthrough();
-
-const gatewayErrorSchema = z.object({
-  response: z.object({
-    models: z.array(z.unknown()),
-  }),
-});
 
 const modelsDevLimitSchema = z
   .object({
@@ -50,20 +26,6 @@ const modelsDevCostTierSchema = z
     cache_read: z.number().finite().optional(),
   })
   .passthrough();
-
-function getModelsFromGatewayError(error: unknown): GatewayModel[] | undefined {
-  const parsed = gatewayErrorSchema.safeParse(error);
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  const models = parsed.data.response.models.flatMap((model) => {
-    const parsedModel = gatewayModelSchema.safeParse(model);
-    return parsedModel.success ? [parsedModel.data] : [];
-  });
-
-  return models.length > 0 ? models : undefined;
-}
 
 function getModelsDevCostTier(
   value: unknown,
@@ -104,59 +66,92 @@ function getModelsDevCost(value: unknown): AvailableModelCost | undefined {
   };
 }
 
-function getModelsDevMetadataMap(
-  data: unknown,
-): Map<string, ModelsDevMetadata> {
-  const metadataMap = new Map<string, ModelsDevMetadata>();
-  const providers = recordSchema.safeParse(data);
-  if (!providers.success) {
-    return metadataMap;
+function isTextLanguageModel(modelData: Record<string, unknown>): boolean {
+  const modalities = modelData.modalities;
+  if (
+    !modalities ||
+    typeof modalities !== "object" ||
+    Array.isArray(modalities)
+  ) {
+    return true;
   }
-
-  for (const [providerKey, providerValue] of Object.entries(providers.data)) {
-    const provider = recordSchema.safeParse(providerValue);
-    if (!provider.success) {
-      continue;
-    }
-
-    const models = recordSchema.safeParse(provider.data.models);
-    if (!models.success) {
-      continue;
-    }
-
-    for (const [modelKey, modelValue] of Object.entries(models.data)) {
-      const model = recordSchema.safeParse(modelValue);
-      if (!model.success) {
-        continue;
-      }
-
-      const parsedId = z.string().safeParse(model.data.id);
-      const rawId = parsedId.success ? parsedId.data : modelKey;
-      const modelId = rawId.includes("/") ? rawId : `${providerKey}/${rawId}`;
-
-      const parsedLimit = modelsDevLimitSchema.safeParse(model.data.limit);
-      const contextWindow = parsedLimit.success
-        ? parsedLimit.data.context
-        : undefined;
-      const cost = getModelsDevCost(model.data.cost);
-
-      if (contextWindow === undefined && cost === undefined) {
-        continue;
-      }
-
-      metadataMap.set(modelId, {
-        contextWindow,
-        cost,
-      });
-    }
+  const output = (modalities as { output?: unknown }).output;
+  if (!Array.isArray(output)) {
+    return true;
   }
-
-  return metadataMap;
+  return output.includes("text");
 }
 
-async function fetchModelsDevMetadataMap(): Promise<
-  Map<string, ModelsDevMetadata>
-> {
+/**
+ * Builds the catalog of OpenAI language models from models.dev (`openai` provider only).
+ * Cost and context window come from the same payload — no AI Gateway list call.
+ */
+function parseOpenAiLanguageModelsFromModelsDev(
+  data: unknown,
+): AvailableModel[] {
+  const result: AvailableModel[] = [];
+  const root = recordSchema.safeParse(data);
+  if (!root.success) {
+    return result;
+  }
+
+  const openaiBlock = recordSchema.safeParse(root.data.openai);
+  if (!openaiBlock.success) {
+    return result;
+  }
+
+  const modelsBlock = recordSchema.safeParse(openaiBlock.data.models);
+  if (!modelsBlock.success) {
+    return result;
+  }
+
+  for (const [modelKey, modelValue] of Object.entries(modelsBlock.data)) {
+    const model = recordSchema.safeParse(modelValue);
+    if (!model.success) {
+      continue;
+    }
+
+    if (!isTextLanguageModel(model.data)) {
+      continue;
+    }
+
+    const parsedId = z.string().safeParse(model.data.id);
+    const rawId = parsedId.success ? parsedId.data : modelKey;
+    const id = rawId.includes("/") ? rawId : `openai/${rawId}`;
+
+    const nameParsed = z.string().safeParse(model.data.name);
+    const name = nameParsed.success ? nameParsed.data : modelKey;
+
+    const descriptionParsed = z
+      .union([z.string(), z.null()])
+      .safeParse(model.data.description);
+
+    const parsedLimit = modelsDevLimitSchema.safeParse(model.data.limit);
+    const contextWindow = parsedLimit.success
+      ? parsedLimit.data.context
+      : undefined;
+    const cost = getModelsDevCost(model.data.cost);
+
+    const entry: AvailableModel = {
+      id,
+      name,
+      ...(descriptionParsed.success
+        ? { description: descriptionParsed.data }
+        : {}),
+      modelType: "language",
+      ...(typeof contextWindow === "number" && contextWindow > 0
+        ? { context_window: contextWindow }
+        : {}),
+      ...(cost ? { cost } : {}),
+    };
+    result.push(entry);
+  }
+
+  result.sort((a, b) => a.id.localeCompare(b.id));
+  return result;
+}
+
+async function fetchModelsDevJson(): Promise<unknown> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), MODELS_DEV_TIMEOUT_MS);
 
@@ -165,74 +160,29 @@ async function fetchModelsDevMetadataMap(): Promise<
       signal: controller.signal,
     });
     if (!response.ok) {
-      return new Map();
+      return null;
     }
-    const data: unknown = await response.json();
-    return getModelsDevMetadataMap(data);
+    return (await response.json()) as unknown;
   } catch {
-    return new Map();
+    return null;
   } finally {
     clearTimeout(timeoutId);
-  }
-}
-
-function addModelsDevMetadata(
-  model: GatewayModel,
-  metadataMap: Map<string, ModelsDevMetadata>,
-): AvailableModel {
-  const metadata = metadataMap.get(model.id);
-  if (!metadata) {
-    return model;
-  }
-
-  const nextModel: AvailableModel = { ...model };
-
-  if (
-    typeof metadata.contextWindow === "number" &&
-    metadata.contextWindow > 0
-  ) {
-    nextModel.context_window = metadata.contextWindow;
-  }
-
-  if (metadata.cost) {
-    nextModel.cost = metadata.cost;
-  }
-
-  return nextModel;
-}
-
-async function fetchGatewayModels(): Promise<GatewayModel[]> {
-  try {
-    const { models } = await gateway.getAvailableModels();
-    return models;
-  } catch (error) {
-    const models = getModelsFromGatewayError(error);
-    if (models) {
-      return models;
-    }
-
-    throw error;
   }
 }
 
 export async function fetchAvailableLanguageModels(): Promise<
   AvailableModel[]
 > {
-  const models = await fetchGatewayModels();
-  return filterDisabledModels(
-    models.filter((model) => model.modelType === "language"),
-  );
+  const data = await fetchModelsDevJson();
+  if (data === null) {
+    return [];
+  }
+  const models = parseOpenAiLanguageModelsFromModelsDev(data);
+  return filterDisabledModels(models);
 }
 
 export async function fetchAvailableLanguageModelsWithContext(): Promise<
   AvailableModel[]
 > {
-  const [models, modelsDevMetadataMap] = await Promise.all([
-    fetchAvailableLanguageModels(),
-    fetchModelsDevMetadataMap(),
-  ]);
-
-  return models.map((model) =>
-    addModelsDevMetadata(model, modelsDevMetadataMap),
-  );
+  return fetchAvailableLanguageModels();
 }

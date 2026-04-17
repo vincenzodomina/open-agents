@@ -10,8 +10,11 @@ let generateTextResult: { text: string } | Error = {
   text: "Generated session title",
 };
 
+mock.module("@open-harness/agent", () => ({
+  gateway: (modelId: string) => ({ modelId }),
+}));
+
 mock.module("ai", () => ({
-  gateway: (modelId: string) => modelId,
   generateText: async (input: { prompt: string }) => {
     generateTextCalls.push(input);
 

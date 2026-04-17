@@ -1,4 +1,10 @@
-export { type GatewayConfig, type GatewayOptions, gateway } from "./models";
+export {
+  type ModelOptions,
+  type OpenAIAppModelId,
+  gateway,
+  mergeProviderOptions,
+  type ProviderOptionsByProvider,
+} from "./models";
 export type {
   AgentModelSelection,
   AgentSandboxContext,

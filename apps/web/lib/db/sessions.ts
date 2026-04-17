@@ -84,7 +84,9 @@ export async function createSession(data: NewSession) {
   if (!inserted) {
     throw new Error("Failed to create session");
   }
-  return normalizeSessionRecord(mapSessionRow(inserted as Record<string, unknown>));
+  return normalizeSessionRecord(
+    mapSessionRow(inserted as Record<string, unknown>),
+  );
 }
 
 interface CreateSessionWithInitialChatInput {
@@ -339,7 +341,9 @@ export async function getUsedSessionTitles(
   if (error) {
     throw error;
   }
-  return new Set((data ?? []).map((r) => String((r as { title: string }).title)));
+  return new Set(
+    (data ?? []).map((r) => String((r as { title: string }).title)),
+  );
 }
 
 export async function updateSession(
@@ -644,7 +648,7 @@ export async function forkChatThroughMessage(
     id: input.forkedChat.id,
     session_id: input.forkedChat.sessionId,
     title: input.forkedChat.title,
-    model_id: input.forkedChat.modelId ?? "anthropic/claude-haiku-4.5",
+    model_id: input.forkedChat.modelId ?? "openai/gpt-5-mini",
     last_assistant_message_at: throughMessage.createdAt.toISOString(),
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
@@ -819,7 +823,9 @@ export async function getChatMessages(chatId: string) {
   if (error) {
     throw error;
   }
-  return (data ?? []).map((r) => mapChatMessageRow(r as Record<string, unknown>));
+  return (data ?? []).map((r) =>
+    mapChatMessageRow(r as Record<string, unknown>),
+  );
 }
 
 type DeleteChatMessageAndFollowingResult =

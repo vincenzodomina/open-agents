@@ -25,4 +25,6 @@ if (sqlFiles.length === 0) {
   process.exit(1);
 }
 
-console.log(`✓ Found ${sqlFiles.length} SQL migration(s) under supabase/migrations`);
+console.log(
+  `✓ Found ${sqlFiles.length} SQL migration(s) under supabase/migrations`,
+);

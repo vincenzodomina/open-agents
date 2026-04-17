@@ -1,8 +1,14 @@
-import { describe, expect, test } from "bun:test";
-import {
-  GitHubInstallationsSyncError,
-  isGitHubInstallationsAuthError,
-} from "./installations-sync";
+import { describe, expect, mock, test } from "bun:test";
+
+mock.module("@/lib/supabase/admin", () => ({
+  getSupabaseAdmin: () => ({
+    rpc: mock(() => Promise.resolve({ data: null, error: null })),
+    from: mock(() => ({})),
+  }),
+}));
+
+const { GitHubInstallationsSyncError, isGitHubInstallationsAuthError } =
+  await import("./installations-sync");
 
 describe("isGitHubInstallationsAuthError", () => {
   test("treats 401 responses as auth failures", () => {

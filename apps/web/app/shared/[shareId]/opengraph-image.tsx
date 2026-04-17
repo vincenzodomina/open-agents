@@ -52,10 +52,7 @@ export default async function Image({
       .select("username, name, avatar_url")
       .eq("id", session.userId)
       .maybeSingle(),
-    sb
-      .from("workflow_runs")
-      .select("total_duration_ms")
-      .eq("chat_id", chat.id),
+    sb.from("workflow_runs").select("total_duration_ms").eq("chat_id", chat.id),
     sb
       .from("chat_messages")
       .select("*", { count: "exact", head: true })

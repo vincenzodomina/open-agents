@@ -8,7 +8,7 @@ let currentSession: {
 };
 
 const preferencesState = {
-  defaultModelId: "anthropic/claude-haiku-4.5",
+  defaultModelId: "openai/gpt-5.4",
   defaultSubagentModelId: null as string | null,
   defaultSandboxType: "vercel" as const,
   defaultDiffMode: "unified" as const,
@@ -55,7 +55,7 @@ function createJsonRequest(method: "PATCH" | "GET", body?: unknown): Request {
 describe("/api/settings/preferences", () => {
   beforeEach(() => {
     currentSession = { user: { id: "user-1" } };
-    preferencesState.defaultModelId = "anthropic/claude-haiku-4.5";
+    preferencesState.defaultModelId = "openai/gpt-5-mini";
     preferencesState.defaultSubagentModelId = null;
     preferencesState.modelVariants = [];
     preferencesState.enabledModelIds = [];
@@ -88,21 +88,20 @@ describe("/api/settings/preferences", () => {
     expect(body.preferences.globalSkillRefs).toEqual([]);
   });
 
-  test("GET hides Opus defaults for managed trial users", async () => {
+  test("GET preserves Pro defaults for managed trial users", async () => {
     const { GET } = await routeModulePromise;
 
     currentSession = {
       authProvider: "supabase",
       user: { id: "user-1", email: "person@example.com" },
     };
-    preferencesState.defaultModelId = "anthropic/claude-opus-4.6";
-    preferencesState.defaultSubagentModelId =
-      "variant:builtin:claude-opus-4.6-high";
+    preferencesState.defaultModelId = "openai/gpt-5.4-pro";
+    preferencesState.defaultSubagentModelId = "variant:builtin:gpt-5.4-xhigh";
     preferencesState.modelVariants = [
       {
-        id: "variant:user-opus",
-        name: "User Opus",
-        baseModelId: "anthropic/claude-opus-4.6",
+        id: "variant:user-pro",
+        name: "User Pro",
+        baseModelId: "openai/gpt-5.4-pro",
         providerOptions: {},
       },
     ];
@@ -114,9 +113,18 @@ describe("/api/settings/preferences", () => {
       preferences: typeof preferencesState;
     };
 
-    expect(body.preferences.defaultModelId).toBe("openai/gpt-5.4");
-    expect(body.preferences.defaultSubagentModelId).toBe("openai/gpt-5.4");
-    expect(body.preferences.modelVariants).toEqual([]);
+    expect(body.preferences.defaultModelId).toBe("openai/gpt-5.4-pro");
+    expect(body.preferences.defaultSubagentModelId).toBe(
+      "variant:builtin:gpt-5.4-xhigh",
+    );
+    expect(body.preferences.modelVariants).toEqual([
+      {
+        id: "variant:user-pro",
+        name: "User Pro",
+        baseModelId: "openai/gpt-5.4-pro",
+        providerOptions: {},
+      },
+    ]);
   });
 
   test("PATCH rejects invalid sandbox types", async () => {

@@ -3,7 +3,7 @@ import { stepCountIs, ToolLoopAgent, type ToolSet } from "ai";
 import { z } from "zod";
 import { addCacheControl } from "./context-management";
 import {
-  type GatewayModelId,
+  type OpenAIAppModelId,
   gateway,
   type ProviderOptionsByProvider,
 } from "./models";
@@ -25,11 +25,11 @@ import {
 } from "./tools";
 
 export interface AgentModelSelection {
-  id: GatewayModelId;
+  id: OpenAIAppModelId;
   providerOptionsOverrides?: ProviderOptionsByProvider;
 }
 
-export type OpenHarnessAgentModelInput = GatewayModelId | AgentModelSelection;
+export type OpenHarnessAgentModelInput = OpenAIAppModelId | AgentModelSelection;
 
 export interface AgentSandboxContext {
   state: SandboxState;
@@ -48,12 +48,12 @@ const callOptionsSchema = z.object({
 
 export type OpenHarnessAgentCallOptions = z.infer<typeof callOptionsSchema>;
 
-export const defaultModelLabel = "anthropic/claude-opus-4.6" as const;
+export const defaultModelLabel = "openai/gpt-5.4" as const;
 export const defaultModel = gateway(defaultModelLabel);
 
 function normalizeAgentModelSelection(
   selection: OpenHarnessAgentModelInput | undefined,
-  fallbackId: GatewayModelId,
+  fallbackId: OpenAIAppModelId,
 ): AgentModelSelection {
   if (!selection) {
     return { id: fallbackId };
