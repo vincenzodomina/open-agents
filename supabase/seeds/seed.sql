@@ -131,8 +131,8 @@ INSERT INTO
 VALUES
     (
         'eb50450e-5e8f-43cb-97b4-336f1cce420e',
-        'vercel',
-        'local-dev-bypass',
+        'supabase',
+        'eb50450e-5e8f-43cb-97b4-336f1cce420e',
         'dev-bypass-placeholder-token',
         NULL,
         NULL,

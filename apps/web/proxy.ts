@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
 function wantsSharedMarkdown(acceptHeader: string | null): boolean {
   if (!acceptHeader) {
@@ -9,9 +10,17 @@ function wantsSharedMarkdown(acceptHeader: string | null): boolean {
   return accept.includes("text/markdown") || accept.includes("text/plain");
 }
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
+  const hasSupabase =
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  const sessionResponse = hasSupabase
+    ? await updateSession(request)
+    : NextResponse.next({ request });
+
   if (request.method !== "GET") {
-    return NextResponse.next();
+    return sessionResponse;
   }
 
   const pathname = request.nextUrl.pathname;
@@ -24,12 +33,18 @@ export function proxy(request: NextRequest) {
   ) {
     const rewrittenUrl = request.nextUrl.clone();
     rewrittenUrl.pathname = `/api/shared/${segments[1]}/markdown`;
-    return NextResponse.rewrite(rewrittenUrl);
+    const rewriteResponse = NextResponse.rewrite(rewrittenUrl);
+    sessionResponse.cookies.getAll().forEach((cookie) => {
+      rewriteResponse.cookies.set(cookie);
+    });
+    return rewriteResponse;
   }
 
-  return NextResponse.next();
+  return sessionResponse;
 }
 
 export const config = {
-  matcher: ["/shared/:path*"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|webmanifest)$).*)",
+  ],
 };

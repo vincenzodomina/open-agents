@@ -4,6 +4,12 @@ import { SESSION_COOKIE_NAME } from "@/lib/session/constants";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { HomePage } from "./home-page";
 
+function hasSupabaseAuthCookie(
+  names: { name: string; value: string }[],
+): boolean {
+  return names.some((c) => /^sb-[^-]+-auth-token$/.test(c.name));
+}
+
 export default async function Home() {
   const session = await getServerSession();
   if (session?.user) {
@@ -11,7 +17,10 @@ export default async function Home() {
   }
 
   const store = await cookies();
-  const hasSessionCookie = Boolean(store.get(SESSION_COOKIE_NAME)?.value);
+  const all = store.getAll();
+  const hasSessionCookie =
+    Boolean(store.get(SESSION_COOKIE_NAME)?.value) ||
+    hasSupabaseAuthCookie(all);
 
   return <HomePage hasSessionCookie={hasSessionCookie} lastRepo={null} />;
 }

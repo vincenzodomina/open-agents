@@ -65,9 +65,11 @@ export function isManagedTemplateTrialUser(
   session: Pick<Session, "authProvider" | "user"> | null | undefined,
   url: string | URL,
 ) {
+  const auth = session?.authProvider;
+  const isTrialEligibleAuth = auth === "vercel" || auth === "supabase";
   return (
-    session?.authProvider === "vercel" &&
+    isTrialEligibleAuth &&
     isManagedTemplateDeployment(url) &&
-    !hasAllowedManagedTemplateEmail(session.user.email)
+    !hasAllowedManagedTemplateEmail(session?.user.email)
   );
 }

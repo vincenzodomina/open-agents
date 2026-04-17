@@ -2,14 +2,22 @@ import { type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { SESSION_COOKIE_NAME } from "@/lib/session/constants";
+import { createClient } from "@/lib/supabase/server";
 import { revokeVercelToken } from "@/lib/vercel/oauth";
 import { getUserVercelToken } from "@/lib/vercel/token";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const session = await getServerSession();
 
+  const hasSupabase =
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (hasSupabase) {
+    const supabase = await createClient();
+    await supabase.auth.signOut();
+  }
+
   if (session?.user?.id) {
-    // Revoke Vercel token if signed in with Vercel
     if (session.authProvider === "vercel") {
       try {
         const clientId = process.env.NEXT_PUBLIC_VERCEL_APP_CLIENT_ID;

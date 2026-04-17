@@ -16,18 +16,21 @@ export async function userExists(userId: string): Promise<boolean> {
   return result.length > 0;
 }
 
-export async function upsertUser(userData: {
-  provider: "github" | "vercel";
-  externalId: string;
-  accessToken: string;
-  refreshToken?: string;
-  scope?: string;
-  username: string;
-  email?: string;
-  name?: string;
-  avatarUrl?: string;
-  tokenExpiresAt?: Date;
-}): Promise<string> {
+export async function upsertUser(
+  userData: {
+    provider: "github" | "vercel" | "supabase";
+    externalId: string;
+    accessToken: string;
+    refreshToken?: string;
+    scope?: string;
+    username: string;
+    email?: string;
+    name?: string;
+    avatarUrl?: string;
+    tokenExpiresAt?: Date;
+  },
+  options?: { fixedUserId?: string },
+): Promise<string> {
   const {
     provider,
     externalId,
@@ -62,7 +65,7 @@ export async function upsertUser(userData: {
     return existingUser[0].id;
   }
 
-  const userId = nanoid();
+  const userId = options?.fixedUserId ?? nanoid();
   const now = new Date();
   await db.insert(users).values({
     id: userId,
