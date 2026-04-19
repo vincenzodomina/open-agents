@@ -1,6 +1,12 @@
 # Open Agents
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?project-name=open-agents&repository-name=open-agents&repository-url=https%3A%2F%2Fgithub.com%2Fvercel-labs%2Fopen-agents&demo-title=Open+Agents&demo-description=Open-source+reference+app+for+building+and+running+background+coding+agents+on+Vercel.&demo-url=https%3A%2F%2Fopen-agents.dev%2F&env=POSTGRES_URL%2CJWE_SECRET%2CENCRYPTION_KEY%2CNEXT_PUBLIC_VERCEL_APP_CLIENT_ID%2CVERCEL_APP_CLIENT_SECRET%2CNEXT_PUBLIC_GITHUB_CLIENT_ID%2CGITHUB_CLIENT_SECRET%2CGITHUB_APP_ID%2CGITHUB_APP_PRIVATE_KEY%2CNEXT_PUBLIC_GITHUB_APP_SLUG%2CGITHUB_WEBHOOK_SECRET&envDescription=Neon+can+provide+POSTGRES_URL+automatically.+Generate+JWE_SECRET+and+ENCRYPTION_KEY+yourself%2C+then+add+your+Vercel+OAuth+and+GitHub+App+credentials+for+a+full+deployment.&products=%255B%257B%2522type%2522%253A%2522integration%2522%252C%2522protocol%2522%253A%2522storage%2522%252C%2522productSlug%2522%253A%2522neon%2522%252C%2522integrationSlug%2522%253A%2522neon%2522%257D%252C%257B%2522type%2522%253A%2522integration%2522%252C%2522protocol%2522%253A%2522storage%2522%252C%2522productSlug%2522%253A%2522upstash-kv%2522%252C%2522integrationSlug%2522%253A%2522upstash%2522%257D%255D&skippable-integrations=1)
+Summary of changes in **this fork** versus upstream [`vercel-labs/open-agents`](https://github.com/vercel-labs/open-agents):
+
+- **Supabase database** — Wired the app to Supabase Postgres with SQL migrations under `supabase/migrations/`, replacing the prior Drizzle-centric setup for core persistence.
+- **Supabase Auth** — Added Supabase-backed authentication and seed data; removed the Vercel OAuth–based login path from the hosted UI.
+- **Fewer Vercel product ties** — Removed Vercel login/projects UI affordances, dropped use of the Vercel AI gateway for model routing, and removed the leaderboard feature.
+- **Security and types** — Added Row Level Security policies and regenerate Supabase TypeScript types (`database.types.ts`) for the new schema.
+- **API cleanup** — Removed the Vercel project env-vars API route and its tests.
 
 Open Agents is an open-source reference app for building and running background coding agents on Vercel. It includes the web UI, the agent runtime, sandbox orchestration, and the GitHub integration needed to go from prompt to code changes without keeping your laptop involved.
 
@@ -51,28 +57,37 @@ A few details that matter for understanding the current implementation:
 
 ## What is actually required today
 
-These requirements are based on the current `apps/web` codepath, not older setup scripts.
+These requirements are based on the current `apps/web` codepath and `apps/web/.env.example`.
 
 ### Minimum runtime
 
-These are the hard requirements for the app to boot and load server state:
+Supabase connects the Next.js app to Postgres (schema lives in `supabase/migrations/`):
 
 ```env
-POSTGRES_URL=
-JWE_SECRET=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
 ```
 
-### Required to sign in and actually use the hosted app
+### Agent runs
 
-A useful deployment also needs token encryption plus Vercel OAuth sign-in:
+The coding agent stack expects direct OpenAI API access:
+
+```env
+OPENAI_API_KEY=
+```
+
+### Stored secrets (GitHub tokens, etc.)
+
+Anything that encrypts persisted credentials needs:
 
 ```env
 ENCRYPTION_KEY=
-NEXT_PUBLIC_VERCEL_APP_CLIENT_ID=
-VERCEL_APP_CLIENT_SECRET=
 ```
 
-Without these, the site can deploy, but Vercel sign-in will not work.
+### Supabase Auth (sign-in)
+
+Configure **Authentication → URL configuration** in the Supabase dashboard: set the site URL to your deployment origin and add redirect URLs `https://YOUR_DOMAIN/auth/callback` and `http://localhost:3000/auth/callback` for local development. The three Supabase env vars above must match your project.
 
 ### Required for GitHub repo access, pushes, and PRs
 
@@ -103,43 +118,31 @@ ELEVENLABS_API_KEY=
 - `VERCEL_SANDBOX_BASE_SNAPSHOT_ID`: override the default sandbox snapshot.
 - `ELEVENLABS_API_KEY`: voice transcription.
 
-## Deploy your own copy on Vercel
-
-Recommended path: deploy this repo at the repo root on Vercel, then layer on auth and GitHub integration.
+## Deploy your own copy
+Recommended path: deploy this repo at the repo root, then configure Supabase and GitHub.
 
 1. Fork this repo.
-2. Create a PostgreSQL database and copy its connection string.
-3. Generate these secrets:
+2. Create a Supabase project. Apply the SQL in `supabase/migrations/` to your database (Supabase SQL editor or `supabase db push` against your linked project).
+3. Generate an encryption secret for stored tokens:
 
    ```bash
-   openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\n'   # JWE_SECRET
-   openssl rand -hex 32                                    # ENCRYPTION_KEY
+   openssl rand -hex 32   # ENCRYPTION_KEY (32-byte hex)
    ```
 
-4. Import the repo into Vercel.
+4. Import the repo.
 5. Add at least these env vars in Vercel project settings:
 
    ```env
-   POSTGRES_URL=
-   JWE_SECRET=
+   NEXT_PUBLIC_SUPABASE_URL=
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=
+   SUPABASE_SERVICE_ROLE_KEY=
    ENCRYPTION_KEY=
+   OPENAI_API_KEY=
    ```
 
 6. Deploy once to get a stable production URL.
-7. Create a Vercel OAuth app with callback URL:
-
-   ```text
-   https://YOUR_DOMAIN/api/auth/vercel/callback
-   ```
-
-8. Add these env vars and redeploy:
-
-   ```env
-   NEXT_PUBLIC_VERCEL_APP_CLIENT_ID=
-   VERCEL_APP_CLIENT_SECRET=
-   ```
-
-9. If you want the full GitHub-enabled coding-agent flow, create a GitHub App using:
+7. In the Supabase dashboard, set Authentication URL configuration (site URL + redirect URLs including `https://YOUR_DOMAIN/auth/callback`).
+8. If you want the full GitHub-enabled coding-agent flow, create a GitHub App using:
 
    - Homepage URL: `https://YOUR_DOMAIN`
    - Callback URL: `https://YOUR_DOMAIN/api/github/app/callback`
@@ -150,8 +153,8 @@ Recommended path: deploy this repo at the repo root on Vercel, then layer on aut
    - use the GitHub App's Client ID and Client Secret for `NEXT_PUBLIC_GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`
    - make the app public if you want org installs to work cleanly
 
-10. Add the GitHub App env vars and redeploy.
-11. Optionally add Redis/KV and the canonical production URL vars.
+9. Add the GitHub App env vars and redeploy.
+10. Optionally add Redis/KV and the canonical production URL vars.
 
 ## Local setup
 
@@ -167,37 +170,18 @@ Recommended path: deploy this repo at the repo root on Vercel, then layer on aut
    cp apps/web/.env.example apps/web/.env
    ```
 
-3. Fill in the required values in `apps/web/.env`.
+3. Fill in the required values in `apps/web/.env`. For a local database, run `supabase start` from the repo root and apply migrations, or point the Supabase env vars at a dev project.
 4. Start the app:
 
    ```bash
    bun run web
    ```
 
-If you already have a linked Vercel project, you can still pull env vars locally with `vc env pull`, but setup is now intentionally manual so you can see exactly which values matter.
+## Auth and integration setup
 
-## OAuth and integration setup
+### Supabase Auth
 
-### Vercel OAuth
-
-Create a Vercel OAuth app and use this callback:
-
-```text
-https://YOUR_DOMAIN/api/auth/vercel/callback
-```
-
-For local development, use:
-
-```text
-http://localhost:3000/api/auth/vercel/callback
-```
-
-Then set:
-
-```env
-NEXT_PUBLIC_VERCEL_APP_CLIENT_ID=...
-VERCEL_APP_CLIENT_SECRET=...
-```
+Match the Supabase **Site URL** and **Redirect URLs** to where the app runs (`https://YOUR_DOMAIN` and `https://YOUR_DOMAIN/auth/callback`, plus `http://localhost:3000` / `http://localhost:3000/auth/callback` for local dev). Keys come from **Project Settings → API**.
 
 ### GitHub App
 
@@ -243,4 +227,5 @@ apps/web         Next.js app, workflows, auth, chat UI
 packages/agent   agent implementation, tools, subagents, skills
 packages/sandbox sandbox abstraction and Vercel sandbox integration
 packages/shared  shared utilities
+supabase/        Postgres migrations and Supabase CLI config
 ```
