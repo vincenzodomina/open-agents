@@ -14,7 +14,7 @@ interface TestSessionRecord {
     | "archived"
     | "failed";
   sandboxState: {
-    type: "vercel";
+    type: "vercel" | "just-bash";
     sandboxName: string;
     expiresAt: number;
   };
@@ -167,6 +167,29 @@ describe("evaluateSandboxLifecycle", () => {
     expect(finalPatch.sandboxExpiresAt).toBeInstanceOf(Date);
     expect(finalPatch).not.toHaveProperty("lastActivityAt");
     expect(finalPatch).not.toHaveProperty("hibernateAfter");
+  });
+
+  test("skips hibernation for just-bash sandboxes", async () => {
+    sessionRecord = {
+      ...makeDueSession(),
+      sandboxState: {
+        type: "just-bash",
+        sandboxName: "session_session-1",
+        expiresAt: Date.now() + 5 * 60_000,
+      },
+    };
+
+    const result = await evaluateSandboxLifecycle(
+      "session-1",
+      "status-check-overdue",
+    );
+
+    expect(result).toEqual({
+      action: "skipped",
+      reason: "just-bash-no-auto-hibernate",
+    });
+    expect(spies.connectSandbox).not.toHaveBeenCalled();
+    expect(spies.stop).not.toHaveBeenCalled();
   });
 
   test("hibernates by stopping the persistent sandbox session", async () => {

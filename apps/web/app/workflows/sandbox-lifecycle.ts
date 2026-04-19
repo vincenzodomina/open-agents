@@ -57,6 +57,9 @@ async function computeLifecycleWakeDecision(
   ) {
     return { shouldContinue: false, reason: "sandbox-not-operable" };
   }
+  if (state.type === "just-bash") {
+    return { shouldContinue: false, reason: "just-bash-no-lifecycle" };
+  }
   if (!(await claimLifecycleLease(sessionId, runId))) {
     return { shouldContinue: false, reason: "run-replaced" };
   }

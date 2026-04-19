@@ -76,6 +76,10 @@ function shouldStartLifecycle(
   ) {
     return false;
   }
+  // Avoid lifecycle workflows for local just-bash — see evaluateSandboxLifecycle.
+  if (session.sandboxState.type === "just-bash") {
+    return false;
+  }
   if (session.lifecycleRunId) {
     return false;
   }
