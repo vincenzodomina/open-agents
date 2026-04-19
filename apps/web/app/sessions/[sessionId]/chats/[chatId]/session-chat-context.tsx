@@ -41,7 +41,7 @@ import {
   useSessionChatRuntime,
 } from "./hooks/use-session-chat-runtime";
 
-const KNOWN_SANDBOX_TYPES = ["vercel"] as const;
+const KNOWN_SANDBOX_TYPES = ["just-bash", "vercel"] as const;
 type KnownSandboxType = (typeof KNOWN_SANDBOX_TYPES)[number];
 
 function asKnownSandboxType(value: unknown): KnownSandboxType | null {
@@ -764,13 +764,15 @@ export function SessionChatProvider({
   }, []);
 
   const preferredSandboxType =
-    asKnownSandboxType(sessionRecord.sandboxState?.type) ?? "vercel";
+    asKnownSandboxType(sessionRecord.sandboxState?.type) ?? "just-bash";
   const supportsDiff =
     sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel";
+    sessionRecord.sandboxState.type === "vercel" ||
+    sessionRecord.sandboxState.type === "just-bash";
   const supportsRepoCreation =
     sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel";
+    sessionRecord.sandboxState.type === "vercel" ||
+    sessionRecord.sandboxState.type === "just-bash";
   const hasRuntimeSandboxState = hasRuntimeSandboxStateValue(
     sessionRecord.sandboxState,
   );

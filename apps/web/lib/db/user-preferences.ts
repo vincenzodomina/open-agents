@@ -30,7 +30,7 @@ export interface UserPreferencesData {
 const DEFAULT_PREFERENCES: UserPreferencesData = {
   defaultModelId: APP_DEFAULT_MODEL_ID,
   defaultSubagentModelId: null,
-  defaultSandboxType: "vercel",
+  defaultSandboxType: "just-bash",
   defaultDiffMode: "unified",
   autoCommitPush: false,
   autoCreatePr: false,
@@ -42,7 +42,7 @@ const DEFAULT_PREFERENCES: UserPreferencesData = {
   enabledModelIds: [],
 };
 
-const VALID_SANDBOX_TYPES: SandboxType[] = ["vercel"];
+const VALID_SANDBOX_TYPES: SandboxType[] = ["just-bash", "vercel"];
 const VALID_DIFF_MODES: DiffMode[] = ["unified", "split"];
 
 function normalizeSandboxType(value: unknown): SandboxType {

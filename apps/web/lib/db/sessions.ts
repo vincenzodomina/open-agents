@@ -37,7 +37,7 @@ export function normalizeLegacySandboxState(
         ? state.sandboxId
         : undefined;
 
-  if (normalizedType !== "vercel") {
+  if (normalizedType !== "vercel" && normalizedType !== "just-bash") {
     return sandboxState as SandboxState;
   }
 

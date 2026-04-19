@@ -133,13 +133,13 @@ export async function PUT(req: Request) {
   }
 
   const { sessionRecord } = sessionContext;
-  const sandboxType = sessionRecord.sandboxState?.type ?? "vercel";
+  const sandboxType = sessionRecord.sandboxState?.type ?? "just-bash";
 
-  if (sandboxType !== "vercel") {
+  if (sandboxType !== "vercel" && sandboxType !== "just-bash") {
     return Response.json(
       {
         error:
-          "Snapshot restoration is only supported for the current cloud sandbox provider",
+          "Snapshot restoration is only supported for cloud (Vercel) or just-bash sandboxes",
       },
       { status: 400 },
     );

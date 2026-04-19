@@ -51,7 +51,10 @@ async function computeLifecycleWakeDecision(
   }
 
   const state = session.sandboxState;
-  if (!canOperateOnSandbox(state) || state.type !== "vercel") {
+  if (
+    !canOperateOnSandbox(state) ||
+    (state.type !== "vercel" && state.type !== "just-bash")
+  ) {
     return { shouldContinue: false, reason: "sandbox-not-operable" };
   }
   if (!(await claimLifecycleLease(sessionId, runId))) {

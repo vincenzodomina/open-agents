@@ -28,12 +28,11 @@ export interface SandboxExecutionContext {
 }
 
 export function isSandboxState(value: unknown): value is SandboxState {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "type" in value &&
-    value.type === "vercel"
-  );
+  if (typeof value !== "object" || value === null || !("type" in value)) {
+    return false;
+  }
+  const t = (value as { type: unknown }).type;
+  return t === "vercel" || t === "just-bash";
 }
 
 export const EVICTION_THRESHOLD_BYTES = 80 * 1024;

@@ -70,7 +70,10 @@ function shouldStartLifecycle(
   if (!canOperateOnSandbox(session.sandboxState)) {
     return false;
   }
-  if (session.sandboxState.type !== "vercel") {
+  if (
+    session.sandboxState.type !== "vercel" &&
+    session.sandboxState.type !== "just-bash"
+  ) {
     return false;
   }
   if (session.lifecycleRunId) {

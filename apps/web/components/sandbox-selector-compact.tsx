@@ -16,7 +16,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 
-export type SandboxType = "vercel";
+export type SandboxType = "just-bash" | "vercel";
 
 interface SandboxOption {
   id: SandboxType;
@@ -26,13 +26,18 @@ interface SandboxOption {
 
 export const SANDBOX_OPTIONS: SandboxOption[] = [
   {
+    id: "just-bash",
+    name: "just-bash",
+    description: "In-process (local dev)",
+  },
+  {
     id: "vercel",
     name: "Vercel",
     description: "Cloud sandbox",
   },
 ];
 
-export const DEFAULT_SANDBOX_TYPE: SandboxType = "vercel";
+export const DEFAULT_SANDBOX_TYPE: SandboxType = "just-bash";
 
 interface SandboxSelectorCompactProps {
   value: SandboxType;

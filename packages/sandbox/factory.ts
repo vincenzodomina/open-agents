@@ -1,5 +1,6 @@
 import type { Sandbox, SandboxHooks } from "./interface";
 import type { SandboxStatus } from "./types";
+import { connectJustBash } from "./just-bash/connect";
 import { connectVercel } from "./vercel/connect";
 import type { VercelState } from "./vercel/state";
 
@@ -10,7 +11,9 @@ export type { SandboxStatus };
  * Unified sandbox state type.
  * Use `type` discriminator to determine which sandbox implementation to use.
  */
-export type SandboxState = { type: "vercel" } & VercelState;
+export type SandboxState =
+  | ({ type: "vercel" } & VercelState)
+  | ({ type: "just-bash" } & VercelState);
 
 /**
  * Base connect options for all sandbox types.
@@ -48,9 +51,14 @@ export interface ConnectOptions {
  * Configuration for connecting to a sandbox.
  */
 export type SandboxConnectConfig = {
-  state: { type: "vercel" } & VercelState;
+  state: SandboxState;
   options?: ConnectOptions;
 };
+
+function toVercelStateFields(state: SandboxState): VercelState {
+  const { type: _type, ...rest } = state;
+  return rest;
+}
 
 /**
  * Connect to a sandbox based on the provided configuration.
@@ -67,9 +75,20 @@ export async function connectSandbox(
 
   if (isNewApi) {
     const config = configOrState as SandboxConnectConfig;
-    return connectVercel(config.state, config.options);
+    return connectForStateType(config.state, config.options);
   }
 
   const state = configOrState as SandboxState;
-  return connectVercel(state, legacyOptions);
+  return connectForStateType(state, legacyOptions);
+}
+
+function connectForStateType(
+  state: SandboxState,
+  options?: ConnectOptions,
+): Promise<Sandbox> {
+  const vercelState = toVercelStateFields(state);
+  if (state.type === "just-bash") {
+    return connectJustBash(vercelState, options);
+  }
+  return connectVercel(vercelState, options);
 }

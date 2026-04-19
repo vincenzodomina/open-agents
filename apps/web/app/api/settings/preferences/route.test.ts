@@ -10,7 +10,7 @@ let currentSession: {
 const preferencesState = {
   defaultModelId: "openai/gpt-5.4",
   defaultSubagentModelId: null as string | null,
-  defaultSandboxType: "vercel" as const,
+  defaultSandboxType: "just-bash" as const,
   defaultDiffMode: "unified" as const,
   autoCommitPush: false,
   autoCreatePr: false,
@@ -84,7 +84,7 @@ describe("/api/settings/preferences", () => {
     expect(response.status).toBe(200);
     expect(body.preferences.autoCommitPush).toBe(false);
     expect(body.preferences.autoCreatePr).toBe(false);
-    expect(body.preferences.defaultSandboxType).toBe("vercel");
+    expect(body.preferences.defaultSandboxType).toBe("just-bash");
     expect(body.preferences.globalSkillRefs).toEqual([]);
   });
 

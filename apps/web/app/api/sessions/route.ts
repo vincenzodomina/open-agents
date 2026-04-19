@@ -26,7 +26,7 @@ interface CreateSessionRequest {
   branch?: string;
   cloneUrl?: string;
   isNewBranch?: boolean;
-  sandboxType?: "vercel";
+  sandboxType?: "just-bash" | "vercel";
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
 }
@@ -177,7 +177,11 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (body.sandboxType && body.sandboxType !== "vercel") {
+  if (
+    body.sandboxType &&
+    body.sandboxType !== "vercel" &&
+    body.sandboxType !== "just-bash"
+  ) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
 
@@ -225,7 +229,7 @@ export async function POST(req: Request) {
     branch,
     cloneUrl,
     isNewBranch,
-    sandboxType = "vercel",
+    sandboxType = "just-bash",
     autoCommitPush,
     autoCreatePr,
   } = body;

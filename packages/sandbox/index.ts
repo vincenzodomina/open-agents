@@ -20,6 +20,9 @@ export {
   type SandboxConnectConfig,
 } from "./factory";
 
+// just-bash (in-process; use sandboxState.type === "just-bash")
+export { connectJustBash, JustBashSandbox } from "./just-bash/index";
+
 // vercel
 export {
   connectVercelSandbox,

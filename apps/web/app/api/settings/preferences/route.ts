@@ -53,7 +53,7 @@ export async function PATCH(req: Request) {
   }
 
   if (body.defaultSandboxType !== undefined) {
-    const validTypes = ["vercel"];
+    const validTypes = ["just-bash", "vercel"];
     if (
       typeof body.defaultSandboxType !== "string" ||
       !validTypes.includes(body.defaultSandboxType)

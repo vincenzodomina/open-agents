@@ -20,6 +20,7 @@ import {
   getNextLifecycleVersion,
 } from "@/lib/sandbox/lifecycle";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
+import type { SandboxType } from "@/components/sandbox-selector-compact";
 import {
   getVercelCliSandboxSetup,
   syncVercelCliAuthToSandbox,
@@ -38,7 +39,7 @@ interface CreateSandboxRequest {
   branch?: string;
   isNewBranch?: boolean;
   sessionId?: string;
-  sandboxType?: "vercel";
+  sandboxType?: SandboxType;
 }
 
 async function syncVercelCliAuthForSandbox(params: {
@@ -80,11 +81,21 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (body.sandboxType && body.sandboxType !== "vercel") {
+  if (
+    body.sandboxType &&
+    body.sandboxType !== "vercel" &&
+    body.sandboxType !== "just-bash"
+  ) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
 
-  const { repoUrl, branch = "main", isNewBranch = false, sessionId } = body;
+  const {
+    repoUrl,
+    branch = "main",
+    isNewBranch = false,
+    sessionId,
+    sandboxType = "just-bash",
+  } = body;
 
   // Get session for auth
   const session = await getServerSession();
@@ -160,7 +171,7 @@ export async function POST(req: Request) {
 
   const sandbox = await connectSandbox({
     state: {
-      type: "vercel",
+      type: sandboxType,
       ...(sandboxName ? { sandboxName } : {}),
       source,
     },
@@ -169,7 +180,9 @@ export async function POST(req: Request) {
       gitUser,
       timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
       ports: DEFAULT_SANDBOX_PORTS,
-      baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
+      ...(sandboxType === "vercel"
+        ? { baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID }
+        : {}),
       persistent: !!sandboxName,
       resume: !!sandboxName,
       createIfMissing: !!sandboxName,
@@ -227,7 +240,7 @@ export async function POST(req: Request) {
     createdAt: Date.now(),
     timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
     currentBranch: repoUrl ? branch : undefined,
-    mode: "vercel",
+    mode: sandboxType,
     timing: { readyMs },
   });
 }
