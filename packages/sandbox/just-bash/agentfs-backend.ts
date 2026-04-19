@@ -3,7 +3,7 @@ import path from "node:path";
 import type { IFileSystem } from "just-bash";
 import { agentfs } from "agentfs-sdk/just-bash";
 
-import { JUST_BASH_WORKING_DIRECTORY } from "./bootstrap";
+import { JUST_BASH_WORKING_DIRECTORY } from "./constants";
 
 /**
  * When set to `agentfs`, the just-bash workspace uses [AgentFS](https://docs.turso.tech/agentfs/introduction)
@@ -11,7 +11,7 @@ import { JUST_BASH_WORKING_DIRECTORY } from "./bootstrap";
  *
  * The database file lives at `{workspacePath}/agentfs.db` (alongside the session workspace dir).
  */
-export function useAgentFsBackend(): boolean {
+export function isAgentFsBackend(): boolean {
   return process.env["JUST_BASH_BACKEND"] === "agentfs";
 }
 

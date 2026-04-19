@@ -20,6 +20,7 @@
   "dependencies": {
     "@vercel/sandbox": "2.0.0-beta.11",
     "agentfs-sdk": "^0.6.4",
+    "isomorphic-git": "^1.37.5",
     "just-bash": "^2.14.2"
   },
   "devDependencies": {
