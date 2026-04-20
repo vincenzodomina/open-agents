@@ -53,6 +53,36 @@ function getNetworkConfig(): NetworkConfig | undefined {
   return undefined;
 }
 
+function diskBackedWorkspaceMount(workspaceRoot: string): IFileSystem {
+  return new MountableFs({
+    base: new InMemoryFs(),
+    mounts: [
+      {
+        mountPoint: JUST_BASH_WORKING_DIRECTORY,
+        filesystem: new ReadWriteFs({ root: workspaceRoot }),
+      },
+    ],
+  });
+}
+
+async function resolveJustBashVfs(
+  workspaceRoot: string,
+  sessionKey: string,
+): Promise<IFileSystem> {
+  if (!isAgentFsBackend()) {
+    return diskBackedWorkspaceMount(workspaceRoot);
+  }
+  try {
+    return await createAgentFsMount(workspaceRoot, sessionKey);
+  } catch (error) {
+    console.warn(
+      "[JustBashSandbox] JUST_BASH_BACKEND=agentfs but AgentFS failed to load (install Turso native deps or unset JUST_BASH_BACKEND); using disk-backed workspace.",
+      error instanceof Error ? error.message : error,
+    );
+    return diskBackedWorkspaceMount(workspaceRoot);
+  }
+}
+
 export interface JustBashCreateConfig {
   name?: string;
   source?: {
@@ -236,19 +266,7 @@ export class JustBashSandbox implements Sandbox {
     const stableName = name ?? `jb-${randomBytes(8).toString("hex")}`;
     const workspacePath = await allocateWorkspaceDirectory(stableName);
 
-    const agentFs = isAgentFsBackend();
-
-    const vfs: IFileSystem = agentFs
-      ? await createAgentFsMount(workspacePath, stableName)
-      : new MountableFs({
-          base: new InMemoryFs(),
-          mounts: [
-            {
-              mountPoint: JUST_BASH_WORKING_DIRECTORY,
-              filesystem: new ReadWriteFs({ root: workspacePath }),
-            },
-          ],
-        });
+    const vfs = await resolveJustBashVfs(workspacePath, stableName);
 
     const bootstrap = await bootstrapJustBashGitWorkspace({
       vfs,
@@ -322,17 +340,7 @@ export class JustBashSandbox implements Sandbox {
       currentBranch,
     } = params;
 
-    const vfs: IFileSystem = isAgentFsBackend()
-      ? await createAgentFsMount(rootPath, name)
-      : new MountableFs({
-          base: new InMemoryFs(),
-          mounts: [
-            {
-              mountPoint: JUST_BASH_WORKING_DIRECTORY,
-              filesystem: new ReadWriteFs({ root: rootPath }),
-            },
-          ],
-        });
+    const vfs = await resolveJustBashVfs(rootPath, name);
 
     const inner = await JbSandbox.create({
       fs: vfs,

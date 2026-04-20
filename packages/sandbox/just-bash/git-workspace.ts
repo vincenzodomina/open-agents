@@ -7,7 +7,11 @@ import type { IFileSystem } from "just-bash";
 import type { Source } from "../types";
 import { JUST_BASH_WORKING_DIRECTORY } from "./constants";
 import { createFsClientFromIFileSystem } from "./isomorphic-git-fs";
-import { publicGitHubHttpsUrl, scrubHttpsCredentials } from "./git-url";
+import {
+  normalizeGithubHttpsWebUrl,
+  publicGitHubHttpsUrl,
+  scrubHttpsCredentials,
+} from "./git-url";
 
 export interface BootstrapGitWorkspaceParams {
   vfs: IFileSystem;
@@ -56,16 +60,17 @@ export async function bootstrapJustBashGitWorkspace(
   const cloneToken = source?.token ?? githubToken;
 
   if (source) {
-    let cloneUrl = source.repo;
+    const repoInput = normalizeGithubHttpsWebUrl(source.repo);
+    let cloneUrl = repoInput;
     let onAuth: AuthCallback | undefined;
     if (cloneToken !== undefined) {
       cloneUrl =
-        scrubHttpsCredentials(source.repo) ??
-        publicGitHubHttpsUrl(source.repo) ??
-        source.repo;
+        scrubHttpsCredentials(repoInput) ??
+        publicGitHubHttpsUrl(repoInput) ??
+        repoInput;
       onAuth = () => ({
-        username: cloneToken,
-        password: "",
+        username: "git",
+        password: cloneToken,
       });
     }
 

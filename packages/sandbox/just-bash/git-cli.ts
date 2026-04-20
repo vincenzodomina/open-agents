@@ -157,8 +157,8 @@ function makeOnAuth(token: string | undefined): AuthCallback | undefined {
     return undefined;
   }
   return () => ({
-    username: token,
-    password: "",
+    username: "git",
+    password: token,
   });
 }
 

@@ -15,8 +15,15 @@ export function scrubHttpsCredentials(url: string): string | undefined {
   }
 }
 
+export function normalizeGithubHttpsWebUrl(url: string): string {
+  return url
+    .trim()
+    .replace(/^https:\/\/www\.github\.com(?=\/)/i, "https://github.com");
+}
+
 export function publicGitHubHttpsUrl(repoUrl: string): string | null {
-  const match = repoUrl.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/);
+  const normalized = normalizeGithubHttpsWebUrl(repoUrl);
+  const match = normalized.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/);
   if (!match) {
     return null;
   }
