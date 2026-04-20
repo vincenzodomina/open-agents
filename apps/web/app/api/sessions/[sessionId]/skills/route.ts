@@ -10,8 +10,8 @@ import { getCachedSkills, setCachedSkills } from "@/lib/skills-cache";
 import { buildHibernatedLifecycleUpdate } from "@/lib/sandbox/lifecycle";
 import {
   clearUnavailableSandboxState,
-  hasRuntimeSandboxState,
   isSandboxUnavailableError,
+  isSessionSandboxOperational,
 } from "@/lib/sandbox/utils";
 
 export type SkillSuggestion = {
@@ -69,7 +69,7 @@ export async function GET(req: Request, context: RouteContext) {
     }
   }
 
-  if (!hasRuntimeSandboxState(sandboxState)) {
+  if (!isSessionSandboxOperational(sessionRecord)) {
     return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
   }
 

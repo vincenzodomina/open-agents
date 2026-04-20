@@ -6,7 +6,7 @@ import {
 import { updateSession } from "@/lib/db/sessions";
 import { findPullRequestByBranch } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 
 interface CheckPrRequest {
   sessionId: string;
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
     userId: authResult.userId,
     sessionId,
-    sandboxGuard: isSandboxActive,
+    sandboxGuard: isSessionSandboxOperational,
     sandboxErrorMessage: "Sandbox not active",
   });
   if (!sessionContext.ok) {

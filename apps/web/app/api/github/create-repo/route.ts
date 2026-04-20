@@ -3,7 +3,7 @@ import { runCreateRepoWorkflow } from "@/app/api/github/create-repo/_lib/create-
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
 import { getUserGitHubToken } from "@/lib/github/user-token";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 // Allow up to 2 minutes for git operations
@@ -64,7 +64,12 @@ export async function POST(req: Request) {
     );
   }
 
-  if (!isSandboxActive(sessionRecord.sandboxState)) {
+  if (!isSessionSandboxOperational(sessionRecord)) {
+    return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
+  }
+
+  const persistedSandboxState = sessionRecord.sandboxState;
+  if (!persistedSandboxState) {
     return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
   }
 
@@ -87,7 +92,7 @@ export async function POST(req: Request) {
   }
 
   // 5. Connect to sandbox
-  const sandbox = await connectSandbox(sessionRecord.sandboxState);
+  const sandbox = await connectSandbox(persistedSandboxState);
   const cwd = sandbox.workingDirectory;
 
   const workflowResult = await runCreateRepoWorkflow({

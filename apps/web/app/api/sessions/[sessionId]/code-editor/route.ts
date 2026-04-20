@@ -10,7 +10,7 @@ import {
 import { JUST_BASH_CODE_EDITOR_DISABLED_REASON } from "@/lib/sandbox/code-editor-policy";
 import { CODE_SERVER_PORT, DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import { getServerSession } from "@/lib/session/get-server-session";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -53,7 +53,7 @@ async function connectCodeEditorSandbox(sessionId: string, userId: string) {
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
     userId,
     sessionId,
-    sandboxGuard: isSandboxActive,
+    sandboxGuard: isSessionSandboxOperational,
     sandboxErrorMessage: "Resume the sandbox before opening the editor",
     sandboxErrorStatus: 409,
   });

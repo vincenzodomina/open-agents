@@ -5,7 +5,7 @@ import {
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -866,7 +866,7 @@ async function connectDevServerSandboxForSession(
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
     userId,
     sessionId,
-    sandboxGuard: isSandboxActive,
+    sandboxGuard: isSessionSandboxOperational,
     sandboxErrorMessage: "Resume the sandbox before running a dev server",
     sandboxErrorStatus: 409,
   });

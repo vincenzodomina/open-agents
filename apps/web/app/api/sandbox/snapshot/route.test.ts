@@ -41,9 +41,9 @@ mock.module("@/app/api/sessions/_lib/session-context", () => ({
   requireOwnedSessionWithSandboxGuard: async ({
     sandboxGuard,
   }: {
-    sandboxGuard: (state: TestSandboxState | null) => boolean;
+    sandboxGuard: (record: TestSessionRecord) => boolean;
   }) =>
-    sandboxGuard(sessionRecord.sandboxState)
+    sandboxGuard(sessionRecord)
       ? ({ ok: true as const, sessionRecord } as const)
       : ({
           ok: false as const,

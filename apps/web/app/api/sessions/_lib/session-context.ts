@@ -53,7 +53,8 @@ interface RequireOwnedSessionChatParams {
 }
 
 interface RequireOwnedSessionWithSandboxGuardParams extends RequireOwnedSessionParams {
-  sandboxGuard: (sandboxState: SessionRecord["sandboxState"]) => boolean;
+  /** Entire session row — use {@link isSessionSandboxOperational} so just-bash matches DB lifecycle. */
+  sandboxGuard: (sessionRecord: SessionRecord) => boolean;
   sandboxErrorMessage?: string;
   sandboxErrorStatus?: number;
 }
@@ -124,7 +125,7 @@ export async function requireOwnedSessionWithSandboxGuard(
     return ownedSessionResult;
   }
 
-  if (!sandboxGuard(ownedSessionResult.sessionRecord.sandboxState)) {
+  if (!sandboxGuard(ownedSessionResult.sessionRecord)) {
     return {
       ok: false,
       response: toErrorResponse(sandboxErrorMessage, sandboxErrorStatus),

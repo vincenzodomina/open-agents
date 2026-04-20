@@ -3,7 +3,7 @@ import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 
 interface GitStatusRequest {
   sessionId: string;
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
     userId: authResult.userId,
     sessionId,
-    sandboxGuard: isSandboxActive,
+    sandboxGuard: isSessionSandboxOperational,
     sandboxErrorMessage: "Sandbox not initialized",
   });
   if (!sessionContext.ok) {

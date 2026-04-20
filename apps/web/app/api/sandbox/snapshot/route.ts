@@ -16,13 +16,13 @@ import {
 } from "@/lib/sandbox/lifecycle";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
 import {
-  canOperateOnSandbox,
   clearSandboxResumeState,
   clearSandboxState,
   getResumableSandboxName,
   getSessionSandboxName,
-  hasRuntimeSandboxState,
+  hasEffectiveRuntimeSandboxState,
   isSandboxNotFoundError,
+  isSessionSandboxOperational,
 } from "@/lib/sandbox/utils";
 
 interface CreateSnapshotRequest {
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
     userId: authResult.userId,
     sessionId,
-    sandboxGuard: canOperateOnSandbox,
+    sandboxGuard: isSessionSandboxOperational,
     sandboxErrorMessage: "Sandbox not initialized",
   });
   if (!sessionContext.ok) {
@@ -145,7 +145,7 @@ export async function PUT(req: Request) {
     );
   }
 
-  if (hasRuntimeSandboxState(sessionRecord.sandboxState)) {
+  if (hasEffectiveRuntimeSandboxState(sessionRecord)) {
     const restoredFrom =
       getResumableSandboxName(sessionRecord.sandboxState) ??
       sessionRecord.snapshotUrl ??

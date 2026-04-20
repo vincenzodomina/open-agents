@@ -8,8 +8,8 @@ import { updateSession } from "@/lib/db/sessions";
 import { buildHibernatedLifecycleUpdate } from "@/lib/sandbox/lifecycle";
 import {
   clearUnavailableSandboxState,
-  hasRuntimeSandboxState,
   isSandboxUnavailableError,
+  isSessionSandboxOperational,
 } from "@/lib/sandbox/utils";
 
 export type WorkspaceFileContentResponse = {
@@ -73,7 +73,7 @@ export async function GET(req: Request, context: RouteContext) {
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
     userId: authResult.userId,
     sessionId,
-    sandboxGuard: hasRuntimeSandboxState,
+    sandboxGuard: isSessionSandboxOperational,
     sandboxErrorMessage: "Sandbox not initialized",
   });
   if (!sessionContext.ok) {

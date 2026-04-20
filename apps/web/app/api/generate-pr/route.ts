@@ -20,7 +20,7 @@ import { buildGitHubAuthRemoteUrl } from "@/lib/github/repo-identifiers";
 import { generatePullRequestContentFromSandbox } from "@/lib/git/pr-content";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getAppCoAuthorTrailer } from "@/lib/github/app-auth";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 // Allow up to 2 minutes for AI generation and git operations
@@ -82,7 +82,12 @@ export async function POST(req: Request) {
   if (sessionRecord.userId !== session.user.id) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (!isSandboxActive(sessionRecord.sandboxState)) {
+  if (!isSessionSandboxOperational(sessionRecord)) {
+    return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
+  }
+
+  const persistedSandboxState = sessionRecord.sandboxState;
+  if (!persistedSandboxState) {
     return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
   }
 
@@ -104,7 +109,7 @@ export async function POST(req: Request) {
   }
 
   // 3. Connect to sandbox
-  const sandbox = await connectSandbox(sessionRecord.sandboxState);
+  const sandbox = await connectSandbox(persistedSandboxState);
   const cwd = sandbox.workingDirectory;
   let userToken: string | null = null;
 

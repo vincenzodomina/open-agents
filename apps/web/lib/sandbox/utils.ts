@@ -130,6 +130,26 @@ export function hasEffectiveRuntimeSandboxState(session: {
   return Date.now() < col.getTime() - SANDBOX_EXPIRES_BUFFER_MS;
 }
 
+/**
+ * Whether API routes may connect to the sandbox — matches {@link hasEffectiveRuntimeSandboxState}
+ * plus session-level expiry (same idea as `GET /api/sandbox/status` "active" status).
+ */
+export function isSessionSandboxOperational(sessionRecord: {
+  sandboxState: unknown;
+  sandboxExpiresAt: Date | null;
+}): boolean {
+  if (!hasEffectiveRuntimeSandboxState(sessionRecord)) {
+    return false;
+  }
+  if (!sessionRecord.sandboxExpiresAt) {
+    return true;
+  }
+  return (
+    Date.now() <
+    sessionRecord.sandboxExpiresAt.getTime() - SANDBOX_EXPIRES_BUFFER_MS
+  );
+}
+
 export function isSandboxNotFoundError(message: string): boolean {
   const normalized = message.toLowerCase();
   return (

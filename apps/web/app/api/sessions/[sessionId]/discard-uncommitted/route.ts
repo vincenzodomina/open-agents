@@ -3,7 +3,7 @@ import {
   requireAuthenticatedUser,
   requireOwnedSessionWithSandboxGuard,
 } from "@/app/api/sessions/_lib/session-context";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -190,7 +190,7 @@ export async function POST(req: Request, context: RouteContext) {
   const sessionContext = await requireOwnedSessionWithSandboxGuard({
     userId: authResult.userId,
     sessionId,
-    sandboxGuard: isSandboxActive,
+    sandboxGuard: isSessionSandboxOperational,
     sandboxErrorMessage: "Resume the sandbox before discarding changes",
     sandboxErrorStatus: 409,
   });
