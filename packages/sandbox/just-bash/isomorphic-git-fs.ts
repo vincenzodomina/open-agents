@@ -5,9 +5,22 @@ import type {
 } from "just-bash";
 import type { FsClient } from "isomorphic-git";
 
-/**
- * Bridges {@link IFileSystem} (just-bash) to isomorphic-git’s {@link FsClient} ({@code fs.promises} shape).
- */
+function rethrowWithSystemErrorCode(error: unknown): never {
+  if (error instanceof Error) {
+    const message = error.message;
+    if (
+      (message.includes("ENOENT") || /no such file|not found/i.test(message)) &&
+      (error as NodeJS.ErrnoException).code === undefined
+    ) {
+      const e = new Error(message) as NodeJS.ErrnoException;
+      e.code = "ENOENT";
+      e.cause = error;
+      throw e;
+    }
+  }
+  throw error;
+}
+
 export function createFsClientFromIFileSystem(fs: IFileSystem): FsClient {
   const promises = {
     async readFile(
@@ -69,11 +82,19 @@ export function createFsClientFromIFileSystem(fs: IFileSystem): FsClient {
     },
 
     async stat(filepath: string): Promise<ReturnType<typeof mapStat>> {
-      return mapStat(await fs.stat(filepath));
+      try {
+        return mapStat(await fs.stat(filepath));
+      } catch (err) {
+        rethrowWithSystemErrorCode(err);
+      }
     },
 
     async lstat(filepath: string): Promise<ReturnType<typeof mapStat>> {
-      return mapStat(await fs.lstat(filepath));
+      try {
+        return mapStat(await fs.lstat(filepath));
+      } catch (err) {
+        rethrowWithSystemErrorCode(err);
+      }
     },
 
     async readlink(filepath: string): Promise<string> {
@@ -93,16 +114,25 @@ export function createFsClientFromIFileSystem(fs: IFileSystem): FsClient {
 }
 
 function mapStat(s: FsStat) {
-  const mtimeMs = s.mtime.getTime();
+  const ms = s.mtime.getTime();
+  const when = s.mtime;
   return {
     isFile: () => s.isFile,
     isDirectory: () => s.isDirectory,
     isSymbolicLink: () => s.isSymbolicLink,
     size: s.size,
     mode: s.mode,
-    mtime: s.mtime,
-    get mtimeMs() {
-      return mtimeMs;
-    },
+    dev: 0,
+    ino: 0,
+    uid: 0,
+    gid: 0,
+    mtime: when,
+    mtimeMs: ms,
+    ctime: when,
+    ctimeMs: ms,
+    atime: when,
+    atimeMs: ms,
+    birthtime: when,
+    birthtimeMs: ms,
   };
 }

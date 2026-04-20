@@ -24,6 +24,14 @@ export interface BootstrapGitWorkspaceParams {
 
 const INIT_PLACEHOLDER = ".open-harness-git-placeholder";
 
+function effectiveWorkdir(dir: string | undefined, fallback: string): string {
+  const t = dir?.trim();
+  if (t === undefined || t === "" || t === "/" || t === ".") {
+    return fallback;
+  }
+  return t;
+}
+
 async function scrubOriginRemoteIfNeeded(
   fs: ReturnType<typeof createFsClientFromIFileSystem>,
   dir: string,
@@ -52,7 +60,7 @@ export async function bootstrapJustBashGitWorkspace(
 ): Promise<{ currentBranch?: string }> {
   const { vfs, source, gitUser, githubToken, skipGitWorkspaceBootstrap } =
     params;
-  const dir = params.dir ?? JUST_BASH_WORKING_DIRECTORY;
+  const dir = effectiveWorkdir(params.dir, JUST_BASH_WORKING_DIRECTORY);
   const fs = createFsClientFromIFileSystem(vfs);
 
   let currentBranch: string | undefined;
