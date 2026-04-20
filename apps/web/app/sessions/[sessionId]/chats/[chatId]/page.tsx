@@ -24,6 +24,7 @@ import {
   isManagedTemplateTrialUser,
   MANAGED_TEMPLATE_TRIAL_CODE_EDITOR_ERROR,
 } from "@/lib/managed-template-trial";
+import { JUST_BASH_CODE_EDITOR_DISABLED_REASON } from "@/lib/sandbox/code-editor-policy";
 import { getAllVariants } from "@/lib/model-variants";
 import { fetchAvailableLanguageModelsWithContext } from "@/lib/models-with-context";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -162,12 +163,15 @@ export default async function SessionChatPage({
   const lastUserMessageSentAt = lastUserMessage
     ? lastUserMessage.createdAt.toISOString()
     : null;
+  const sandboxType = sessionRecord.sandboxState?.type;
   const codeEditorDisabledReason = isManagedTemplateTrialUser(
     session,
     requestHost,
   )
     ? MANAGED_TEMPLATE_TRIAL_CODE_EDITOR_ERROR
-    : null;
+    : sandboxType === "just-bash"
+      ? JUST_BASH_CODE_EDITOR_DISABLED_REASON
+      : null;
   const preferences = sanitizeUserPreferencesForSession(
     rawPreferences,
     session,

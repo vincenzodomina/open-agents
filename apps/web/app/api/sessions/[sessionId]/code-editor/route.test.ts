@@ -3,10 +3,18 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 const CODE_EDITOR_PID_FILE = "/tmp/open-harness-code-server.pid";
 const RUNNING_CODE_SERVER_PID = "9001";
 
-const currentSessionRecord = {
+const currentSessionRecord: {
+  userId: string;
+  sandboxState: {
+    type: "vercel" | "just-bash";
+    sandboxId?: string;
+    sandboxName?: string;
+    expiresAt: number;
+  };
+} = {
   userId: "user-1",
   sandboxState: {
-    type: "vercel" as const,
+    type: "vercel",
     sandboxId: "sandbox-1",
     expiresAt: Date.now() + 60_000,
   },
@@ -154,7 +162,11 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
     lastLaunchCommand = null;
     lastLaunchCwd = null;
     currentAuthSession = null;
-    currentSessionRecord.sandboxState.expiresAt = Date.now() + 60_000;
+    currentSessionRecord.sandboxState = {
+      type: "vercel",
+      sandboxId: "sandbox-1",
+      expiresAt: Date.now() + 60_000,
+    };
     requireAuthenticatedUserMock.mockClear();
     requireOwnedSessionWithSandboxGuardMock.mockClear();
     connectSandboxMock.mockClear();
@@ -231,6 +243,32 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
       url: "https://sb-8000.vercel.run",
       port: 8000,
     });
+    expect(execDetachedMock).toHaveBeenCalledTimes(0);
+  });
+
+  test("POST returns 501 for just-bash without connecting to the sandbox", async () => {
+    const { POST } = await routeModulePromise;
+
+    currentSessionRecord.sandboxState = {
+      type: "just-bash",
+      sandboxName: "session_session-1",
+      expiresAt: Date.now() + 60_000,
+    };
+
+    const response = await POST(
+      new Request("http://localhost/api/sessions/session-1/code-editor", {
+        method: "POST",
+      }),
+      createRouteContext(),
+    );
+    const body = (await response.json()) as {
+      error: string;
+      code?: string;
+    };
+
+    expect(response.status).toBe(501);
+    expect(body.code).toBe("CODE_EDITOR_UNAVAILABLE_JUST_BASH");
+    expect(connectSandboxMock).toHaveBeenCalledTimes(0);
     expect(execDetachedMock).toHaveBeenCalledTimes(0);
   });
 

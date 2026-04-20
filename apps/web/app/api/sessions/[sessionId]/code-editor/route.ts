@@ -7,6 +7,7 @@ import {
   isManagedTemplateTrialUser,
   MANAGED_TEMPLATE_TRIAL_CODE_EDITOR_ERROR,
 } from "@/lib/managed-template-trial";
+import { JUST_BASH_CODE_EDITOR_DISABLED_REASON } from "@/lib/sandbox/code-editor-policy";
 import { CODE_SERVER_PORT, DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { isSandboxActive } from "@/lib/sandbox/utils";
@@ -34,6 +35,16 @@ const CODE_SERVER_PIDFILE = "/tmp/open-harness-code-server.pid";
 
 type ConnectedSandbox = Awaited<ReturnType<typeof connectSandbox>>;
 
+function sandboxStateIsJustBash(
+  sandboxState: unknown,
+): sandboxState is { type: "just-bash" } {
+  return (
+    typeof sandboxState === "object" &&
+    sandboxState !== null &&
+    (sandboxState as { type?: unknown }).type === "just-bash"
+  );
+}
+
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
@@ -57,6 +68,19 @@ async function connectCodeEditorSandbox(sessionId: string, userId: string) {
       response: Response.json(
         { error: "Resume the sandbox before opening the editor" },
         { status: 409 },
+      ),
+    };
+  }
+
+  if (sandboxStateIsJustBash(sandboxState)) {
+    return {
+      ok: false as const,
+      response: Response.json(
+        {
+          error: JUST_BASH_CODE_EDITOR_DISABLED_REASON,
+          code: "CODE_EDITOR_UNAVAILABLE_JUST_BASH",
+        },
+        { status: 501 },
       ),
     };
   }
