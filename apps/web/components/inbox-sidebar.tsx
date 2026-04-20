@@ -31,8 +31,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
-  PopoverTrigger,
 } from "@/components/ui/popover";
 import {
   Tooltip,
@@ -483,32 +483,36 @@ const SessionRow = memo(function SessionRow({
       </span>
     </div>
   ) : (
-    <button
-      type="button"
-      className={`group relative flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] cursor-pointer ${
+    <div
+      className={`group relative flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 outline-none transition-[background-color,opacity] ${
         isActive ? "bg-sidebar-active" : "hover:bg-muted/50"
       } ${isPending ? "opacity-80" : "opacity-100"}`}
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onClick={() => onSessionClick(session)}
-      onFocus={() => onSessionPrefetch(session)}
-      aria-busy={isPending}
     >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-        {getSessionStatusIcon(session)}
-      </span>
-      <span className="min-w-0 flex-1 text-left">
-        <p
-          className={`truncate text-[13px] leading-5 ${
-            session.hasUnread && !isActive
-              ? "font-semibold text-foreground"
-              : "font-normal text-foreground/75"
-          }`}
-        >
-          {session.title}
-        </p>
-      </span>
+      <button
+        type="button"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        onClick={() => onSessionClick(session)}
+        onFocus={() => onSessionPrefetch(session)}
+        aria-busy={isPending}
+      >
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          {getSessionStatusIcon(session)}
+        </span>
+        <span className="min-w-0 flex-1 text-left">
+          <p
+            className={`truncate text-[13px] leading-5 ${
+              session.hasUnread && !isActive
+                ? "font-semibold text-foreground"
+                : "font-normal text-foreground/75"
+            }`}
+          >
+            {session.title}
+          </p>
+        </span>
+      </button>
       <span className="flex shrink-0 items-center justify-end gap-0.5">
         {showActionButtons ? (
           <>
@@ -574,7 +578,7 @@ const SessionRow = memo(function SessionRow({
           />
         ) : null}
       </span>
-    </button>
+    </div>
   );
 
   if (isMobile || isRenaming) {
@@ -583,7 +587,7 @@ const SessionRow = memo(function SessionRow({
 
   return (
     <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-      <PopoverTrigger asChild>{rowButton}</PopoverTrigger>
+      <PopoverAnchor asChild>{rowButton}</PopoverAnchor>
       <PopoverContent
         side="right"
         align="start"
