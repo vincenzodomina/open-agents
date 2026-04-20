@@ -1,14 +1,20 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  getSupabaseAnonKey,
+  getSupabaseAuthStorageKey,
+  getSupabaseServerUrl,
+} from "./config";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
   });
+  const storageKey = getSupabaseAuthStorageKey();
 
   const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    getSupabaseServerUrl()!,
+    getSupabaseAnonKey()!,
     {
       cookies: {
         getAll() {
@@ -32,6 +38,11 @@ export async function updateSession(request: NextRequest) {
           );
         },
       },
+      cookieOptions: storageKey
+        ? {
+            name: storageKey,
+          }
+        : undefined,
     },
   );
 

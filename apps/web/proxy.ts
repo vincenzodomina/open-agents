@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { hasSupabaseServerConfig } from "@/lib/supabase/config";
 import { updateSession } from "@/lib/supabase/middleware";
 
 function wantsSharedMarkdown(acceptHeader: string | null): boolean {
@@ -11,11 +12,7 @@ function wantsSharedMarkdown(acceptHeader: string | null): boolean {
 }
 
 export async function proxy(request: NextRequest) {
-  const hasSupabase =
-    process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  const sessionResponse = hasSupabase
+  const sessionResponse = hasSupabaseServerConfig()
     ? await updateSession(request)
     : NextResponse.next({ request });
 

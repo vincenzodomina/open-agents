@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseServerUrl } from "./config";
 
 let _admin: SupabaseClient | null = null;
 
@@ -12,11 +13,11 @@ export function getSupabaseAdmin(): SupabaseClient {
     return _admin;
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const url = getSupabaseServerUrl();
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
     throw new Error(
-      "NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required",
+      "SUPABASE_INTERNAL_URL or NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required",
     );
   }
 

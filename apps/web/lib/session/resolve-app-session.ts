@@ -1,10 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
+import {
+  getSupabaseAnonKey,
+  getSupabaseServerUrl,
+} from "@/lib/supabase/config";
 import { syncAppUserFromSupabase } from "@/lib/supabase/sync-app-user";
 import type { Session } from "./types";
 
 export async function resolveAppSession(): Promise<Session | undefined> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const url = getSupabaseServerUrl();
+  const key = getSupabaseAnonKey();
   if (!url || !key) {
     return undefined;
   }
