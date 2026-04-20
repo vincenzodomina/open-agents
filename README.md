@@ -7,6 +7,7 @@ Summary of changes in **this fork** versus upstream [`vercel-labs/open-agents`](
 - **Fewer Vercel product ties** — Removed Vercel login/projects UI affordances, dropped use of the Vercel AI gateway for model routing, and removed the leaderboard feature.
 - **Security and types** — Added Row Level Security policies and regenerate Supabase TypeScript types (`database.types.ts`) for the new schema.
 - **API cleanup** — Removed the Vercel project env-vars API route and its tests.
+- **just-bash sandbox + isomorphic-git** — Optional in-process sandbox (`just-bash`) for local exploration; repository bootstrap (clone/init) and interactive `git` commands run via **[isomorphic-git](https://github.com/isomorphic-git/isomorphic-git)** on the virtual workspace filesystem—there is no host `git` binary.
 
 Open Agents is an open-source reference app for building and running background coding agents on Vercel. It includes the web UI, the agent runtime, sandbox orchestration, and the GitHub integration needed to go from prompt to code changes without keeping your laptop involved.
 
@@ -54,6 +55,7 @@ A few details that matter for understanding the current implementation:
 - Active runs can be resumed by reconnecting to the stream for the existing workflow.
 - Sandboxes use a base snapshot, expose ports `3000`, `5173`, `4321`, and `8000`, and hibernate after inactivity.
 - Auto-commit and auto-PR are supported, but they are preference-driven features, not always-on behavior.
+- When the sandbox type is **just-bash** (user preference / session setting), git is provided by isomorphic-git against the emulated filesystem;
 
 ## What is actually required today
 
