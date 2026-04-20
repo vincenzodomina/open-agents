@@ -23,7 +23,6 @@ import {
   allocateWorkspaceDirectory,
   JUST_BASH_WORKING_DIRECTORY,
 } from "./bootstrap";
-import { createAgentFsMount, isAgentFsBackend } from "./agentfs-backend";
 import {
   commandInvokesGit,
   execJustBashGitLine,
@@ -63,24 +62,6 @@ function diskBackedWorkspaceMount(workspaceRoot: string): IFileSystem {
       },
     ],
   });
-}
-
-async function resolveJustBashVfs(
-  workspaceRoot: string,
-  sessionKey: string,
-): Promise<IFileSystem> {
-  if (!isAgentFsBackend()) {
-    return diskBackedWorkspaceMount(workspaceRoot);
-  }
-  try {
-    return await createAgentFsMount(workspaceRoot, sessionKey);
-  } catch (error) {
-    console.warn(
-      "[JustBashSandbox] JUST_BASH_BACKEND=agentfs but AgentFS failed to load (install Turso native deps or unset JUST_BASH_BACKEND); using disk-backed workspace.",
-      error instanceof Error ? error.message : error,
-    );
-    return diskBackedWorkspaceMount(workspaceRoot);
-  }
 }
 
 export interface JustBashCreateConfig {
@@ -266,7 +247,7 @@ export class JustBashSandbox implements Sandbox {
     const stableName = name ?? `jb-${randomBytes(8).toString("hex")}`;
     const workspacePath = await allocateWorkspaceDirectory(stableName);
 
-    const vfs = await resolveJustBashVfs(workspacePath, stableName);
+    const vfs = diskBackedWorkspaceMount(workspacePath);
 
     const bootstrap = await bootstrapJustBashGitWorkspace({
       vfs,
@@ -340,7 +321,7 @@ export class JustBashSandbox implements Sandbox {
       currentBranch,
     } = params;
 
-    const vfs = await resolveJustBashVfs(rootPath, name);
+    const vfs = diskBackedWorkspaceMount(rootPath);
 
     const inner = await JbSandbox.create({
       fs: vfs,
