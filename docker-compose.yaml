@@ -1,0 +1,93 @@
+# Copy `.env.compose.example` to `.env.compose`, then run one of:
+#   OPEN_AGENTS_ENV_FILE=.env.compose docker compose --env-file .env.compose --profile dev up
+#   OPEN_AGENTS_ENV_FILE=.env.compose docker compose --env-file .env.compose --profile prod up -d --build
+
+name: open-agents
+
+services:
+  redis:
+    image: redis:7-alpine
+    profiles: ["dev", "prod"]
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - open_agents_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web-dev:
+    image: oven/bun:1.2.14
+    profiles: ["dev"]
+    init: true
+    working_dir: /workspace
+    env_file:
+      - ${OPEN_AGENTS_ENV_FILE:-.env.compose}
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-true}
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+    command:
+      [
+        "sh",
+        "-lc",
+        "bun install --frozen-lockfile && cd apps/web && bun run dev -- --hostname 0.0.0.0",
+      ]
+    ports:
+      - "${OPEN_AGENTS_PORT:-3000}:3000"
+    volumes:
+      - .:/workspace
+      - open_agents_node_modules:/workspace/node_modules
+      - open_agents_bun_cache:/root/.bun/install/cache
+      - open_agents_next_cache:/workspace/apps/web/.next
+    depends_on:
+      redis:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  web:
+    profiles: ["prod"]
+    init: true
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERCEL_ENV: ${VERCEL_ENV:-production}
+        VERCEL_URL: ${VERCEL_URL:-}
+        VERCEL_PROJECT_PRODUCTION_URL: ${VERCEL_PROJECT_PRODUCTION_URL:-}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_GITHUB_CLIENT_ID: ${NEXT_PUBLIC_GITHUB_CLIENT_ID:-}
+        NEXT_PUBLIC_GITHUB_APP_SLUG: ${NEXT_PUBLIC_GITHUB_APP_SLUG:-}
+        NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL: ${NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL:-}
+    env_file:
+      - ${OPEN_AGENTS_ENV_FILE:-.env.compose}
+    environment:
+      NEXT_TELEMETRY_DISABLED: "1"
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+    ports:
+      - "${OPEN_AGENTS_PORT:-3000}:3000"
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/auth/login').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))\"",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  open_agents_bun_cache:
+  open_agents_next_cache:
+  open_agents_node_modules:
+  open_agents_redis_data:

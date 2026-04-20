@@ -1,8 +1,16 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 import { withBotId } from "botid/next/config";
 import { withWorkflow } from "workflow/next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+  outputFileTracingRoot: path.resolve(process.cwd(), "../.."),
+  transpilePackages: [
+    "@open-harness/agent",
+    "@open-harness/sandbox",
+    "@open-harness/shared",
+  ],
   images: {
     remotePatterns: [
       {

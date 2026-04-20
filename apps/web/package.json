@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "bun run db:push && next build",
+    "build:standalone": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "db:diff": "supabase db diff -f schema_update",
