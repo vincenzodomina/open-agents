@@ -7,6 +7,38 @@ import type { AuthCallback, StatusRow } from "isomorphic-git";
 import type { IFileSystem } from "just-bash";
 
 import { createFsClientFromIFileSystem } from "./isomorphic-git-fs";
+import { scrubHttpsCredentials } from "./git-url";
+
+async function raceAbort<T>(
+  signal: AbortSignal | undefined,
+  promise: Promise<T>,
+): Promise<T> {
+  if (!signal) {
+    return promise;
+  }
+  if (signal.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+  return await Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      signal.addEventListener(
+        "abort",
+        () => reject(new DOMException("Aborted", "AbortError")),
+        { once: true },
+      );
+    }),
+  ]);
+}
+
+async function preferredRemote(
+  fs: ReturnType<typeof createFsClientFromIFileSystem>,
+  dir: string,
+): Promise<string> {
+  const list = await git.listRemotes({ fs, dir });
+  const origin = list.find((r) => r.remote === "origin");
+  return origin?.remote ?? list[0]?.remote ?? "origin";
+}
 
 export function commandInvokesGit(command: string): boolean {
   return /\bgit(\s|$)/.test(command);
@@ -130,13 +162,15 @@ function makeOnAuth(token: string | undefined): AuthCallback | undefined {
   });
 }
 
-/** Maps statusMatrix tuple to two-letter short status (see isomorphic-git docs). */
-function shortFromRow(row: StatusRow): string | null {
+const SKIP_ROW = new Set(["0,0,0", "1,1,1"]);
+
+function statusShortPrefix(row: StatusRow): string | undefined {
   const [, head, workdir, stage] = row;
   const key = `${head},${workdir},${stage}`;
-  const prefixes: Record<string, string | null> = {
-    "0,0,0": null,
-    "1,1,1": null,
+  if (SKIP_ROW.has(key)) {
+    return undefined;
+  }
+  const prefixes: Record<string, string> = {
     "0,0,3": "AD",
     "0,2,0": "??",
     "0,2,2": "A ",
@@ -151,7 +185,11 @@ function shortFromRow(row: StatusRow): string | null {
     "1,2,2": "M ",
     "1,2,3": "MM",
   };
-  return prefixes[key] ?? null;
+  return prefixes[key] ?? "!!";
+}
+
+function rowHasPendingChange(row: StatusRow): boolean {
+  return statusShortPrefix(row) !== undefined;
 }
 
 async function dispatchGit(
@@ -197,8 +235,8 @@ async function dispatchGit(
       let out = `On branch ${branch}\n`;
       const lines: string[] = [];
       for (const row of matrix) {
-        const prefix = shortFromRow(row);
-        if (prefix === null) {
+        const prefix = statusShortPrefix(row);
+        if (prefix === undefined) {
           continue;
         }
         lines.push(`${prefix} ${row[0]}`);
@@ -245,8 +283,26 @@ async function dispatchGit(
         }
         return { stdout: out, stderr: "", exitCode: 0 };
       }
-      const name = argv[argv.length - 1];
-      if (name === undefined || name.startsWith("-")) {
+      const dashed = argv.slice(1).filter((a) => a.startsWith("-"));
+      if (dashed.length > 0) {
+        return {
+          stdout: "",
+          stderr:
+            "git branch: only `git branch` (list) or `git branch <name>` (create) are supported",
+          exitCode: 1,
+        };
+      }
+      const positional = argv.slice(1);
+      if (positional.length > 1) {
+        return {
+          stdout: "",
+          stderr:
+            "git branch: only a single new branch name is supported (no start-point)",
+          exitCode: 1,
+        };
+      }
+      const name = positional[0];
+      if (name === undefined) {
         return {
           stdout: "",
           stderr: "git branch: expected branch name",
@@ -279,8 +335,9 @@ async function dispatchGit(
         const remotes = await git.listRemotes({ fs, dir });
         let out = "";
         for (const r of remotes) {
-          out += `${r.remote}\t${r.url} (fetch)\n`;
-          out += `${r.remote}\t${r.url} (push)\n`;
+          const safeUrl = scrubHttpsCredentials(r.url) ?? r.url;
+          out += `${r.remote}\t${safeUrl} (fetch)\n`;
+          out += `${r.remote}\t${safeUrl} (push)\n`;
         }
         return { stdout: out, stderr: "", exitCode: 0 };
       }
@@ -300,7 +357,7 @@ async function dispatchGit(
       if (dot) {
         const matrix = await git.statusMatrix({ fs, dir });
         const toStage = matrix
-          .filter((row) => shortFromRow(row) !== null)
+          .filter((row) => rowHasPendingChange(row))
           .map((row) => row[0]);
         if (toStage.length > 0) {
           await git.add({ fs, dir, filepath: toStage, parallel: true });
@@ -345,13 +402,36 @@ async function dispatchGit(
       };
     }
     case "diff": {
+      const rest = argv.slice(1);
+      const wantsPatch = rest.some(
+        (a) =>
+          a === "-p" ||
+          a === "-u" ||
+          a === "--patch" ||
+          a.startsWith("--unified"),
+      );
+      const explicitNameOnly =
+        rest.includes("--name-only") || rest.includes("--name-status");
+      if (wantsPatch && !explicitNameOnly) {
+        return {
+          stdout: "",
+          stderr:
+            "git diff: unified patch output is not supported in just-bash; use --name-only\n",
+          exitCode: 1,
+        };
+      }
       const matrix = await git.statusMatrix({ fs, dir });
       const names = matrix
-        .filter((row) => shortFromRow(row) !== null)
+        .filter((row) => rowHasPendingChange(row))
         .map((row) => row[0]);
+      let stderr = "";
+      if (!explicitNameOnly && rest.length === 0) {
+        stderr =
+          "note: listing changed paths only (not a unified diff); use --name-only to silence\n";
+      }
       return {
         stdout: names.length > 0 ? `${names.join("\n")}\n` : "",
-        stderr: "",
+        stderr,
         exitCode: 0,
       };
     }
@@ -371,20 +451,23 @@ async function dispatchGit(
       };
     }
     case "fetch": {
+      const remoteName = await preferredRemote(fs, dir);
       await git.fetch({
         fs,
         http,
         dir,
-        remote: "origin",
+        remote: remoteName,
         ...(onAuth !== undefined ? { onAuth } : {}),
       });
       return { stdout: "", stderr: "", exitCode: 0 };
     }
     case "pull": {
+      const remotePull = await preferredRemote(fs, dir);
       await git.pull({
         fs,
         http,
         dir,
+        remote: remotePull,
         ...(onAuth !== undefined ? { onAuth } : {}),
         author: {
           name: String(
@@ -400,11 +483,12 @@ async function dispatchGit(
       return { stdout: "", stderr: "", exitCode: 0 };
     }
     case "push": {
+      const remotePush = await preferredRemote(fs, dir);
       await git.push({
         fs,
         http,
         dir,
-        remote: "origin",
+        remote: remotePush,
         ...(onAuth !== undefined ? { onAuth } : {}),
       });
       return { stdout: "", stderr: "", exitCode: 0 };
@@ -422,7 +506,7 @@ export async function execJustBashGitLine(
   command: string,
   vfs: IFileSystem,
   virtualCwd: string,
-  options: { githubToken?: string },
+  options: { githubToken?: string; signal?: AbortSignal },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const argv = parseGitArgv(command);
   if (argv === null) {
@@ -434,23 +518,34 @@ export async function execJustBashGitLine(
     };
   }
 
-  const fs = createFsClientFromIFileSystem(vfs);
-  let dir: string;
   try {
-    dir = await git.findRoot({ fs, filepath: virtualCwd });
-  } catch {
-    return {
-      stdout: "",
-      stderr: "fatal: not a git repository (or any parent up from virtual cwd)",
-      exitCode: 128,
-    };
-  }
-
-  const onAuth = makeOnAuth(options.githubToken);
-
-  try {
-    return await dispatchGit(argv, { fs, dir, onAuth });
+    return await raceAbort(
+      options.signal,
+      (async (): Promise<{
+        stdout: string;
+        stderr: string;
+        exitCode: number;
+      }> => {
+        const fs = createFsClientFromIFileSystem(vfs);
+        let dir: string;
+        try {
+          dir = await git.findRoot({ fs, filepath: virtualCwd });
+        } catch {
+          return {
+            stdout: "",
+            stderr:
+              "fatal: not a git repository (or any parent up from virtual cwd)",
+            exitCode: 128,
+          };
+        }
+        const onAuth = makeOnAuth(options.githubToken);
+        return dispatchGit(argv, { fs, dir, onAuth });
+      })(),
+    );
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return { stdout: "", stderr: "Aborted\n", exitCode: 130 };
+    }
     const msg = error instanceof Error ? error.message : String(error);
     return { stdout: "", stderr: `${msg}\n`, exitCode: 1 };
   }

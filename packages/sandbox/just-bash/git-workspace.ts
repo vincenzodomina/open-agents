@@ -1,11 +1,13 @@
 import git from "isomorphic-git";
 import http from "isomorphic-git/http/node";
+import type { AuthCallback } from "isomorphic-git";
 
 import type { IFileSystem } from "just-bash";
 
 import type { Source } from "../types";
 import { JUST_BASH_WORKING_DIRECTORY } from "./constants";
 import { createFsClientFromIFileSystem } from "./isomorphic-git-fs";
+import { publicGitHubHttpsUrl, scrubHttpsCredentials } from "./git-url";
 
 export interface BootstrapGitWorkspaceParams {
   vfs: IFileSystem;
@@ -16,25 +18,31 @@ export interface BootstrapGitWorkspaceParams {
   skipGitWorkspaceBootstrap?: boolean;
 }
 
-export function buildAuthenticatedGitHubUrl(
-  repoUrl: string,
-  token: string,
-): string | null {
-  const githubUrlMatch = repoUrl.match(
-    /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/,
-  );
-  if (!githubUrlMatch) {
-    return null;
-  }
-  const [, owner, repo] = githubUrlMatch;
-  return `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
-}
-
 const INIT_PLACEHOLDER = ".open-harness-git-placeholder";
 
-/**
- * Initializes or clones a repository into the just-bash workspace using isomorphic-git (no host `git`).
- */
+async function scrubOriginRemoteIfNeeded(
+  fs: ReturnType<typeof createFsClientFromIFileSystem>,
+  dir: string,
+): Promise<void> {
+  const raw = await git.getConfig({
+    fs,
+    dir,
+    path: "remote.origin.url",
+  });
+  if (typeof raw !== "string") {
+    return;
+  }
+  const scrubbed = scrubHttpsCredentials(raw);
+  if (scrubbed !== undefined && scrubbed !== raw) {
+    await git.setConfig({
+      fs,
+      dir,
+      path: "remote.origin.url",
+      value: scrubbed,
+    });
+  }
+}
+
 export async function bootstrapJustBashGitWorkspace(
   params: BootstrapGitWorkspaceParams,
 ): Promise<{ currentBranch?: string }> {
@@ -48,10 +56,18 @@ export async function bootstrapJustBashGitWorkspace(
   const cloneToken = source?.token ?? githubToken;
 
   if (source) {
-    const cloneUrl =
-      cloneToken !== undefined
-        ? (buildAuthenticatedGitHubUrl(source.repo, cloneToken) ?? source.repo)
-        : source.repo;
+    let cloneUrl = source.repo;
+    let onAuth: AuthCallback | undefined;
+    if (cloneToken !== undefined) {
+      cloneUrl =
+        scrubHttpsCredentials(source.repo) ??
+        publicGitHubHttpsUrl(source.repo) ??
+        source.repo;
+      onAuth = () => ({
+        username: cloneToken,
+        password: "",
+      });
+    }
 
     await git.clone({
       fs,
@@ -60,7 +76,10 @@ export async function bootstrapJustBashGitWorkspace(
       url: cloneUrl,
       ...(source.branch !== undefined ? { ref: source.branch } : {}),
       singleBranch: true,
+      ...(onAuth !== undefined ? { onAuth } : {}),
     });
+
+    await scrubOriginRemoteIfNeeded(fs, dir);
 
     if (source.newBranch !== undefined) {
       await git.branch({

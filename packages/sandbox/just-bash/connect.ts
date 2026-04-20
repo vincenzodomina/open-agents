@@ -104,6 +104,7 @@ export async function connectJustBash(
           name: sandboxName,
           rootPath: dormantPathPeek,
           env: options?.env,
+          githubToken: options?.githubToken,
           hooks: options?.hooks,
           timeout:
             getRemainingTimeout(state.expiresAt) ??

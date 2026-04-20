@@ -305,6 +305,7 @@ export class JustBashSandbox implements Sandbox {
     name: string;
     rootPath: string;
     env?: Record<string, string>;
+    githubToken?: string;
     hooks?: SandboxHooks;
     timeout?: number;
     ports?: number[];
@@ -314,6 +315,7 @@ export class JustBashSandbox implements Sandbox {
       name,
       rootPath,
       env,
+      githubToken,
       hooks,
       timeout = DEFAULT_RECONNECT_TIMEOUT_MS,
       ports = [],
@@ -345,6 +347,7 @@ export class JustBashSandbox implements Sandbox {
       id: name,
       rootPath,
       vfs,
+      githubToken,
       env,
       currentBranch,
       hooks,
@@ -559,6 +562,7 @@ export class JustBashSandbox implements Sandbox {
       if (trimmed.startsWith("git")) {
         const raw = await execJustBashGitLine(segment, this.vfs, virtualCwd, {
           githubToken: this.githubToken,
+          signal,
         });
         accOut += raw.stdout;
         accErr += raw.stderr;
