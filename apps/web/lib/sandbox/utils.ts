@@ -131,8 +131,10 @@ export function hasEffectiveRuntimeSandboxState(session: {
 }
 
 /**
- * Whether API routes may connect to the sandbox — matches {@link hasEffectiveRuntimeSandboxState}
- * plus session-level expiry (same idea as `GET /api/sandbox/status` "active" status).
+ * Whether API routes may connect to the sandbox — aligned with reconnect/status:
+ * {@link hasEffectiveRuntimeSandboxState}, without letting a stale
+ * `sandbox_expires_at` column veto JSON-backed runtime state (`expiresAt` on
+ * `sandbox_state`).
  */
 export function isSessionSandboxOperational(sessionRecord: {
   sandboxState: unknown;
@@ -141,6 +143,17 @@ export function isSessionSandboxOperational(sessionRecord: {
   if (!hasEffectiveRuntimeSandboxState(sessionRecord)) {
     return false;
   }
+
+  const state = sessionRecord.sandboxState;
+  const jsonExpiresAt =
+    state && typeof state === "object"
+      ? (state as { expiresAt?: unknown }).expiresAt
+      : undefined;
+
+  if (typeof jsonExpiresAt === "number") {
+    return true;
+  }
+
   if (!sessionRecord.sandboxExpiresAt) {
     return true;
   }
