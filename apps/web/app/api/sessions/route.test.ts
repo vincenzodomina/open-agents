@@ -16,6 +16,7 @@ let currentSession: {
   },
 };
 let existingSessionCount = 0;
+let sessionsListBehavior: "ok" | "throw" = "ok";
 const createCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/session/get-server-session", () => ({
@@ -66,8 +67,18 @@ mock.module("@/lib/db/sessions", () => ({
       },
     };
   },
-  getArchivedSessionCountByUserId: async () => 0,
-  getSessionsWithUnreadByUserId: async () => [],
+  getArchivedSessionCountByUserId: async () => {
+    if (sessionsListBehavior === "throw") {
+      throw new Error("database unavailable");
+    }
+    return 0;
+  },
+  getSessionsWithUnreadByUserId: async () => {
+    if (sessionsListBehavior === "throw") {
+      throw new Error("database unavailable");
+    }
+    return [];
+  },
   getUsedSessionTitles: async () => new Set<string>(),
 }));
 
@@ -94,6 +105,7 @@ describe("/api/sessions POST", () => {
       },
     };
     existingSessionCount = 0;
+    sessionsListBehavior = "ok";
     createCalls.length = 0;
   });
 
@@ -185,6 +197,38 @@ describe("/api/sessions POST", () => {
     expect(createCalls[0]).toMatchObject({
       autoCommitPushOverride: true,
       autoCreatePrOverride: true,
+    });
+  });
+});
+
+describe("/api/sessions GET", () => {
+  beforeEach(() => {
+    sessionsListBehavior = "ok";
+    currentSession = {
+      user: {
+        id: "user-1",
+        username: "nico",
+        name: "Nico",
+      },
+    };
+  });
+
+  test("returns 503 with code when listing sessions fails", async () => {
+    sessionsListBehavior = "throw";
+    const { GET } = await routeModulePromise;
+
+    const response = await GET(
+      new Request("http://localhost/api/sessions?status=active"),
+    );
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as {
+      code?: string;
+      error?: string;
+    };
+    expect(body).toMatchObject({
+      code: "SESSIONS_LIST_FAILED",
+      error: "Failed to load sessions",
     });
   });
 });
