@@ -92,6 +92,44 @@ export function hasRuntimeSandboxState(state: unknown): boolean {
   return hasResumableSandboxState(state);
 }
 
+/**
+ * Session-row aware runtime check for API routes.
+ *
+ * `sandbox_state` JSON normally includes `expiresAt`, but some writes only
+ * persist `sandbox_expires_at` on the session row (or the blob can drift).
+ * Treat just-bash + resumable handle + non-expired `sandboxExpiresAt` as live
+ * so {@link hasRuntimeSandboxState} alone does not flip the UI to "no sandbox".
+ */
+export function hasEffectiveRuntimeSandboxState(session: {
+  sandboxState: unknown;
+  sandboxExpiresAt: Date | null;
+}): boolean {
+  if (hasRuntimeSandboxState(session.sandboxState)) {
+    return true;
+  }
+
+  const state = session.sandboxState;
+  if (!state || typeof state !== "object") {
+    return false;
+  }
+
+  const type = (state as { type?: unknown }).type;
+  if (type !== "just-bash") {
+    return false;
+  }
+
+  if (!hasResumableSandboxState(state)) {
+    return false;
+  }
+
+  const col = session.sandboxExpiresAt;
+  if (!col) {
+    return false;
+  }
+
+  return Date.now() < col.getTime() - SANDBOX_EXPIRES_BUFFER_MS;
+}
+
 export function isSandboxNotFoundError(message: string): boolean {
   const normalized = message.toLowerCase();
   return (

@@ -277,6 +277,13 @@ const SessionChatMetadataContext = createContext<
 // This avoids flicker/loading indicators when switching chats that share one sandbox.
 const sandboxInfoCache = new Map<string, SandboxInfo>();
 
+function isSandboxInfoLocallyValid(info: SandboxInfo): boolean {
+  if (info.timeout === null) {
+    return true;
+  }
+  return Date.now() < info.createdAt + info.timeout;
+}
+
 type SessionChatProviderProps = {
   session: Session;
   chat: Chat;
@@ -537,6 +544,22 @@ export function SessionChatProvider({
           applyLifecycleTiming(data.lifecycle);
 
           if (data.status === "no_sandbox") {
+            const cachedInfo = sandboxInfoCache.get(sessionId);
+            const resolvedType =
+              asKnownSandboxType(sessionRecord.sandboxState?.type) ??
+              "just-bash";
+            const ignoreTransientNoSandbox =
+              resolvedType === "just-bash" &&
+              cachedInfo !== undefined &&
+              isSandboxInfoLocallyValid(cachedInfo);
+
+            if (ignoreTransientNoSandbox) {
+              setReconnectionStatus((prev) =>
+                prev === "checking" ? prev : "connected",
+              );
+              return "active";
+            }
+
             setSandboxInfoState(null);
             sandboxInfoCache.delete(sessionId);
             setSessionRecord((prev) => ({
@@ -605,7 +628,12 @@ export function SessionChatProvider({
       } finally {
         statusSyncRef.current.inFlight = null;
       }
-    }, [sessionRecord.id, sessionId, applyLifecycleTiming]);
+    }, [
+      sessionRecord.id,
+      sessionRecord.sandboxState,
+      sessionId,
+      applyLifecycleTiming,
+    ]);
 
   const updateSessionRepo = useCallback(
     (info: {

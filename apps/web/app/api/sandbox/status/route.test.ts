@@ -17,9 +17,9 @@ let sessionRecord: {
   id: string;
   userId: string;
   sandboxState: {
-    type: "vercel";
+    type: "vercel" | "just-bash";
     sandboxName: string;
-    expiresAt: number;
+    expiresAt?: number;
   };
   lifecycleState: "active" | "failed";
   lifecycleError: string | null;
@@ -146,5 +146,30 @@ describe("/api/sandbox/status lifecycle safety net", () => {
     expect(updateCalls[0]?.patch.lifecycleState).toBe("active");
     expect(updateCalls[0]?.patch.lifecycleError).toBeNull();
     expect(kickCalls).toHaveLength(0);
+  });
+
+  test("treats just-bash as active when JSON omits expiresAt but session sandboxExpiresAt is valid", async () => {
+    const { GET } = await routeModulePromise;
+
+    const now = Date.now();
+    sessionRecord = {
+      ...sessionRecord,
+      sandboxState: {
+        type: "just-bash",
+        sandboxName: "session_session-1",
+      },
+      sandboxExpiresAt: new Date(now + 5 * 60_000),
+      lifecycleState: "active",
+      lifecycleError: null,
+      hibernateAfter: new Date(now + 30_000),
+    };
+
+    const response = await GET(
+      new Request("http://localhost/api/sandbox/status?sessionId=session-1"),
+    );
+    const payload = (await response.json()) as { status: string };
+
+    expect(response.ok).toBe(true);
+    expect(payload.status).toBe("active");
   });
 });

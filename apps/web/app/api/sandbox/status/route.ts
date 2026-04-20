@@ -10,8 +10,8 @@ import {
 } from "@/lib/sandbox/lifecycle";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
 import {
+  hasEffectiveRuntimeSandboxState,
   hasPausedSandboxState,
-  hasRuntimeSandboxState,
 } from "@/lib/sandbox/utils";
 
 export type SandboxStatusResponse = {
@@ -50,7 +50,7 @@ export async function GET(req: Request): Promise<Response> {
 
   const { sessionRecord } = sessionContext;
   let effectiveSessionRecord = sessionRecord;
-  const hasRuntimeState = hasRuntimeSandboxState(sessionRecord.sandboxState);
+  const hasRuntimeState = hasEffectiveRuntimeSandboxState(sessionRecord);
   const hasPausedState =
     !hasRuntimeState &&
     (hasPausedSandboxState(sessionRecord.sandboxState) ||

@@ -771,10 +771,12 @@ function SandboxInputOverlay({
     return null;
   }
 
-  // Sandbox is fully inactive and not transitioning -- show resume/create buttons
+  // Sandbox is fully inactive and not transitioning -- show resume/create buttons.
+  // Outer layer is pointer-events-none so the user can still focus and type in the
+  // composer (submit stays disabled until the sandbox is active); buttons opt back in.
   return (
-    <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-background/60 backdrop-blur-[2px]">
-      <div className="flex items-center gap-2">
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-background/50 backdrop-blur-[1px]">
+      <div className="pointer-events-auto flex items-center gap-2">
         {hasSnapshot ? (
           <Button onClick={onRestore} size="sm" className="shadow-sm">
             Resume sandbox
@@ -2714,17 +2716,29 @@ export function SessionChatContent({
   const isServerHibernated = lifecycleTiming.state === "hibernated";
   const isHibernatingUi = isHibernatingTransition || isServerHibernating;
 
-  // Sandbox is active only when BOTH the local connection info is valid AND
-  // the server agrees the lifecycle is active (not hibernating/hibernated/failed).
+  /** In-process just-bash is not an external VM; DB lifecycle must not gate the UI. */
+  const isJustBashSandbox =
+    preferredSandboxType === "just-bash" ||
+    session.sandboxState?.type === "just-bash";
+
+  // Sandbox is active when local connection info is valid and (for external
+  // sandboxes) the server lifecycle agrees. just-bash only uses local validity.
   const serverSaysActive =
     lifecycleTiming.state === null ||
     lifecycleTiming.state === "active" ||
     lifecycleTiming.state === "provisioning";
-  const isSandboxActive = isSandboxValid(sandboxInfo) && serverSaysActive;
+  const isSandboxActive =
+    isSandboxValid(sandboxInfo) && (isJustBashSandbox || serverSaysActive);
 
   const _sandboxUiStatus = useMemo(() => {
     if (isArchived) {
       return { label: "Archived", className: "bg-muted text-muted-foreground" };
+    }
+    if (isJustBashSandbox && isSandboxValid(sandboxInfo)) {
+      return {
+        label: "Active",
+        className: "bg-emerald-500/15 text-emerald-700",
+      };
     }
     if (isCreatingSandbox) {
       return { label: "Creating", className: "bg-amber-500/15 text-amber-700" };
@@ -2769,6 +2783,8 @@ export function SessionChatContent({
     return { label: "No sandbox", className: "bg-muted text-muted-foreground" };
   }, [
     isArchived,
+    isJustBashSandbox,
+    sandboxInfo,
     isCreatingSandbox,
     isRestoringSnapshot,
     isServerRestoring,
@@ -3288,7 +3304,7 @@ export function SessionChatContent({
                                 isReconnectingSandbox ||
                                 isHibernatingUi ||
                                 isServerRestoring ||
-                                !isSandboxActive) ? (
+                                isAutoRestoringOnEntry) ? (
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                   <Loader2 className="h-4 w-4 animate-spin" />
                                   <p>Sandbox is initializing…</p>

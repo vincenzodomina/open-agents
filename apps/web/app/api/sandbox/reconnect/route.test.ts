@@ -20,7 +20,7 @@ let sessionRecord: {
   lifecycleState: "failed" | "active" | "hibernated";
   lifecycleError: string | null;
   sandboxState: {
-    type: "vercel";
+    type: "vercel" | "just-bash";
     sandboxName?: string;
     expiresAt?: number;
   };
@@ -61,7 +61,7 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 
 mock.module("@open-harness/sandbox", () => ({
   connectSandbox: async (state: {
-    type: "vercel";
+    type: "vercel" | "just-bash";
     sandboxName?: string;
     expiresAt?: number;
   }) => {
@@ -195,5 +195,32 @@ describe("/api/sandbox/reconnect", () => {
     expect(updateCalls[0]?.patch.sandboxState).toEqual({
       type: "vercel",
     });
+  });
+
+  test("reconnects when just-bash JSON omits expiresAt but session sandboxExpiresAt is set", async () => {
+    const { GET } = await routeModulePromise;
+    const now = Date.now();
+    sessionRecord = {
+      id: "session-1",
+      userId: "user-1",
+      snapshotUrl: null,
+      lifecycleState: "active",
+      lifecycleError: null,
+      sandboxState: {
+        type: "just-bash",
+        sandboxName: "session_session-1",
+      },
+      lastActivityAt: new Date(now - 5_000),
+      hibernateAfter: new Date(now + 10_000),
+      sandboxExpiresAt: new Date(now + 5 * 60_000),
+    };
+
+    const response = await GET(
+      new Request("http://localhost/api/sandbox/reconnect?sessionId=session-1"),
+    );
+    const payload = (await response.json()) as { status: string };
+
+    expect(response.ok).toBe(true);
+    expect(payload.status).toBe("connected");
   });
 });

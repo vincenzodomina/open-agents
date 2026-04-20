@@ -11,9 +11,9 @@ import {
 } from "@/lib/sandbox/lifecycle";
 import {
   clearUnavailableSandboxState,
+  hasEffectiveRuntimeSandboxState,
   hasPausedSandboxState,
   hasResumableSandboxState,
-  hasRuntimeSandboxState,
   isSandboxUnavailableError,
 } from "@/lib/sandbox/utils";
 
@@ -77,13 +77,14 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const { sessionRecord } = sessionContext;
+  const hasEffectiveRuntime = hasEffectiveRuntimeSandboxState(sessionRecord);
   const hasPausedState =
-    !hasRuntimeSandboxState(sessionRecord.sandboxState) &&
+    !hasEffectiveRuntime &&
     (hasPausedSandboxState(sessionRecord.sandboxState) ||
       !!sessionRecord.snapshotUrl);
 
   // No runtime sandbox state in DB
-  if (!hasRuntimeSandboxState(sessionRecord.sandboxState)) {
+  if (!hasEffectiveRuntime) {
     console.log(
       `[Reconnect] session=${sessionId} status=no_sandbox hasSnapshot=${hasPausedState} runtimeState=false`,
     );
