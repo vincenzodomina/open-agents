@@ -192,6 +192,22 @@ function rowHasPendingChange(row: StatusRow): boolean {
   return statusShortPrefix(row) !== undefined;
 }
 
+/** Minimal pathspec match for `git ls-files` (files under a directory prefix). */
+function fileMatchesLsPathspec(file: string, spec: string): boolean {
+  if (spec.endsWith("/")) {
+    const dir = spec.slice(0, -1);
+    return file === dir || file.startsWith(`${dir}/`);
+  }
+  return file === spec || file.startsWith(`${spec}/`);
+}
+
+function fileMatchesLsPathspecs(file: string, specs: string[]): boolean {
+  if (specs.length === 0) {
+    return true;
+  }
+  return specs.some((spec) => fileMatchesLsPathspec(file, spec));
+}
+
 async function dispatchGit(
   argv: string[],
   ctx: {
@@ -373,6 +389,76 @@ async function dispatchGit(
         await git.remove({ fs, dir, filepath: p });
       }
       return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    case "ls-files": {
+      const rest = argv.slice(1);
+      const dd = rest.indexOf("--");
+      const beforeDd = dd >= 0 ? rest.slice(0, dd) : rest;
+      const afterDd = dd >= 0 ? rest.slice(dd + 1) : [];
+
+      const flags = new Set(beforeDd.filter((a) => a.startsWith("-")));
+      const others = flags.has("--others") || flags.has("-o");
+      const excludeStandard = flags.has("--exclude-standard");
+      const errorUnmatch = flags.has("--error-unmatch");
+
+      const pathspecsBefore = beforeDd.filter((a) => !a.startsWith("-"));
+      const pathspecs = [...pathspecsBefore, ...afterDd];
+
+      if (errorUnmatch) {
+        if (pathspecs.length !== 1) {
+          return {
+            stdout: "",
+            stderr:
+              "git ls-files --error-unmatch requires exactly one pathspec\n",
+            exitCode: 1,
+          };
+        }
+        const spec = pathspecs[0]!;
+        const tracked = await git.listFiles({ fs, dir });
+        const matched = tracked.some((f) => fileMatchesLsPathspec(f, spec));
+        if (!matched) {
+          return {
+            stdout: "",
+            stderr: `error: pathspec '${spec}' did not match any file(s) known to git.\n`,
+            exitCode: 1,
+          };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+
+      if (others) {
+        const matrix = await git.statusMatrix({
+          fs,
+          dir,
+          ignored: !excludeStandard,
+        });
+        const paths = matrix
+          .filter((row) => {
+            const p = statusShortPrefix(row);
+            if (excludeStandard) {
+              return p === "??";
+            }
+            return p === "??" || p === "!!";
+          })
+          .map((row) => row[0])
+          .filter((fp) => fileMatchesLsPathspecs(fp, pathspecs));
+
+        const unique = [...new Set(paths)].sort((a, b) => a.localeCompare(b));
+        return {
+          stdout: unique.length > 0 ? `${unique.join("\n")}\n` : "",
+          stderr: "",
+          exitCode: 0,
+        };
+      }
+
+      let files = await git.listFiles({ fs, dir });
+      files = files.filter((f) => fileMatchesLsPathspecs(f, pathspecs));
+      files.sort((a, b) => a.localeCompare(b));
+      return {
+        stdout: files.length > 0 ? `${files.join("\n")}\n` : "",
+        stderr: "",
+        exitCode: 0,
+      };
     }
     case "commit": {
       const mIdx = argv.indexOf("-m");
