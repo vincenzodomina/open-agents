@@ -23,7 +23,7 @@ services:
         "bun install --frozen-lockfile && cd apps/web && bun run dev -- --hostname 0.0.0.0",
       ]
     ports:
-      - "${OPEN_AGENTS_PORT:-3000}:3000"
+      - "${APP_PORT:-3000}:3000"
     volumes:
       - .:/workspace
       - open_agents_node_modules:/workspace/node_modules
@@ -53,7 +53,7 @@ services:
     environment:
       NEXT_TELEMETRY_DISABLED: "1"
     ports:
-      - "${OPEN_AGENTS_PORT:-3000}:3000"
+      - "${APP_PORT:-3000}:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

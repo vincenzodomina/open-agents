@@ -11,13 +11,6 @@ const LOOPBACK_HOSTNAMES = new Set([
 ]);
 const IS_RUNNING_IN_DOCKER = existsSync("/.dockerenv");
 
-function getTrimmedServerEnv(
-  name: "SUPABASE_INTERNAL_URL",
-): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-}
-
 function isLoopbackHostname(hostname: string): boolean {
   return LOOPBACK_HOSTNAMES.has(hostname);
 }
@@ -41,7 +34,6 @@ function rewriteLoopbackUrlForDocker(
 
 export function resolveSupabaseServerUrl(options?: {
   browserUrl?: string;
-  internalUrl?: string;
   isRunningInDocker?: boolean;
   dockerHostname?: string;
 }): string | undefined {
@@ -53,12 +45,6 @@ export function resolveSupabaseServerUrl(options?: {
   const isRunningInDocker = options?.isRunningInDocker ?? IS_RUNNING_IN_DOCKER;
   if (!isRunningInDocker) {
     return browserUrl;
-  }
-
-  const internalUrl =
-    options?.internalUrl ?? getTrimmedServerEnv("SUPABASE_INTERNAL_URL");
-  if (internalUrl) {
-    return internalUrl;
   }
 
   return (
