@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { hasSupabaseServerConfig } from "@/lib/supabase/config";
+import { hasSupabaseServerConfig } from "@/lib/supabase/server-config";
 import { updateSession } from "@/lib/supabase/middleware";
 
 function wantsSharedMarkdown(acceptHeader: string | null): boolean {

@@ -1,8 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import {
-  getSupabaseAnonKey,
-  getSupabaseServerUrl,
-} from "@/lib/supabase/config";
+import { getSupabaseAnonKey } from "@/lib/supabase/config";
+import { getSupabaseServerUrl } from "@/lib/supabase/server-config";
 import { syncAppUserFromSupabase } from "@/lib/supabase/sync-app-user";
 import type { Session } from "./types";
 

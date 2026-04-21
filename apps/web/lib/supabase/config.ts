@@ -1,22 +1,18 @@
-function getTrimmedEnv(name: string): string | undefined {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
-}
+const SUPABASE_BROWSER_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || undefined;
+const SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || undefined;
 
 function getStorageHostname(url: string): string {
   return new URL(url).hostname.split(".")[0] ?? "";
 }
 
 export function getSupabaseBrowserUrl(): string | undefined {
-  return getTrimmedEnv("NEXT_PUBLIC_SUPABASE_URL");
-}
-
-export function getSupabaseServerUrl(): string | undefined {
-  return getTrimmedEnv("SUPABASE_INTERNAL_URL") ?? getSupabaseBrowserUrl();
+  return SUPABASE_BROWSER_URL;
 }
 
 export function getSupabaseAnonKey(): string | undefined {
-  return getTrimmedEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+  return SUPABASE_ANON_KEY;
 }
 
 export function getSupabaseAuthStorageKey(): string | undefined {
@@ -26,8 +22,4 @@ export function getSupabaseAuthStorageKey(): string | undefined {
   }
 
   return `sb-${getStorageHostname(browserUrl)}-auth-token`;
-}
-
-export function hasSupabaseServerConfig(): boolean {
-  return Boolean(getSupabaseServerUrl() && getSupabaseAnonKey());
 }
