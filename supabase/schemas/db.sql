@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS user_preferences (
     user_id text NOT NULL UNIQUE REFERENCES users (id) ON DELETE CASCADE,
     default_model_id text DEFAULT 'anthropic/claude-haiku-4.5'::text,
     default_subagent_model_id text,
-    default_sandbox_type text DEFAULT 'vercel'::text,
+    default_sandbox_type text DEFAULT 'just-bash'::text,
     default_diff_mode text DEFAULT 'unified'::text,
     auto_commit_push boolean DEFAULT false NOT NULL,
     auto_create_pr boolean DEFAULT false NOT NULL,

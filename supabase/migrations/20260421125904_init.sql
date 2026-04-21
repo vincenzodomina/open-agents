@@ -163,7 +163,7 @@ alter table "public"."usage_events" enable row level security;
     "user_id" text not null,
     "default_model_id" text default 'anthropic/claude-haiku-4.5'::text,
     "default_subagent_model_id" text,
-    "default_sandbox_type" text default 'vercel'::text,
+    "default_sandbox_type" text default 'just-bash'::text,
     "default_diff_mode" text default 'unified'::text,
     "auto_commit_push" boolean not null default false,
     "auto_create_pr" boolean not null default false,

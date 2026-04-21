@@ -172,7 +172,7 @@ VALUES
         'eb50450e-5e8f-43cb-97b4-336f1cce420e',
         'openai/gpt-5.4',
         'openai/gpt-5.4',
-        'vercel',
+        'just-bash',
         'unified',
         false,
         false,
