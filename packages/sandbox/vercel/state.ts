@@ -18,4 +18,9 @@ export interface VercelState {
   snapshotId?: string;
   /** Timestamp (ms) when the current runtime session expires */
   expiresAt?: number;
+  /**
+   * Non-expiring runtime marker used by local just-bash sandboxes.
+   * Cleared when the saved state is hibernated/stopped.
+   */
+  runtimeState?: "active";
 }

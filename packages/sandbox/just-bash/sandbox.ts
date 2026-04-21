@@ -40,7 +40,7 @@ import {
 
 const MAX_OUTPUT_LENGTH = 50_000;
 const TIMEOUT_BUFFER_MS = 30_000;
-const DEFAULT_RECONNECT_TIMEOUT_MS = 300_000;
+const DEFAULT_DETACHED_GIT_TIMEOUT_MS = 300_000;
 const DETACHED_QUICK_FAILURE_WINDOW_MS = 2_000;
 
 type JbSandboxInstance = Awaited<ReturnType<typeof JbSandbox.create>>;
@@ -76,7 +76,7 @@ export interface JustBashCreateConfig {
   githubToken?: string;
   gitUser?: { name: string; email: string };
   hooks?: SandboxHooks;
-  timeout?: number;
+  timeout?: number | null;
   ports?: number[];
   baseSnapshotId?: string;
   restoreSnapshotId?: string;
@@ -135,7 +135,7 @@ export class JustBashSandbox implements Sandbox {
       env?: Record<string, string>;
       currentBranch?: string;
       hooks?: SandboxHooks;
-      timeout?: number;
+      timeout?: number | null;
       startTime?: number;
       ports: number[];
       vfs: IFileSystem;
@@ -153,7 +153,7 @@ export class JustBashSandbox implements Sandbox {
     this.githubToken = options.githubToken;
     this._ports = options.ports;
 
-    if (options.timeout !== undefined && options.startTime !== undefined) {
+    if (options.timeout != null && options.startTime !== undefined) {
       this._timeout = options.timeout;
       this._expiresAt = options.startTime + options.timeout;
       this.scheduleProactiveStop();
@@ -231,7 +231,7 @@ export class JustBashSandbox implements Sandbox {
       githubToken,
       gitUser,
       hooks,
-      timeout = 300_000,
+      timeout,
       ports = [],
       baseSnapshotId,
       restoreSnapshotId,
@@ -264,12 +264,14 @@ export class JustBashSandbox implements Sandbox {
       skipGitWorkspaceBootstrap,
     });
 
-    const effectiveTimeout = timeout;
+    const effectiveTimeout = timeout ?? undefined;
     const inner = await JbSandbox.create({
       fs: vfs,
       cwd: JUST_BASH_WORKING_DIRECTORY,
       env,
-      timeoutMs: effectiveTimeout + TIMEOUT_BUFFER_MS,
+      ...(effectiveTimeout !== undefined
+        ? { timeoutMs: effectiveTimeout + TIMEOUT_BUFFER_MS }
+        : {}),
       network: getNetworkConfig(),
     });
 
@@ -316,18 +318,21 @@ export class JustBashSandbox implements Sandbox {
       env,
       githubToken,
       hooks,
-      timeout = DEFAULT_RECONNECT_TIMEOUT_MS,
+      timeout,
       ports = [],
       currentBranch,
     } = params;
 
     const vfs = diskBackedWorkspaceMount(rootPath);
+    const effectiveTimeout = timeout ?? undefined;
 
     const inner = await JbSandbox.create({
       fs: vfs,
       cwd: JUST_BASH_WORKING_DIRECTORY,
       env,
-      timeoutMs: timeout + TIMEOUT_BUFFER_MS,
+      ...(effectiveTimeout !== undefined
+        ? { timeoutMs: effectiveTimeout + TIMEOUT_BUFFER_MS }
+        : {}),
       network: getNetworkConfig(),
     });
 
@@ -340,7 +345,7 @@ export class JustBashSandbox implements Sandbox {
       env,
       currentBranch,
       hooks,
-      timeout,
+      timeout: effectiveTimeout,
       startTime: Date.now(),
       ports,
     });
@@ -703,7 +708,7 @@ export class JustBashSandbox implements Sandbox {
       const finished = await this.tryExecGitChain(
         command,
         cwd,
-        DEFAULT_RECONNECT_TIMEOUT_MS,
+        DEFAULT_DETACHED_GIT_TIMEOUT_MS,
       );
       if (finished === undefined) {
         throw new Error("just-bash: internal error (git chain handler)");
@@ -779,10 +784,16 @@ export class JustBashSandbox implements Sandbox {
     setDormantWorkspaceRoot(this.name, this.rootPath);
   }
 
-  getState(): { type: "just-bash"; sandboxName: string; expiresAt?: number } {
+  getState(): {
+    type: "just-bash";
+    sandboxName: string;
+    runtimeState: "active";
+    expiresAt?: number;
+  } {
     return {
       type: "just-bash",
       sandboxName: this.name,
+      runtimeState: "active",
       ...(this._expiresAt !== undefined ? { expiresAt: this._expiresAt } : {}),
     };
   }

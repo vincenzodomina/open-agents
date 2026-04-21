@@ -22,6 +22,7 @@ let sessionRecord: {
   sandboxState: {
     type: "vercel" | "just-bash";
     sandboxName?: string;
+    runtimeState?: "active";
     expiresAt?: number;
   };
   lastActivityAt: Date | null;
@@ -63,18 +64,27 @@ mock.module("@open-harness/sandbox", () => ({
   connectSandbox: async (state: {
     type: "vercel" | "just-bash";
     sandboxName?: string;
+    runtimeState?: "active";
     expiresAt?: number;
   }) => {
     const expiresAt = Date.now() + 2 * 60_000;
+    const nextState =
+      state.type === "just-bash"
+        ? {
+            type: "just-bash" as const,
+            ...(state.sandboxName ? { sandboxName: state.sandboxName } : {}),
+            runtimeState: "active" as const,
+          }
+        : {
+            ...state,
+            ...(state.sandboxName ? { sandboxName: state.sandboxName } : {}),
+            expiresAt,
+          };
     return {
       workingDirectory: "/vercel/sandbox",
-      expiresAt,
+      expiresAt: state.type === "just-bash" ? undefined : expiresAt,
       exec: async () => probeResult,
-      getState: () => ({
-        ...state,
-        ...(state.sandboxName ? { sandboxName: state.sandboxName } : {}),
-        expiresAt,
-      }),
+      getState: () => nextState,
     };
   },
 }));
@@ -197,9 +207,8 @@ describe("/api/sandbox/reconnect", () => {
     });
   });
 
-  test("reconnects when just-bash JSON omits expiresAt but session sandboxExpiresAt is set", async () => {
+  test("reconnects active just-bash sandboxes without carrying expiry metadata forward", async () => {
     const { GET } = await routeModulePromise;
-    const now = Date.now();
     sessionRecord = {
       id: "session-1",
       userId: "user-1",
@@ -209,18 +218,29 @@ describe("/api/sandbox/reconnect", () => {
       sandboxState: {
         type: "just-bash",
         sandboxName: "session_session-1",
+        runtimeState: "active",
       },
-      lastActivityAt: new Date(now - 5_000),
-      hibernateAfter: new Date(now + 10_000),
-      sandboxExpiresAt: new Date(now + 5 * 60_000),
+      lastActivityAt: new Date(Date.now() - 5_000),
+      hibernateAfter: new Date(Date.now() + 10_000),
+      sandboxExpiresAt: null,
     };
 
     const response = await GET(
       new Request("http://localhost/api/sandbox/reconnect?sessionId=session-1"),
     );
-    const payload = (await response.json()) as { status: string };
+    const payload = (await response.json()) as {
+      status: string;
+      expiresAt?: number;
+    };
 
     expect(response.ok).toBe(true);
     expect(payload.status).toBe("connected");
+    expect(payload.expiresAt).toBeUndefined();
+    expect(updateCalls[0]?.patch.sandboxState).toEqual({
+      type: "just-bash",
+      sandboxName: "session_session-1",
+      runtimeState: "active",
+    });
+    expect(updateCalls[0]?.patch.sandboxExpiresAt).toBeNull();
   });
 });

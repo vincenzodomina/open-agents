@@ -105,6 +105,9 @@ mock.module("@/lib/sandbox/utils", () => ({
   clearUnavailableSandboxState: () => null,
   hasRuntimeSandboxState: (state: TestSandboxState | null) =>
     Boolean(state?.sandboxId),
+  isSessionSandboxOperational: (sessionRecord: {
+    sandboxState: TestSandboxState | null;
+  }) => Boolean(sessionRecord.sandboxState?.sandboxId),
   isSandboxUnavailableError: (message: string) =>
     message.toLowerCase().includes("sandbox unavailable"),
 }));

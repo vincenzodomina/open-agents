@@ -127,6 +127,19 @@ function registerRouteMocks() {
         state.files !== undefined
       );
     },
+    isSessionSandboxOperational: (sessionRecord: {
+      sandboxState: TestSandboxState | null;
+    }) => {
+      const state = sessionRecord.sandboxState;
+      if (!state) {
+        return false;
+      }
+
+      return (
+        (typeof state.sandboxId === "string" && state.sandboxId.length > 0) ||
+        state.files !== undefined
+      );
+    },
     isSandboxUnavailableError: () => false,
   }));
 

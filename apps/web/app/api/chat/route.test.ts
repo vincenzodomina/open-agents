@@ -35,7 +35,7 @@ let currentAuthSession: {
 } | null;
 let existingUserMessageCount = 0;
 let existingChatMessage: { id: string } | null = null;
-let isSandboxActive = true;
+let isSandboxOperational = true;
 let existingRunStatus: string = "completed";
 let getRunShouldThrow = false;
 let compareAndSetDefaultResult = true;
@@ -205,7 +205,7 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 }));
 
 mock.module("@/lib/sandbox/utils", () => ({
-  isSandboxActive: () => isSandboxActive,
+  isSessionSandboxOperational: () => isSandboxOperational,
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
@@ -247,7 +247,7 @@ function createValidRequest() {
 
 describe("/api/chat route", () => {
   beforeEach(() => {
-    isSandboxActive = true;
+    isSandboxOperational = true;
     existingRunStatus = "completed";
     getRunShouldThrow = false;
     compareAndSetDefaultResult = true;
@@ -523,7 +523,7 @@ describe("/api/chat route", () => {
   });
 
   test("returns 400 when sandbox is not active", async () => {
-    isSandboxActive = false;
+    isSandboxOperational = false;
     const { POST } = await routeModulePromise;
 
     const response = await POST(createValidRequest());

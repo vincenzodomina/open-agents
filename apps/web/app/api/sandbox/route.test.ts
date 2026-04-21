@@ -7,7 +7,7 @@ interface TestSessionRecord {
   id: string;
   userId: string;
   lifecycleVersion: number;
-  sandboxState: { type: "vercel" };
+  sandboxState: { type: "vercel" | "just-bash" };
   globalSkillRefs: Array<{ source: string; skillName: string }>;
 }
 
@@ -18,7 +18,7 @@ interface KickCall {
 
 interface ConnectConfig {
   state: {
-    type: "vercel";
+    type: "vercel" | "just-bash";
     sandboxName?: string;
     source?: {
       repo?: string;
@@ -31,6 +31,7 @@ interface ConnectConfig {
     gitUser?: {
       email?: string;
     };
+    timeout?: number;
     persistent?: boolean;
     resume?: boolean;
     createIfMissing?: boolean;
@@ -49,6 +50,7 @@ const execCalls: Array<{ command: string; cwd: string; timeoutMs: number }> =
 
 let sessionRecord: TestSessionRecord;
 let currentGitHubToken: string | null;
+let connectSandboxError: Error | null;
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => ({
@@ -95,15 +97,23 @@ mock.module("@/lib/sandbox/lifecycle-kick", () => ({
 
 mock.module("@open-harness/sandbox", () => ({
   connectSandbox: async (config: ConnectConfig) => {
+    if (connectSandboxError) {
+      throw connectSandboxError;
+    }
     connectConfigs.push(config);
+    const sandboxName = config.state.sandboxName ?? "session_session-1";
+    const isJustBash = config.state.type === "just-bash";
 
     return {
       currentBranch: "main",
       workingDirectory: "/vercel/sandbox",
+      timeout: isJustBash ? undefined : DEFAULT_SANDBOX_TIMEOUT_MS,
       getState: () => ({
-        type: "vercel" as const,
-        sandboxName: config.state.sandboxName ?? "session_session-1",
-        expiresAt: Date.now() + 120_000,
+        type: config.state.type,
+        sandboxName,
+        ...(isJustBash
+          ? { runtimeState: "active" as const }
+          : { expiresAt: Date.now() + 120_000 }),
       }),
       exec: async (command: string, cwd: string, timeoutMs: number) => {
         execCalls.push({ command, cwd, timeoutMs });
@@ -161,6 +171,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     writeFileCalls.length = 0;
     execCalls.length = 0;
     currentGitHubToken = null;
+    connectSandboxError = null;
     sessionRecord = {
       id: "session-1",
       userId: "user-1",
@@ -202,6 +213,48 @@ describe("/api/sandbox lifecycle kicks", () => {
         createIfMissing: true,
       },
     });
+  });
+
+  test("creates just-bash sandboxes without timeout semantics", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "just-bash",
+        }),
+      }),
+    );
+
+    expect(response.ok).toBe(true);
+    expect(connectConfigs[0]).toMatchObject({
+      state: {
+        type: "just-bash",
+        sandboxName: "session_session-1",
+      },
+      options: {
+        persistent: true,
+        resume: true,
+        createIfMissing: true,
+      },
+    });
+    expect(connectConfigs[0]?.options?.timeout).toBeUndefined();
+    expect(updateCalls[0]?.patch.sandboxState).toEqual({
+      type: "just-bash",
+      sandboxName: "session_session-1",
+      runtimeState: "active",
+    });
+    expect(updateCalls[0]?.patch.sandboxExpiresAt).toBeNull();
+
+    const payload = (await response.json()) as {
+      timeout: number | null;
+      mode: string;
+    };
+    expect(payload.timeout).toBeNull();
+    expect(payload.mode).toBe("just-bash");
   });
 
   test("repo sandboxes broker the user GitHub token instead of embedding it", async () => {
@@ -330,5 +383,28 @@ describe("/api/sandbox lifecycle kicks", () => {
     expect(payload.error).toBe("Invalid sandbox type");
     expect(connectConfigs).toHaveLength(0);
     expect(kickCalls).toHaveLength(0);
+  });
+
+  test("returns a structured error when sandbox creation fails", async () => {
+    const { POST } = await routeModulePromise;
+    connectSandboxError = new Error("just-bash provider failed");
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "just-bash",
+        }),
+      }),
+    );
+
+    const payload = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(500);
+    expect(payload.error).toBe("just-bash provider failed");
+    expect(kickCalls).toHaveLength(0);
+    expect(updateCalls).toHaveLength(0);
   });
 });

@@ -1,5 +1,5 @@
 import { getChatById, getSessionById } from "@/lib/db/sessions";
-import { isSandboxActive } from "@/lib/sandbox/utils";
+import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 export type ResponseFormat = "json" | "text";
@@ -126,7 +126,7 @@ export async function requireOwnedSessionChat(
     };
   }
 
-  if (requireActiveSandbox && !isSandboxActive(sessionRecord.sandboxState)) {
+  if (requireActiveSandbox && !isSessionSandboxOperational(sessionRecord)) {
     return {
       ok: false,
       response: toErrorResponse(sandboxInactiveMessage, 400, format),

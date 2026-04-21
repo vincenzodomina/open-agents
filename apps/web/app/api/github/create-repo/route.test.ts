@@ -80,7 +80,7 @@ mock.module("@/lib/github/user-token", () => ({
 }));
 
 mock.module("@/lib/sandbox/utils", () => ({
-  isSandboxActive: () => sandboxActive,
+  isSessionSandboxOperational: () => sandboxActive,
 }));
 
 mock.module("@open-harness/sandbox", () => ({

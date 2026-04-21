@@ -188,9 +188,9 @@ export async function evaluateSandboxLifecycle(
     return { action: "skipped", reason: "unsupported-sandbox-type" };
   }
 
-  // In-process sandbox: never auto-hibernate. stop() + clearSandboxState remove
-  // expiresAt from DB, which makes hasRuntimeSandboxState / isSandboxActive false
-  // and breaks session routes until a manual resume—unlike Vercel, there is no
+  // In-process sandbox: never auto-hibernate. stop() + clearSandboxState clear
+  // the explicit just-bash runtime marker, which flips runtime guards false and
+  // breaks session routes until a manual resume—unlike Vercel, there is no
   // external cost to keep the local process "awake."
   if (sandboxState.type === "just-bash") {
     return { action: "skipped", reason: "just-bash-no-auto-hibernate" };

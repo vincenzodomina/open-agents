@@ -160,6 +160,8 @@ export async function POST(req: Request) {
   // CREATE OR RESUME: Create a named persistent sandbox for this session.
   // ============================================
   const startTime = Date.now();
+  const sandboxTimeout =
+    sandboxType === "vercel" ? DEFAULT_SANDBOX_TIMEOUT_MS : undefined;
 
   const source = repoUrl
     ? {
@@ -169,80 +171,94 @@ export async function POST(req: Request) {
       }
     : undefined;
 
-  const sandbox = await connectSandbox({
-    state: {
-      type: sandboxType,
-      ...(sandboxName ? { sandboxName } : {}),
-      source,
-    },
-    options: {
-      githubToken: githubToken ?? undefined,
-      gitUser,
-      timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-      ports: DEFAULT_SANDBOX_PORTS,
-      ...(sandboxType === "vercel"
-        ? { baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID }
-        : {}),
-      persistent: !!sandboxName,
-      resume: !!sandboxName,
-      createIfMissing: !!sandboxName,
-    },
-  });
-
-  if (sessionId && sandbox.getState) {
-    const nextState = sandbox.getState() as SandboxState;
-    await updateSession(sessionId, {
-      sandboxState: nextState,
-      snapshotUrl: null,
-      snapshotCreatedAt: null,
-      lifecycleVersion: getNextLifecycleVersion(
-        sessionRecord?.lifecycleVersion,
-      ),
-      ...buildActiveLifecycleUpdate(nextState),
+  try {
+    const sandbox = await connectSandbox({
+      state: {
+        type: sandboxType,
+        ...(sandboxName ? { sandboxName } : {}),
+        source,
+      },
+      options: {
+        githubToken: githubToken ?? undefined,
+        gitUser,
+        ...(sandboxTimeout !== undefined ? { timeout: sandboxTimeout } : {}),
+        ports: DEFAULT_SANDBOX_PORTS,
+        ...(sandboxType === "vercel"
+          ? { baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID }
+          : {}),
+        persistent: !!sandboxName,
+        resume: !!sandboxName,
+        createIfMissing: !!sandboxName,
+      },
     });
 
-    if (sessionRecord) {
-      try {
-        await syncVercelCliAuthForSandbox({
-          userId: session.user.id,
-          sessionRecord,
-          sandbox,
-        });
-      } catch (error) {
-        console.error(
-          `Failed to prepare Vercel CLI auth for session ${sessionRecord.id}:`,
-          error,
-        );
+    const nextState = sandbox.getState?.() as SandboxState | undefined;
+    if (sessionId && nextState) {
+      await updateSession(sessionId, {
+        sandboxState: nextState,
+        snapshotUrl: null,
+        snapshotCreatedAt: null,
+        lifecycleVersion: getNextLifecycleVersion(
+          sessionRecord?.lifecycleVersion,
+        ),
+        ...buildActiveLifecycleUpdate(nextState),
+      });
+
+      if (sessionRecord) {
+        try {
+          await syncVercelCliAuthForSandbox({
+            userId: session.user.id,
+            sessionRecord,
+            sandbox,
+          });
+        } catch (error) {
+          console.error(
+            `Failed to prepare Vercel CLI auth for session ${sessionRecord.id}:`,
+            error,
+          );
+        }
+
+        try {
+          await installSessionGlobalSkills({
+            sessionRecord,
+            sandbox,
+          });
+        } catch (error) {
+          console.error(
+            `Failed to install global skills for session ${sessionRecord.id}:`,
+            error,
+          );
+        }
       }
 
-      try {
-        await installSessionGlobalSkills({
-          sessionRecord,
-          sandbox,
-        });
-      } catch (error) {
-        console.error(
-          `Failed to install global skills for session ${sessionRecord.id}:`,
-          error,
-        );
-      }
+      kickSandboxLifecycleWorkflow({
+        sessionId,
+        reason: "sandbox-created",
+      });
     }
 
-    kickSandboxLifecycleWorkflow({
-      sessionId,
-      reason: "sandbox-created",
+    const readyMs = Date.now() - startTime;
+
+    return Response.json({
+      createdAt: Date.now(),
+      timeout:
+        sandbox.timeout ??
+        (sandboxType === "vercel" ? DEFAULT_SANDBOX_TIMEOUT_MS : null),
+      currentBranch: repoUrl ? branch : undefined,
+      mode: sandboxType,
+      timing: { readyMs },
     });
+  } catch (error) {
+    const message =
+      error instanceof Error && error.message.trim().length > 0
+        ? error.message
+        : "Failed to create sandbox. Please try again.";
+    console.error(
+      `[Sandbox] Failed to create ${sandboxType} sandbox${sessionId ? ` for session ${sessionId}` : ""}:`,
+      error,
+    );
+    return Response.json({ error: message }, { status: 500 });
   }
-
-  const readyMs = Date.now() - startTime;
-
-  return Response.json({
-    createdAt: Date.now(),
-    timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-    currentBranch: repoUrl ? branch : undefined,
-    mode: sandboxType,
-    timing: { readyMs },
-  });
 }
 
 export async function DELETE(req: Request) {

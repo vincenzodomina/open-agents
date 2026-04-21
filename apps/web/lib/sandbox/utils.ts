@@ -14,6 +14,21 @@ function getSandboxExpiresAt(state: unknown): number | undefined {
   return typeof expiresAt === "number" ? expiresAt : undefined;
 }
 
+function hasActiveJustBashRuntimeState(state: unknown): boolean {
+  if (!state || typeof state !== "object") {
+    return false;
+  }
+
+  if ((state as { type?: unknown }).type !== "just-bash") {
+    return false;
+  }
+
+  return (
+    (state as { runtimeState?: unknown }).runtimeState === "active" &&
+    hasResumableSandboxState(state)
+  );
+}
+
 function getLegacySandboxId(state: unknown): string | null {
   if (!state || typeof state !== "object") {
     return null;
@@ -56,6 +71,10 @@ export function isSandboxActive(
 ): state is SandboxState {
   if (!state) return false;
 
+  if (hasActiveJustBashRuntimeState(state)) {
+    return true;
+  }
+
   const expiresAt = getSandboxExpiresAt(state);
   if (expiresAt === undefined) {
     return false;
@@ -84,6 +103,10 @@ export function canOperateOnSandbox(
 export function hasRuntimeSandboxState(state: unknown): boolean {
   if (!state || typeof state !== "object") return false;
 
+  if (hasActiveJustBashRuntimeState(state)) {
+    return true;
+  }
+
   const expiresAt = getSandboxExpiresAt(state);
   if (expiresAt === undefined) {
     return false;
@@ -97,8 +120,9 @@ export function hasRuntimeSandboxState(state: unknown): boolean {
  *
  * `sandbox_state` JSON normally includes `expiresAt`, but some writes only
  * persist `sandbox_expires_at` on the session row (or the blob can drift).
- * Treat just-bash + resumable handle + non-expired `sandboxExpiresAt` as live
- * so {@link hasRuntimeSandboxState} alone does not flip the UI to "no sandbox".
+ * Treat just-bash runtimeState=`active` as authoritative without expiry, and
+ * keep the old just-bash + non-expired `sandboxExpiresAt` fallback so legacy
+ * rows do not flip the UI to "no sandbox" during rollout.
  */
 export function hasEffectiveRuntimeSandboxState(session: {
   sandboxState: unknown;
@@ -150,6 +174,10 @@ export function isSessionSandboxOperational(sessionRecord: {
       ? (state as { expiresAt?: unknown }).expiresAt
       : undefined;
 
+  if (hasActiveJustBashRuntimeState(state)) {
+    return true;
+  }
+
   if (typeof jsonExpiresAt === "number") {
     return true;
   }
@@ -187,6 +215,10 @@ export function isSandboxUnavailableError(message: string): boolean {
 }
 
 function hasRuntimeState(state: SandboxState): boolean {
+  if (hasActiveJustBashRuntimeState(state)) {
+    return true;
+  }
+
   const expiresAt = getSandboxExpiresAt(state);
   if (expiresAt === undefined) {
     return false;

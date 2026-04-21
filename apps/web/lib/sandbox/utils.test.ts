@@ -19,7 +19,20 @@ describe("isSessionSandboxOperational", () => {
     ).toBe(true);
   });
 
-  test("still requires column when runtime JSON has no expiresAt (just-bash)", () => {
+  test("treats active just-bash runtime state as live without expiry metadata", () => {
+    expect(
+      isSessionSandboxOperational({
+        sandboxState: {
+          type: "just-bash",
+          sandboxName: "session_x",
+          runtimeState: "active",
+        },
+        sandboxExpiresAt: null,
+      }),
+    ).toBe(true);
+  });
+
+  test("still supports legacy just-bash rows via sandbox_expires_at fallback", () => {
     const future = Date.now() + 60 * 60 * 1000;
 
     expect(

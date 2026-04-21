@@ -7,8 +7,6 @@ import {
 } from "./registry";
 import { JustBashSandbox } from "./sandbox";
 
-const DEFAULT_RECONNECT_TIMEOUT_MS = 300_000;
-
 interface ConnectOptions {
   env?: Record<string, string>;
   githubToken?: string;
@@ -34,17 +32,6 @@ function getSandboxName(state: VercelState): string | undefined {
   }
 
   return undefined;
-}
-
-function getRemainingTimeout(
-  expiresAt: number | undefined,
-): number | undefined {
-  if (!expiresAt) {
-    return undefined;
-  }
-
-  const remaining = expiresAt - Date.now();
-  return remaining > 10_000 ? remaining : undefined;
 }
 
 function buildJustBashCreateConfig(
@@ -106,10 +93,7 @@ export async function connectJustBash(
           env: options?.env,
           githubToken: options?.githubToken,
           hooks: options?.hooks,
-          timeout:
-            getRemainingTimeout(state.expiresAt) ??
-            options?.timeout ??
-            DEFAULT_RECONNECT_TIMEOUT_MS,
+          timeout: options?.timeout,
           ports: options?.ports ?? [],
         });
       } catch (error) {
