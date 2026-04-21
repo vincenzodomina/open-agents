@@ -1,8 +1,7 @@
-import { checkBotId } from "botid/server";
-import { botIdConfig } from "@/lib/botid";
 import { connectSandbox } from "@open-harness/sandbox";
 import { generateText } from "ai";
 import { gateway } from "@open-harness/agent";
+import { verifyBotIdRequest } from "@/lib/botid-server";
 import {
   ensureForkExists,
   extractGitHubOwnerFromRemoteUrl,
@@ -45,7 +44,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const botVerification = await checkBotId(botIdConfig);
+  const botVerification = await verifyBotIdRequest();
   if (botVerification.isBot) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }

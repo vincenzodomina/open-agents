@@ -1,6 +1,5 @@
-import { checkBotId } from "botid/server";
-import { botIdConfig } from "@/lib/botid";
 import { connectSandbox, type SandboxState } from "@open-harness/sandbox";
+import { verifyBotIdRequest } from "@/lib/botid-server";
 import {
   requireAuthenticatedUser,
   requireOwnedSession,
@@ -103,7 +102,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const botVerification = await checkBotId(botIdConfig);
+  const botVerification = await verifyBotIdRequest();
   if (botVerification.isBot) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
