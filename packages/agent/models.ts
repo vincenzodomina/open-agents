@@ -82,11 +82,8 @@ function getOpenAIProvider(): ReturnType<typeof createOpenAI> {
     return openaiProvider;
   }
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required");
-  }
   openaiProvider = createOpenAI({
-    apiKey,
+    ...(apiKey ? { apiKey } : {}),
     ...(process.env.OPENAI_BASE_URL
       ? { baseURL: process.env.OPENAI_BASE_URL }
       : {}),

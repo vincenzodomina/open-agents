@@ -4,7 +4,8 @@ export { explorerSubagent, type ExplorerCallOptions } from "./explorer";
 export { executorSubagent, type ExecutorCallOptions } from "./executor";
 export {
   buildSubagentSummaryLines,
-  SUBAGENT_REGISTRY,
+  getSubagent,
+  SUBAGENT_DESCRIPTIONS,
   SUBAGENT_TYPES,
   type SubagentType,
 } from "./registry";

@@ -15,6 +15,8 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 - After schema edits, review generated Drizzle migrations for unrelated schema drift changes before committing (for example defaults on untouched columns), since `drizzle-kit generate` can include those alongside intended changes.
 - `bunx @vercel/config validate` executes the CLI under Node via its shebang and cannot parse TypeScript-style `vercel.ts` imports; use `bunx --bun @vercel/config validate` (or `bun node_modules/@vercel/config/dist/cli.js validate`) for reliable local validation.
 - Successful Vercel CLI auth (`vercel whoami`, team/project REST APIs, `.vercel` linking) does **not** guarantee Workflow observability access. `workflow inspect ... --backend vercel` can still fail with `401 {"error":{"code":"unauthorized","message":"You are not allowed to access this endpoint."}}` when the user/token lacks the Vercel product permission documented as `Vercel Workflow` (and possibly related Observability access), even if `WORKFLOW_VERCEL_AUTH_TOKEN` is passed explicitly from the Vercel CLI auth file.
+- Keep `@open-harness/agent` package-root exports and prompt-building helpers side-effect free. Re-exporting runtime agent singletons, or importing subagent registries that eagerly instantiate models, can make lightweight imports like `gateway` or `buildSystemPrompt` trigger model construction during `next build`, which then fails on missing runtime-only secrets such as `OPENAI_API_KEY`.
+- Docker build contexts for this app must exclude `.env*` files. Otherwise local Docker builds can silently pick up developer secrets from files like `apps/web/.env`, masking import-time configuration bugs and risking secret leakage into image build context.
 
 ## Next.js
 

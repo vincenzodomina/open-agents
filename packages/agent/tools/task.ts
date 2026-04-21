@@ -7,7 +7,7 @@ import {
 import { z } from "zod";
 import {
   buildSubagentSummaryLines,
-  SUBAGENT_REGISTRY,
+  getSubagent,
   SUBAGENT_TYPES,
 } from "../subagents/registry";
 import { SUBAGENT_STEP_LIMIT } from "../subagents/constants";
@@ -93,7 +93,7 @@ IMPORTANT:
     const model = getSubagentModel(experimental_context, "task");
     const subagentModelId = typeof model === "string" ? model : model.modelId;
 
-    const subagent = SUBAGENT_REGISTRY[subagentType].agent;
+    const subagent = await getSubagent(subagentType);
 
     const result = await subagent.stream({
       prompt:

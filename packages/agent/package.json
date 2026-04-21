@@ -5,7 +5,8 @@
   "type": "module",
   "main": "./index.ts",
   "exports": {
-    ".": "./index.ts"
+    ".": "./index.ts",
+    "./open-harness-agent": "./open-harness-agent.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
