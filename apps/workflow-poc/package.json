@@ -1,0 +1,24 @@
+{
+  "name": "workflow-poc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nitro dev",
+    "build": "nitro build",
+    "start": "node .output/server/index.mjs",
+    "setup-pg": "workflow-postgres-setup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@workflow/world-postgres": "^4.1.1",
+    "workflow": "^4.2.0-beta.74"
+  },
+  "devDependencies": {
+    "@open-harness/tsconfig": "workspace:*",
+    "@types/node": "^20",
+    "nitro": "^3.0.0-beta.20",
+    "rollup": "^4.57.0",
+    "typescript": "^5"
+  }
+}
