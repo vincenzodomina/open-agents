@@ -108,10 +108,11 @@
         "typescript": "^5",
       },
     },
-    "apps/workflow-poc": {
-      "name": "workflow-poc",
+    "apps/workflow-runtime": {
+      "name": "workflow-runtime",
       "version": "0.0.0",
       "dependencies": {
+        "@open-harness/runtime-core": "workspace:*",
         "@workflow/world-postgres": "^4.1.1",
         "workflow": "^4.2.0-beta.74",
       },
@@ -2556,7 +2557,7 @@
 
     "workflow": ["workflow@4.2.0-beta.74", "", { "dependencies": { "@workflow/astro": "4.0.0-beta.48", "@workflow/cli": "4.2.0-beta.74", "@workflow/core": "4.2.0-beta.74", "@workflow/errors": "4.1.0-beta.19", "@workflow/nest": "0.0.0-beta.23", "@workflow/next": "4.0.1-beta.70", "@workflow/nitro": "4.0.1-beta.69", "@workflow/nuxt": "4.0.1-beta.58", "@workflow/rollup": "4.0.0-beta.31", "@workflow/sveltekit": "4.0.0-beta.63", "@workflow/typescript-plugin": "4.0.1-beta.5", "@workflow/utils": "4.1.0-beta.13", "ms": "2.1.3" }, "peerDependencies": { "@opentelemetry/api": "1" }, "optionalPeers": ["@opentelemetry/api"], "bin": { "wf": "bin/run.js", "workflow": "bin/run.js" } }, "sha512-s9RIdUCuVnPZIw/i6cCLQe04UJDAN296NJ/sN+/BRcxVxgLqMm/ybCk0EcrhcxhhwBkP5QHjj50SFlAUT1FdBw=="],
 
-    "workflow-poc": ["workflow-poc@workspace:apps/workflow-poc"],
+    "workflow-runtime": ["workflow-runtime@workspace:apps/workflow-runtime"],
 
     "wrap-ansi": ["wrap-ansi@7.0.0", "", { "dependencies": { "ansi-styles": "^4.0.0", "string-width": "^4.1.0", "strip-ansi": "^6.0.0" } }, "sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q=="],
 
@@ -2924,7 +2925,7 @@
 
     "web/@types/node": ["@types/node@20.19.37", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-8kzdPJ3FsNsVIurqBs7oodNnCEVbni9yUEkaHbgptDACOPW04jimGagZ51E6+lXUwJjgnBw+hyko/lkFWCldqw=="],
 
-    "workflow-poc/@types/node": ["@types/node@20.19.37", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-8kzdPJ3FsNsVIurqBs7oodNnCEVbni9yUEkaHbgptDACOPW04jimGagZ51E6+lXUwJjgnBw+hyko/lkFWCldqw=="],
+    "workflow-runtime/@types/node": ["@types/node@20.19.37", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-8kzdPJ3FsNsVIurqBs7oodNnCEVbni9yUEkaHbgptDACOPW04jimGagZ51E6+lXUwJjgnBw+hyko/lkFWCldqw=="],
 
     "wrap-ansi/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
 

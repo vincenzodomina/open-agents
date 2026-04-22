@@ -23,7 +23,12 @@
         "SERVER_CONNECTION_MODE",
         "SERVER_CONNECTION_URL",
         "RUNTIME_HOST",
-        "RUNTIME_PORT"
+        "RUNTIME_PORT",
+        "WORKFLOW_CONNECTION_URL",
+        "WORKFLOW_RUNTIME_HOST",
+        "WORKFLOW_RUNTIME_PORT",
+        "WORKFLOW_TARGET_WORLD",
+        "WORKFLOW_POSTGRES_URL"
       ],
       "outputs": ["dist/**"]
     },

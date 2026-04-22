@@ -1,5 +1,5 @@
 {
-  "name": "workflow-poc",
+  "name": "workflow-runtime",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@open-harness/runtime-core": "workspace:*",
     "@workflow/world-postgres": "^4.1.1",
     "workflow": "^4.2.0-beta.74"
   },

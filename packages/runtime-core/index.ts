@@ -1,9 +1,11 @@
 export {
   type ConnectionMode,
   type ConnectionConfig,
+  type ResolveConnectionOptions,
   CONNECTION_MODES,
   parseConnectionMode,
   resolveConnectionConfig,
+  resolveWorkflowConnectionConfig,
 } from "./lib/connection-mode.ts";
 export {
   type AuthenticatedUser,

@@ -8,9 +8,14 @@ export type FrontendHandle = {
   stop: () => Promise<void>;
 };
 
+export type FrontendTargets = {
+  runtimeUrl: string;
+  workflowRuntimeUrl: string;
+};
+
 export async function startFrontend(
   config: DesktopConfig,
-  runtimeUrl: string,
+  targets: FrontendTargets,
 ): Promise<FrontendHandle> {
   const webCwd = path.join(config.repoRoot, "apps", "web");
   const url = `http://127.0.0.1:${config.frontendPort}`;
@@ -21,7 +26,8 @@ export async function startFrontend(
     cwd: webCwd,
     env: {
       SERVER_CONNECTION_MODE: "http",
-      SERVER_CONNECTION_URL: runtimeUrl,
+      SERVER_CONNECTION_URL: targets.runtimeUrl,
+      WORKFLOW_CONNECTION_URL: targets.workflowRuntimeUrl,
       PORT: String(config.frontendPort),
     },
   });
