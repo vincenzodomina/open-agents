@@ -77,8 +77,8 @@ export function FeatureSandbox() {
 
         <div className="mt-8 flex gap-8 font-mono text-[10px]">
           <div>
-            <div className="text-(--l-panel-fg-4)">branch</div>
-            <div className="mt-0.5 text-(--l-panel-fg-2)">feat/auth</div>
+            <div className="text-(--l-panel-fg-4)">sandbox</div>
+            <div className="mt-0.5 text-(--l-panel-fg-2)">just-bash</div>
           </div>
           <div>
             <div className="text-(--l-panel-fg-4)">snapshot</div>

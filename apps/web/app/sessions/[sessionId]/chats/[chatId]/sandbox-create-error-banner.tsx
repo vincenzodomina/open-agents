@@ -36,7 +36,7 @@ export function SandboxCreateErrorBanner({
             href={actionUrl}
             className="font-medium underline underline-offset-4 hover:no-underline"
           >
-            Reconnect GitHub
+            Resolve issue
           </Link>
         ) : null}
       </div>

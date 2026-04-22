@@ -1,13 +1,7 @@
 "use client";
 
 import { isReasoningUIPart, isToolUIPart } from "ai";
-import {
-  ArrowRight,
-  Bot,
-  ExternalLink,
-  GitBranch,
-  GitPullRequest,
-} from "lucide-react";
+import { ArrowRight, Bot } from "lucide-react";
 import Link from "next/link";
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
@@ -44,12 +38,6 @@ type ChatWithMessages = {
 
 type SharedSession = {
   title: string;
-  repoOwner: string | null;
-  repoName: string | null;
-  branch: string | null;
-  cloneUrl: string | null;
-  prNumber: number | null;
-  prStatus: "open" | "merged" | "closed" | null;
 };
 
 type SharedBy = {
@@ -114,13 +102,6 @@ export function SharedChatContent({
   lastUserMessageSentAt: string | null;
   shareId: string;
 }) {
-  const hasRepo = session.repoOwner && session.repoName;
-  const repoUrl = hasRepo
-    ? `https://github.com/${session.repoOwner}/${session.repoName}`
-    : null;
-  const prUrl =
-    repoUrl && session.prNumber ? `${repoUrl}/pull/${session.prNumber}` : null;
-
   return (
     <div className="flex min-h-screen flex-col overflow-x-hidden bg-background text-foreground">
       {/* Header */}
@@ -134,74 +115,8 @@ export function SharedChatContent({
                 {session.title}
               </h1>
 
-              {/* Inline meta: repo · branch · PR · model — all on one line on desktop */}
+              {/* Inline meta: model and provider */}
               <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                {hasRepo && (
-                  <>
-                    <div className="inline-flex items-center gap-1.5 text-muted-foreground">
-                      <GitBranch className="h-3.5 w-3.5" />
-                      {repoUrl ? (
-                        /* oxlint-disable-next-line nextjs/no-html-link-for-pages */
-                        <a
-                          href={repoUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="font-medium text-foreground hover:underline"
-                        >
-                          {session.repoOwner}/{session.repoName}
-                        </a>
-                      ) : (
-                        <span className="font-medium text-foreground">
-                          {session.repoOwner}/{session.repoName}
-                        </span>
-                      )}
-                      {session.branch && (
-                        <>
-                          <span className="text-muted-foreground/40">/</span>
-                          <span className="text-muted-foreground">
-                            {session.branch}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    {prUrl && session.prNumber && (
-                      <>
-                        <span className="text-muted-foreground/40">·</span>
-                        {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
-                        <a
-                          href={prUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
-                        >
-                          <GitPullRequest className="h-3.5 w-3.5" />
-                          <span className="font-medium">
-                            #{session.prNumber}
-                          </span>
-                          {session.prStatus && (
-                            <span
-                              className={cn(
-                                "rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-none",
-                                session.prStatus === "open" &&
-                                  "bg-green-500/10 text-green-600 dark:text-green-400",
-                                session.prStatus === "merged" &&
-                                  "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-                                session.prStatus === "closed" &&
-                                  "bg-red-500/10 text-red-600 dark:text-red-400",
-                              )}
-                            >
-                              {session.prStatus}
-                            </span>
-                          )}
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </>
-                    )}
-                    {modelId && (
-                      <span className="text-muted-foreground/40">·</span>
-                    )}
-                  </>
-                )}
                 {modelId && (
                   <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                     <Bot className="h-3 w-3" />
@@ -436,7 +351,7 @@ function SharedMessage({
           >
             {m.role === "user" ? (
               <div className="min-w-0 max-w-[80%] rounded-3xl bg-secondary px-4 py-2">
-                <p className="whitespace-pre-wrap break-words">{p.text}</p>
+                <p className="whitespace-pre-wrap wrap-break-word">{p.text}</p>
               </div>
             ) : (
               <div className="min-w-0 w-full overflow-hidden">

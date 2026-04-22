@@ -93,11 +93,6 @@ export interface Sandbox {
   readonly env?: Record<string, string>;
 
   /**
-   * The current git branch in the sandbox (if applicable).
-   */
-  readonly currentBranch?: string;
-
-  /**
    * Lifecycle hooks for this sandbox.
    */
   readonly hooks?: SandboxHooks;

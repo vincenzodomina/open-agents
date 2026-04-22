@@ -24,15 +24,6 @@ import {
   JUST_BASH_WORKING_DIRECTORY,
 } from "./bootstrap";
 import {
-  commandInvokesGit,
-  execJustBashGitLine,
-  parseCdSegment,
-  resolveVirtualPath,
-  splitShellChain,
-  stripEnvPrefix,
-} from "./git-cli";
-import { bootstrapJustBashGitWorkspace } from "./git-workspace";
-import {
   registerActiveJustBashSandbox,
   setDormantWorkspaceRoot,
   unregisterActiveJustBashSandbox,
@@ -40,7 +31,6 @@ import {
 
 const MAX_OUTPUT_LENGTH = 50_000;
 const TIMEOUT_BUFFER_MS = 30_000;
-const DEFAULT_DETACHED_GIT_TIMEOUT_MS = 300_000;
 const DETACHED_QUICK_FAILURE_WINDOW_MS = 2_000;
 
 type JbSandboxInstance = Awaited<ReturnType<typeof JbSandbox.create>>;
@@ -66,21 +56,12 @@ function diskBackedWorkspaceMount(workspaceRoot: string): IFileSystem {
 
 export interface JustBashCreateConfig {
   name?: string;
-  source?: {
-    url: string;
-    branch?: string;
-    token?: string;
-    newBranch?: string;
-  };
   env?: Record<string, string>;
-  githubToken?: string;
-  gitUser?: { name: string; email: string };
   hooks?: SandboxHooks;
   timeout?: number | null;
   ports?: number[];
   baseSnapshotId?: string;
   restoreSnapshotId?: string;
-  skipGitWorkspaceBootstrap?: boolean;
 }
 
 /**
@@ -94,12 +75,9 @@ export class JustBashSandbox implements Sandbox {
   readonly id: string;
   readonly workingDirectory = JUST_BASH_WORKING_DIRECTORY;
   readonly env?: Record<string, string>;
-  readonly currentBranch?: string;
   readonly hooks?: SandboxHooks;
   private readonly inner: JbSandboxInstance;
   private readonly rootPath: string;
-  private readonly vfs: IFileSystem;
-  private readonly githubToken?: string;
   private readonly _ports: number[];
   private isStopped = false;
   private _expiresAt?: number;
@@ -119,7 +97,7 @@ export class JustBashSandbox implements Sandbox {
   }
 
   get environmentDetails(): string {
-    return `- This environment uses just-bash (simulated shell, in-process). Git is provided by isomorphic-git against the virtual workspace (no host \`git\` binary). It is not a full Linux VM.
+    return `- This environment uses just-bash (simulated shell, in-process). It is not a full Linux VM.
 - There is no real Node/bun binary in the emulated shell: \`npm\`, \`bun\`, and \`node\` will not work as on Vercel Sandboxes unless you add a custom command in just-bash.
 - No shareable preview URLs: \`domain(port)\` is a placeholder; start a real dev server only if you run it on the host, not via this tool.
 - Network in emulated \`curl\` is off unless you set \`JUST_BASH_NETWORK=all\` in the server environment.
@@ -133,24 +111,18 @@ export class JustBashSandbox implements Sandbox {
       id: string;
       rootPath: string;
       env?: Record<string, string>;
-      currentBranch?: string;
       hooks?: SandboxHooks;
       timeout?: number | null;
       startTime?: number;
       ports: number[];
-      vfs: IFileSystem;
-      githubToken?: string;
     },
   ) {
     this.inner = inner;
     this.name = options.name;
     this.id = options.id;
     this.env = options.env;
-    this.currentBranch = options.currentBranch;
     this.hooks = options.hooks;
     this.rootPath = options.rootPath;
-    this.vfs = options.vfs;
-    this.githubToken = options.githubToken;
     this._ports = options.ports;
 
     if (options.timeout != null && options.startTime !== undefined) {
@@ -218,7 +190,7 @@ export class JustBashSandbox implements Sandbox {
   }
 
   /**
-   * Builds the workspace filesystem, bootstraps git via isomorphic-git when needed, mounts at
+   * Builds the workspace filesystem, mounts it at
    * {@link JUST_BASH_WORKING_DIRECTORY}, then starts just-bash.
    */
   static async create(
@@ -226,16 +198,12 @@ export class JustBashSandbox implements Sandbox {
   ): Promise<JustBashSandbox> {
     const {
       name,
-      source,
       env,
-      githubToken,
-      gitUser,
       hooks,
       timeout,
       ports = [],
       baseSnapshotId,
       restoreSnapshotId,
-      skipGitWorkspaceBootstrap = false,
     } = config;
 
     if (baseSnapshotId !== undefined || restoreSnapshotId !== undefined) {
@@ -248,21 +216,6 @@ export class JustBashSandbox implements Sandbox {
     const workspacePath = await allocateWorkspaceDirectory(stableName);
 
     const vfs = diskBackedWorkspaceMount(workspacePath);
-
-    const bootstrap = await bootstrapJustBashGitWorkspace({
-      vfs,
-      ...(source !== undefined && {
-        source: {
-          repo: source.url,
-          branch: source.branch,
-          token: source.token,
-          newBranch: source.newBranch,
-        },
-      }),
-      gitUser,
-      githubToken,
-      skipGitWorkspaceBootstrap,
-    });
 
     const effectiveTimeout = timeout ?? undefined;
     const inner = await JbSandbox.create({
@@ -282,10 +235,7 @@ export class JustBashSandbox implements Sandbox {
       name: stableName,
       id,
       rootPath: workspacePath,
-      vfs,
-      githubToken,
       env,
-      currentBranch: bootstrap.currentBranch,
       hooks,
       timeout: effectiveTimeout,
       startTime,
@@ -306,22 +256,11 @@ export class JustBashSandbox implements Sandbox {
     name: string;
     rootPath: string;
     env?: Record<string, string>;
-    githubToken?: string;
     hooks?: SandboxHooks;
     timeout?: number;
     ports?: number[];
-    currentBranch?: string;
   }): Promise<JustBashSandbox> {
-    const {
-      name,
-      rootPath,
-      env,
-      githubToken,
-      hooks,
-      timeout,
-      ports = [],
-      currentBranch,
-    } = params;
+    const { name, rootPath, env, hooks, timeout, ports = [] } = params;
 
     const vfs = diskBackedWorkspaceMount(rootPath);
     const effectiveTimeout = timeout ?? undefined;
@@ -340,10 +279,7 @@ export class JustBashSandbox implements Sandbox {
       name,
       id: name,
       rootPath,
-      vfs,
-      githubToken,
       env,
-      currentBranch,
       hooks,
       timeout: effectiveTimeout,
       startTime: Date.now(),
@@ -518,121 +454,6 @@ export class JustBashSandbox implements Sandbox {
     return { text: text.slice(0, MAX_OUTPUT_LENGTH), truncated: true };
   }
 
-  /**
-   * Runs `git` via isomorphic-git (and optional `&&` chains with `cd` / bash segments).
-   * Returns `undefined` when the command does not involve git.
-   */
-  private async tryExecGitChain(
-    command: string,
-    initialCwd: string,
-    timeoutMs: number,
-    options?: { signal?: AbortSignal },
-  ): Promise<ExecResult | undefined> {
-    if (!commandInvokesGit(command)) {
-      return undefined;
-    }
-
-    const segments = splitShellChain(command);
-    let virtualCwd = initialCwd;
-
-    const timeoutSignal = AbortSignal.timeout(timeoutMs);
-    const signal =
-      options?.signal !== undefined
-        ? AbortSignal.any([timeoutSignal, options.signal])
-        : timeoutSignal;
-
-    let accOut = "";
-    let accErr = "";
-    let exitCode = 0;
-
-    for (const segment of segments) {
-      const cdArg = parseCdSegment(segment);
-      if (cdArg !== null) {
-        virtualCwd = resolveVirtualPath(virtualCwd, cdArg);
-        continue;
-      }
-
-      const trimmed = stripEnvPrefix(segment);
-      if (trimmed.startsWith("git")) {
-        const raw = await execJustBashGitLine(segment, this.vfs, virtualCwd, {
-          githubToken: this.githubToken,
-          signal,
-        });
-        accOut += raw.stdout;
-        accErr += raw.stderr;
-        exitCode = raw.exitCode;
-        if (raw.exitCode !== 0) {
-          const o = this.truncateOutput(accOut);
-          const e = this.truncateOutput(accErr);
-          return {
-            success: false,
-            exitCode,
-            stdout: o.text,
-            stderr: e.text,
-            truncated: o.truncated || e.truncated,
-          };
-        }
-        continue;
-      }
-
-      try {
-        const result = await this.inner.runCommand({
-          cmd: "bash",
-          args: ["-c", segment],
-          cwd: virtualCwd,
-          env: this.getCommandEnv(),
-          signal,
-        });
-        const so = await result.stdout();
-        const se = (await result.stderr()) ?? "";
-        accOut += so;
-        accErr += se;
-        exitCode = result.exitCode;
-        if (result.exitCode !== 0) {
-          const o = this.truncateOutput(accOut);
-          const e = this.truncateOutput(accErr);
-          return {
-            success: false,
-            exitCode,
-            stdout: o.text,
-            stderr: e.text,
-            truncated: o.truncated || e.truncated,
-          };
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === "TimeoutError") {
-          return {
-            success: false,
-            exitCode: null,
-            stdout: "",
-            stderr: `Command timed out after ${timeoutMs}ms`,
-            truncated: false,
-          };
-        }
-        if (error instanceof Error && error.name === "AbortError") {
-          throw error;
-        }
-        return {
-          success: false,
-          exitCode: null,
-          stdout: "",
-          stderr: error instanceof Error ? error.message : String(error),
-          truncated: false,
-        };
-      }
-    }
-
-    const o = this.truncateOutput(accOut);
-    const e = this.truncateOutput(accErr);
-    return {
-      success: exitCode === 0,
-      exitCode,
-      stdout: o.text,
-      stderr: e.text,
-      truncated: o.truncated || e.truncated,
-    };
-  }
-
   async exec(
     command: string,
     cwd: string,
@@ -640,16 +461,6 @@ export class JustBashSandbox implements Sandbox {
     options?: { signal?: AbortSignal },
   ): Promise<ExecResult> {
     try {
-      const gitChain = await this.tryExecGitChain(
-        command,
-        cwd,
-        timeoutMs,
-        options,
-      );
-      if (gitChain !== undefined) {
-        return gitChain;
-      }
-
       const timeoutSignal = AbortSignal.timeout(timeoutMs);
       const signal = options?.signal
         ? AbortSignal.any([timeoutSignal, options.signal])
@@ -704,23 +515,6 @@ export class JustBashSandbox implements Sandbox {
     command: string,
     cwd: string,
   ): Promise<{ commandId: string }> {
-    if (commandInvokesGit(command)) {
-      const finished = await this.tryExecGitChain(
-        command,
-        cwd,
-        DEFAULT_DETACHED_GIT_TIMEOUT_MS,
-      );
-      if (finished === undefined) {
-        throw new Error("just-bash: internal error (git chain handler)");
-      }
-      if (!finished.success) {
-        throw new Error(
-          `Background command exited with code ${String(finished.exitCode)}. stderr:\n${finished.stderr.trim() || "<no stderr>"}`,
-        );
-      }
-      return { commandId: `jb-git-${Date.now().toString(36)}` };
-    }
-
     const cmd = await this.inner.runCommand({
       cmd: "bash",
       args: ["-c", command],

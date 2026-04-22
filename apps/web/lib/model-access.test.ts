@@ -32,12 +32,8 @@ const basePreferences: UserPreferencesData = {
   defaultSubagentModelId: "variant:builtin:gpt-5.4-medium",
   defaultSandboxType: "vercel",
   defaultDiffMode: "unified",
-  autoCommitPush: false,
-  autoCreatePr: false,
   alertsEnabled: true,
   alertSoundEnabled: true,
-  publicUsageEnabled: false,
-  globalSkillRefs: [],
   modelVariants: [userProVariant],
   enabledModelIds: ["openai/gpt-5.4-pro", "openai/gpt-5"],
 };

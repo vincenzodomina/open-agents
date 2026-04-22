@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 type FakeSession = {
   readonly title: string;
-  readonly repo: string;
-  readonly branch: string;
   readonly prompt: string;
   readonly summary: string;
   readonly toolCount: number;
@@ -18,11 +16,9 @@ type FakeSession = {
 const sessions: readonly FakeSession[] = [
   {
     title: "Auth flow",
-    repo: "open-agents",
-    branch: "feat/auth-flow",
-    prompt: "Build the auth flow with GitHub OAuth",
+    prompt: "Build the email login flow",
     summary:
-      "I\u2019ve set up the GitHub OAuth flow. Created the auth route handler, callback endpoint, and session middleware. Typecheck passes clean.",
+      "I\u2019ve set up the email login flow. Created the auth route handler, callback endpoint, and session middleware. Typecheck passes clean.",
     toolCount: 12,
     todoTotal: 4,
     todoDone: 3,
@@ -35,8 +31,6 @@ const sessions: readonly FakeSession[] = [
   },
   {
     title: "API refactor",
-    repo: "open-agents",
-    branch: "feat/edge-api",
     prompt: "Refactor the chat API routes to use edge runtime",
     summary:
       "Migrated 2 routes to edge runtime. Removed Node-only APIs, added runtime exports, and verified with the full CI suite.",
@@ -48,8 +42,6 @@ const sessions: readonly FakeSession[] = [
   },
   {
     title: "Fix tests",
-    repo: "open-agents",
-    branch: "fix/test-suite",
     prompt: "Run the test suite and fix any failing tests",
     summary:
       "Found and fixed 4 failing tests across 3 files. All 47 tests pass now.",
@@ -189,11 +181,7 @@ export function AppMockup() {
               />
             </svg>
           </div>
-          <span className="font-medium text-(--l-panel-fg)">{active.repo}</span>
-          <span className="hidden sm:inline text-(--l-panel-fg-4)">/</span>
-          <span className="hidden sm:inline truncate text-(--l-panel-fg-2)">
-            {active.branch}
-          </span>
+          <span className="font-medium text-(--l-panel-fg)">Session</span>
           <span className="hidden sm:inline text-(--l-panel-fg-4)">/</span>
           <span className="hidden sm:inline text-(--l-panel-fg-2)">
             {active.title}

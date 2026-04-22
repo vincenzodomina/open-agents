@@ -12,20 +12,12 @@ import {
 } from "@/components/ui/dialog";
 
 type CreateSessionInput = {
-  repoOwner?: string;
-  repoName?: string;
-  branch?: string;
-  cloneUrl?: string;
-  isNewBranch: boolean;
   sandboxType: SandboxType;
-  autoCommitPush: boolean;
-  autoCreatePr: boolean;
 };
 
 interface NewSessionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  lastRepo: { owner: string; repo: string } | null;
   createSession: (input: CreateSessionInput) => Promise<{
     session: { id: string };
     chat: { id: string };
@@ -35,7 +27,6 @@ interface NewSessionDialogProps {
 export function NewSessionDialog({
   open,
   onOpenChange,
-  lastRepo,
   createSession,
 }: NewSessionDialogProps) {
   const router = useRouter();
@@ -64,7 +55,6 @@ export function NewSessionDialog({
           <SessionStarter
             onSubmit={handleCreateSession}
             isLoading={isCreating}
-            lastRepo={lastRepo}
           />
         </div>
       </DialogContent>

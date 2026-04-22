@@ -13,22 +13,16 @@ import { getWorkflowMetadata, getWritable } from "workflow";
 import { getRun } from "workflow/api";
 import { addLanguageModelUsage } from "./usage-utils";
 import type {
-  WebAgentCommitData,
   WebAgentMessageMetadata,
-  WebAgentPrData,
   WebAgentStepFinishMetadata,
   WebAgentUIMessage,
 } from "@/app/types";
 import {
   clearActiveStream,
-  hasAutoCommitChangesStep,
   persistAssistantMessage,
   persistSandboxState,
   recordWorkflowUsage,
-  refreshDiffCache,
   refreshLifecycleActivity,
-  runAutoCommitStep,
-  runAutoCreatePrStep,
 } from "./chat-post-finish";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
 import type {
@@ -45,16 +39,6 @@ type Options = {
   modelId: string;
   agentOptions: OpenHarnessAgentCallOptions;
   maxSteps?: number;
-  /** Whether auto-commit+push should run after a natural finish. */
-  autoCommitEnabled?: boolean;
-  /** Whether auto PR creation should run after auto-commit on a natural finish. */
-  autoCreatePrEnabled?: boolean;
-  /** Session title for commit message generation. */
-  sessionTitle?: string;
-  /** GitHub repo owner (required for auto-commit and diff refresh). */
-  repoOwner?: string;
-  /** GitHub repo name (required for auto-commit). */
-  repoName?: string;
 };
 
 type Writable = WritableStream<UIMessageChunk>;
@@ -310,144 +294,6 @@ function stringifyDebugPayload(value: unknown): string {
   );
 }
 
-function buildGitHubCommitUrl(
-  repoOwner: string,
-  repoName: string,
-  commitSha: string,
-): string {
-  return `https://github.com/${encodeURIComponent(repoOwner)}/${encodeURIComponent(repoName)}/commit/${encodeURIComponent(commitSha)}`;
-}
-
-function buildCommitData(
-  result: Awaited<ReturnType<typeof runAutoCommitStep>>,
-  repoOwner: string,
-  repoName: string,
-): WebAgentCommitData {
-  if (result.error) {
-    return {
-      status: "error",
-      committed: result.committed,
-      pushed: result.pushed,
-      commitMessage: result.commitMessage,
-      commitSha: result.commitSha,
-      url:
-        result.pushed && result.commitSha
-          ? buildGitHubCommitUrl(repoOwner, repoName, result.commitSha)
-          : undefined,
-      error: result.error,
-    };
-  }
-
-  if (result.committed) {
-    return {
-      status: "success",
-      committed: result.committed,
-      pushed: result.pushed,
-      commitMessage: result.commitMessage,
-      commitSha: result.commitSha,
-      url:
-        result.pushed && result.commitSha
-          ? buildGitHubCommitUrl(repoOwner, repoName, result.commitSha)
-          : undefined,
-    };
-  }
-
-  return {
-    status: "skipped",
-    committed: false,
-    pushed: false,
-  };
-}
-
-function buildPrData(
-  result: Awaited<ReturnType<typeof runAutoCreatePrStep>>,
-): WebAgentPrData {
-  if (result.error) {
-    return {
-      status: "error",
-      created: result.created,
-      syncedExisting: result.syncedExisting,
-      prNumber: result.prNumber,
-      url: result.prUrl,
-      error: result.error,
-    };
-  }
-
-  if (result.skipped) {
-    return {
-      status: "skipped",
-      created: result.created,
-      syncedExisting: result.syncedExisting,
-      prNumber: result.prNumber,
-      url: result.prUrl,
-      skipReason: result.skipReason,
-    };
-  }
-
-  return {
-    status: "success",
-    created: result.created,
-    syncedExisting: result.syncedExisting,
-    prNumber: result.prNumber,
-    url: result.prUrl,
-  };
-}
-
-function upsertAssistantDataPart(
-  message: WebAgentUIMessage,
-  part:
-    | {
-        type: "data-commit";
-        id: string;
-        data: WebAgentCommitData;
-      }
-    | {
-        type: "data-pr";
-        id: string;
-        data: WebAgentPrData;
-      },
-): WebAgentUIMessage {
-  const nextParts = [...message.parts];
-  const existingIndex = nextParts.findIndex(
-    (messagePart) =>
-      messagePart.type === part.type && messagePart.id === part.id,
-  );
-
-  if (existingIndex >= 0) {
-    nextParts[existingIndex] = part;
-  } else {
-    nextParts.push(part);
-  }
-
-  return {
-    ...message,
-    parts: nextParts,
-  };
-}
-
-async function sendDataPart(
-  writable: Writable,
-  part:
-    | {
-        type: "data-commit";
-        id: string;
-        data: WebAgentCommitData;
-      }
-    | {
-        type: "data-pr";
-        id: string;
-        data: WebAgentPrData;
-      },
-) {
-  "use step";
-  const writer = writable.getWriter();
-  try {
-    await writer.write(part);
-  } finally {
-    writer.releaseLock();
-  }
-}
-
 export async function runAgentWorkflow(options: Options) {
   "use workflow";
 
@@ -500,7 +346,6 @@ export async function runAgentWorkflow(options: Options) {
   let wasAborted = false;
   let exhaustedMaxSteps = false;
   let totalUsage: LanguageModelUsage | undefined;
-  let finalFinishReason: FinishReason | undefined;
   let streamClosed = false;
   let workflowStatus: WorkflowRunStatus = "completed";
   let caughtError: unknown;
@@ -541,7 +386,6 @@ export async function runAgentWorkflow(options: Options) {
       originalMessagesForStep = [pendingAssistantResponse];
       modelMessages.push(...result.responseMessages);
       wasAborted = wasAborted || result.stepWasAborted;
-      finalFinishReason = result.finishReason;
 
       if (result.stepUsage) {
         totalUsage = totalUsage
@@ -588,145 +432,11 @@ export async function runAgentWorkflow(options: Options) {
       await persistSandboxState(options.sessionId, sandboxState);
     }
 
-    const finishedNaturally =
-      !wasAborted &&
-      finalFinishReason !== undefined &&
-      finalFinishReason !== "tool-calls";
-    const commitPartId = `${assistantId}:commit`;
-    const prPartId = `${assistantId}:pr`;
-    const repoOwner = options.repoOwner;
-    const repoName = options.repoName;
-    let didUpdateGitData = false;
-
-    let autoCommitResult: Awaited<ReturnType<typeof runAutoCommitStep>> | null =
-      null;
-
-    const canAutoCommit =
-      finishedNaturally &&
-      options.autoCommitEnabled &&
-      sandboxState != null &&
-      repoOwner != null &&
-      repoName != null;
-
-    if (canAutoCommit) {
-      const hasAutoCommitChanges = await hasAutoCommitChangesStep({
-        sandboxState,
-      });
-
-      if (hasAutoCommitChanges) {
-        const pendingCommitPart = {
-          type: "data-commit" as const,
-          id: commitPartId,
-          data: { status: "pending" as const },
-        };
-        pendingAssistantResponse = upsertAssistantDataPart(
-          pendingAssistantResponse,
-          pendingCommitPart,
-        );
-        await sendDataPart(writable, pendingCommitPart);
-        didUpdateGitData = true;
-      }
-
-      autoCommitResult = hasAutoCommitChanges
-        ? await runAutoCommitStep({
-            userId: options.userId,
-            sessionId: options.sessionId,
-            sessionTitle: options.sessionTitle ?? "",
-            repoOwner,
-            repoName,
-            sandboxState,
-          })
-        : {
-            committed: false,
-            pushed: false,
-          };
-
-      if (hasAutoCommitChanges) {
-        const resolvedCommitPart = {
-          type: "data-commit" as const,
-          id: commitPartId,
-          data: buildCommitData(autoCommitResult, repoOwner, repoName),
-        };
-        pendingAssistantResponse = upsertAssistantDataPart(
-          pendingAssistantResponse,
-          resolvedCommitPart,
-        );
-        await sendDataPart(writable, resolvedCommitPart);
-      }
-    }
-
-    const canAutoCreatePr =
-      autoCommitResult != null &&
-      !autoCommitResult.error &&
-      (autoCommitResult.pushed || !autoCommitResult.committed);
-
-    if (canAutoCommit && options.autoCreatePrEnabled) {
-      if (canAutoCreatePr) {
-        const pendingPrPart = {
-          type: "data-pr" as const,
-          id: prPartId,
-          data: { status: "pending" as const },
-        };
-        pendingAssistantResponse = upsertAssistantDataPart(
-          pendingAssistantResponse,
-          pendingPrPart,
-        );
-        await sendDataPart(writable, pendingPrPart);
-        didUpdateGitData = true;
-
-        const autoPrResult = await runAutoCreatePrStep({
-          userId: options.userId,
-          sessionId: options.sessionId,
-          sessionTitle: options.sessionTitle ?? "",
-          repoOwner,
-          repoName,
-          sandboxState,
-        });
-
-        const resolvedPrPart = {
-          type: "data-pr" as const,
-          id: prPartId,
-          data: buildPrData(autoPrResult),
-        };
-        pendingAssistantResponse = upsertAssistantDataPart(
-          pendingAssistantResponse,
-          resolvedPrPart,
-        );
-        await sendDataPart(writable, resolvedPrPart);
-      } else {
-        const skippedPrPart = {
-          type: "data-pr" as const,
-          id: prPartId,
-          data: {
-            status: "skipped" as const,
-            skipReason:
-              autoCommitResult?.error ??
-              "Auto-commit did not leave origin in sync with HEAD",
-          },
-        };
-        pendingAssistantResponse = upsertAssistantDataPart(
-          pendingAssistantResponse,
-          skippedPrPart,
-        );
-        await sendDataPart(writable, skippedPrPart);
-        didUpdateGitData = true;
-      }
-    }
-
-    if (didUpdateGitData) {
-      await persistAssistantMessage(options.chatId, pendingAssistantResponse);
-    }
-
     await Promise.all([
       clearActiveStream(options.chatId, workflowRunId),
       sendFinish(writable).then(() => closeStream(writable)),
     ]);
     streamClosed = true;
-
-    // Refresh the diff cache so the UI shows current changes.
-    if (sandboxState) {
-      await refreshDiffCache(options.sessionId, sandboxState);
-    }
 
     workflowStatus = wasAborted
       ? "aborted"

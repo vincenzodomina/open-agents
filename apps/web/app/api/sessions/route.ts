@@ -8,10 +8,6 @@ import {
 } from "@/lib/db/sessions";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
-import {
-  isValidGitHubRepoName,
-  isValidGitHubRepoOwner,
-} from "@/lib/github/repo-identifiers";
 import { getRandomCityName } from "@/lib/random-city";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
@@ -19,32 +15,10 @@ import {
   MANAGED_TEMPLATE_TRIAL_SESSION_LIMIT,
   MANAGED_TEMPLATE_TRIAL_SESSION_LIMIT_ERROR,
 } from "@/lib/managed-template-trial";
+
 interface CreateSessionRequest {
   title?: string;
-  repoOwner?: string;
-  repoName?: string;
-  branch?: string;
-  cloneUrl?: string;
-  isNewBranch?: boolean;
   sandboxType?: "just-bash" | "vercel";
-  autoCommitPush?: boolean;
-  autoCreatePr?: boolean;
-}
-
-function generateBranchName(username: string, name?: string | null): string {
-  let initials = "nb";
-  if (name) {
-    initials =
-      name
-        .split(" ")
-        .map((n) => n[0]?.toLowerCase() ?? "")
-        .join("")
-        .slice(0, 2) || "nb";
-  } else if (username) {
-    initials = username.slice(0, 2).toLowerCase();
-  }
-  const randomSuffix = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
-  return `${initials}/${randomSuffix}`;
 }
 
 async function resolveSessionTitle(
@@ -198,60 +172,7 @@ export async function POST(req: Request) {
   ) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
-
-  if (
-    body.autoCommitPush !== undefined &&
-    typeof body.autoCommitPush !== "boolean"
-  ) {
-    return Response.json(
-      { error: "Invalid autoCommitPush value" },
-      { status: 400 },
-    );
-  }
-
-  if (
-    body.autoCreatePr !== undefined &&
-    typeof body.autoCreatePr !== "boolean"
-  ) {
-    return Response.json(
-      { error: "Invalid autoCreatePr value" },
-      { status: 400 },
-    );
-  }
-
-  if (
-    body.repoOwner !== undefined &&
-    (typeof body.repoOwner !== "string" ||
-      !isValidGitHubRepoOwner(body.repoOwner))
-  ) {
-    return Response.json(
-      { error: "Invalid repository owner" },
-      { status: 400 },
-    );
-  }
-
-  if (
-    body.repoName !== undefined &&
-    (typeof body.repoName !== "string" || !isValidGitHubRepoName(body.repoName))
-  ) {
-    return Response.json({ error: "Invalid repository name" }, { status: 400 });
-  }
-
-  const {
-    repoOwner,
-    repoName,
-    branch,
-    cloneUrl,
-    isNewBranch,
-    sandboxType = "just-bash",
-    autoCommitPush,
-    autoCreatePr,
-  } = body;
-
-  let finalBranch = branch;
-  if (isNewBranch) {
-    finalBranch = generateBranchName(session.user.username, session.user.name);
-  }
+  const { sandboxType = "just-bash" } = body;
 
   try {
     const titlePromise = resolveSessionTitle(body, session.user.id);
@@ -266,25 +187,20 @@ export async function POST(req: Request) {
       session,
       req.url,
     );
-    const effectiveAutoCommitPush =
-      autoCommitPush ?? preferences.autoCommitPush;
-    const effectiveAutoCreatePr = autoCreatePr ?? preferences.autoCreatePr;
     const result = await createSessionWithInitialChat({
       session: {
         id: nanoid(),
         userId: session.user.id,
         title,
         status: "running",
-        repoOwner: repoOwner ?? null,
-        repoName: repoName ?? null,
-        branch: finalBranch ?? null,
-        cloneUrl: cloneUrl ?? null,
-        isNewBranch: isNewBranch ?? false,
-        autoCommitPushOverride: effectiveAutoCommitPush,
-        autoCreatePrOverride: effectiveAutoCommitPush
-          ? effectiveAutoCreatePr
-          : false,
-        globalSkillRefs: preferences.globalSkillRefs,
+        repoOwner: null,
+        repoName: null,
+        branch: null,
+        cloneUrl: null,
+        isNewBranch: false,
+        autoCommitPushOverride: false,
+        autoCreatePrOverride: false,
+        globalSkillRefs: [],
         sandboxState: { type: sandboxType },
         lifecycleState: "provisioning",
         lifecycleVersion: 0,

@@ -87,9 +87,9 @@ export function LandingFeatures() {
           <Spotlight
             tone="ash"
             title="Cloud sandboxes, not local machines."
-            description="Every session runs in an isolated Vercel sandbox with its own branch. Work is committed and pushed automatically — nothing is lost when the sandbox expires."
+            description="Every session runs in an isolated Vercel sandbox with filesystem, network, and runtime access. Work can pause and resume without depending on your local machine."
             bullets={[
-              "Ephemeral environments with full git integration",
+              "Ephemeral environments for agent work",
               "Auto-hibernate on inactivity, instant restore",
               "Snapshot and restore filesystem state",
             ]}
@@ -103,7 +103,7 @@ export function LandingFeatures() {
             description="Agent loops run as durable workflows that survive restarts, retry on failure, and coordinate multi-step operations over time. No work is ever lost mid-run."
             bullets={[
               "Resumable agent loops with automatic checkpointing",
-              "Post-finish: usage tracking, diff caching, auto-commit",
+              "Post-finish state sync and reconnect support",
               "Reconnect to running workflows from any client",
             ]}
             window={<FeatureWorkflow />}

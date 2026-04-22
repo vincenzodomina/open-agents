@@ -28,37 +28,12 @@ export type WebAgentMessageMetadata = {
   stepFinishReasons?: WebAgentStepFinishMetadata[];
 };
 
-export type WebAgentGitDataStatus = "pending" | "success" | "error" | "skipped";
-
-export type WebAgentCommitData = {
-  status: WebAgentGitDataStatus;
-  committed?: boolean;
-  pushed?: boolean;
-  commitMessage?: string;
-  commitSha?: string;
-  url?: string;
-  error?: string;
-};
-
-export type WebAgentPrData = {
-  status: WebAgentGitDataStatus;
-  created?: boolean;
-  syncedExisting?: boolean;
-  prNumber?: number;
-  url?: string;
-  error?: string;
-  skipReason?: string;
-  requiresManualCreation?: boolean;
-};
-
 export type WebAgentSnippetData = {
   content: string;
   filename: string;
 };
 
 export type WebAgentDataParts = {
-  commit: WebAgentCommitData;
-  pr: WebAgentPrData;
   snippet: WebAgentSnippetData;
 };
 
@@ -71,14 +46,6 @@ export type WebAgentUIMessage = UIMessage<
   WebAgentUITools
 >;
 export type WebAgentUIMessagePart = WebAgentUIMessage["parts"][number];
-export type WebAgentCommitDataPart = Extract<
-  WebAgentUIMessagePart,
-  { type: "data-commit" }
->;
-export type WebAgentPrDataPart = Extract<
-  WebAgentUIMessagePart,
-  { type: "data-pr" }
->;
 export type WebAgentSnippetDataPart = Extract<
   WebAgentUIMessagePart,
   { type: "data-snippet" }

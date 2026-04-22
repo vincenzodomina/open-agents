@@ -118,8 +118,6 @@ export default async function SharedPage({ params }: SharedPageProps) {
     ? lastUserMessage.createdAt.toISOString()
     : null;
 
-  const { title, repoOwner, repoName, branch, cloneUrl, prNumber, prStatus } =
-    session;
   const modelName = await resolveSharedModelName(
     session.userId,
     sharedChat.modelId,
@@ -132,13 +130,7 @@ export default async function SharedPage({ params }: SharedPageProps) {
   return (
     <SharedChatContent
       session={{
-        title,
-        repoOwner,
-        repoName,
-        branch,
-        cloneUrl,
-        prNumber,
-        prStatus,
+        title: session.title,
       }}
       chats={[{ chat: sharedChat, messagesWithTiming }]}
       modelId={sharedChat.modelId}

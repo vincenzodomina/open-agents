@@ -149,23 +149,6 @@ Never claim code is working without either:
 - Running a relevant verification command, or
 - Explicitly stating verification was not possible and why
 
-# Git Safety
-
-**Do not commit, amend, or push unless the user explicitly asks you to.** Committing is handled by the application UI. Your job is to make changes and verify they work -- the user will commit when ready.
-
-**Never do these without explicit user request:**
-- Run \`git commit\`, \`git commit --amend\`, or \`git push\`
-- Change git config
-- Run destructive commands (\`reset --hard\`, \`push --force\`, delete branches)
-- Skip git hooks (\`--no-verify\`, \`--no-gpg-sign\`)
-
-**If the user explicitly asks you to commit:**
-1. Never amend commits -- always create new commits. Amending breaks external integrations.
-2. Run \`git status\` and \`git diff\` to see what will be committed
-3. Avoid committing files with secrets (\`.env\`, credentials); warn if user insists
-4. Draft a concise message focused on purpose, matching repo style
-5. Run the commit, then \`git status\` to confirm clean state
-
 # Security
 
 ## Application Security
@@ -322,27 +305,11 @@ function getModelOverlay(family: ModelFamily, modelId?: string): string {
 
 const CLOUD_SANDBOX_INSTRUCTIONS = `# Cloud Sandbox
 
-Your sandbox is ephemeral. All work is lost when the session ends unless committed and pushed to git.
+Your sandbox can be ephemeral. Keep work focused, persist meaningful outputs through the app's normal storage, and avoid assuming git-based checkpointing is available.
 
-## Checkpointing Rules
-
-1. **Commit after every meaningful change** -- new file, completed function, fixed bug
-2. **Push immediately after each commit** -- do not batch commits
-3. **Commit BEFORE long operations** -- package installs, builds, test runs
-4. **Use clear WIP messages** -- "WIP: add user authentication endpoint"
-5. **When in doubt, checkpoint** -- it is better to have extra commits than lost work
-
-## Git Workflow
-
-- Push with: \`git push -u origin {branch}\`
-- Your work is only safe once pushed to remote
-- If push fails, retry once then report the failure -- do not proceed with more work until push succeeds
-
-## On Task Completion
-
-- Squash WIP commits into logical units if appropriate
-- Write a final commit message summarizing changes
-- Ensure all changes are pushed before reporting completion`;
+- Prefer direct file edits over repository workflow steps
+- Do not assume a remote branch, pull request flow, or git hosting integration exists
+- If sandbox limits block progress, report the limitation clearly instead of inventing a git-based workaround`;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -350,7 +317,6 @@ Your sandbox is ephemeral. All work is lost when the session ends unless committ
 
 export interface BuildSystemPromptOptions {
   cwd?: string;
-  currentBranch?: string;
   customInstructions?: string;
   environmentDetails?: string;
   skills?: SkillMetadata[];
@@ -429,15 +395,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
     if (options.environmentDetails) {
       parts.push(`\n${options.environmentDetails}`);
     }
-  }
-
-  if (options.currentBranch) {
-    const cloudSandboxInstructions = CLOUD_SANDBOX_INSTRUCTIONS.replace(
-      "{branch}",
-      options.currentBranch,
-    );
-    parts.push(`\nCurrent branch: ${options.currentBranch}`);
-    parts.push(`\n${cloudSandboxInstructions}`);
+    parts.push(`\n${CLOUD_SANDBOX_INSTRUCTIONS}`);
   }
 
   if (options.customInstructions) {

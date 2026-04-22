@@ -7,9 +7,9 @@ Summary of changes in **this fork** versus upstream [`vercel-labs/open-agents`](
 - **Fewer Vercel product ties** — Removed Vercel login/projects UI affordances, dropped use of the Vercel AI gateway for model routing, and removed the leaderboard feature.
 - **Security and types** — Added Row Level Security policies and regenerate Supabase TypeScript types (`database.types.ts`) for the new schema.
 - **API cleanup** — Removed the Vercel project env-vars API route and its tests.
-- **just-bash sandbox + isomorphic-git** — Optional in-process sandbox (`just-bash`) for local exploration; repository bootstrap (clone/init) and interactive `git` commands run via **[isomorphic-git](https://github.com/isomorphic-git/isomorphic-git)** on the virtual workspace filesystem—there is no host `git` binary.
+- **Minimal chat flow** — This fork is trimmed toward `login -> start session -> chat -> sandbox/filesystem tools`, with git/PR-specific UI and routes removed from the main product flow.
 
-Open Agents is an open-source reference app for building and running background coding agents on Vercel. It includes the web UI, the agent runtime, sandbox orchestration, and the GitHub integration needed to go from prompt to code changes without keeping your laptop involved.
+Open Agents is an open-source reference app for building and running background coding agents on Vercel. It includes the web UI, the agent runtime, and sandbox orchestration for chat-driven coding sessions.
 
 The repo is meant to be forked and adapted, not treated as a black box.
 
@@ -23,7 +23,7 @@ Web -> Agent workflow -> Sandbox VM
 
 - The web app handles auth, sessions, chat, and streaming UI.
 - The agent runs as a durable workflow on Vercel.
-- The sandbox is the execution environment: filesystem, shell, git, dev servers, and preview ports.
+- The sandbox is the execution environment: filesystem, shell, dev servers, and preview ports.
 
 ### The key architectural decision: the agent is not the sandbox
 
@@ -41,8 +41,6 @@ That separation is the main point of the project:
 - chat-driven coding agent with file, search, shell, task, skill, and web tools
 - durable multi-step execution with Workflow SDK-backed runs, streaming, and cancellation
 - isolated Vercel sandboxes with snapshot-based resume
-- repo cloning and branch work inside the sandbox
-- optional auto-commit, push, and PR creation after a successful run
 - session sharing via read-only links
 - optional voice input via ElevenLabs transcription
 
@@ -54,8 +52,7 @@ A few details that matter for understanding the current implementation:
 - Each agent turn can continue across many persisted workflow steps.
 - Active runs can be resumed by reconnecting to the stream for the existing workflow.
 - Sandboxes use a base snapshot, expose ports `3000`, `5173`, `4321`, and `8000`, and hibernate after inactivity.
-- Auto-commit and auto-PR are supported, but they are preference-driven features, not always-on behavior.
-- When the sandbox type is **just-bash** (user preference / session setting), git is provided by isomorphic-git against the emulated filesystem;
+- `just-bash` is a lightweight in-process sandbox for local exploration; it provides a mounted workspace and shell-like command execution, not a full VM.
 
 ## What is actually required today
 
@@ -91,19 +88,6 @@ ENCRYPTION_KEY=
 
 Configure **Authentication → URL configuration** in the Supabase dashboard: set the site URL to your deployment origin and add redirect URLs `https://YOUR_DOMAIN/auth/callback` and `http://localhost:3000/auth/callback` for local development. The three Supabase env vars above must match your project.
 
-### Required for GitHub repo access, pushes, and PRs
-
-If you want users to connect GitHub, install the app on repos/orgs, clone private repos, push branches, or open PRs, add these GitHub App values:
-
-```env
-NEXT_PUBLIC_GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
-GITHUB_APP_ID=
-GITHUB_APP_PRIVATE_KEY=
-NEXT_PUBLIC_GITHUB_APP_SLUG=
-GITHUB_WEBHOOK_SECRET=
-```
-
 ### Optional
 
 ```env
@@ -121,7 +105,7 @@ ELEVENLABS_API_KEY=
 - `ELEVENLABS_API_KEY`: voice transcription.
 
 ## Deploy your own copy
-Recommended path: deploy this repo at the repo root, then configure Supabase and GitHub.
+Recommended path: deploy this repo at the repo root, then configure Supabase.
 
 1. Fork this repo.
 2. Create a Supabase project. Apply the SQL in `supabase/migrations/` to your database (Supabase SQL editor or `supabase db push` against your linked project).
@@ -144,19 +128,7 @@ Recommended path: deploy this repo at the repo root, then configure Supabase and
 
 6. Deploy once to get a stable production URL.
 7. In the Supabase dashboard, set Authentication URL configuration (site URL + redirect URLs including `https://YOUR_DOMAIN/auth/callback`).
-8. If you want the full GitHub-enabled coding-agent flow, create a GitHub App using:
-
-   - Homepage URL: `https://YOUR_DOMAIN`
-   - Callback URL: `https://YOUR_DOMAIN/api/github/app/callback`
-   - Setup URL: `https://YOUR_DOMAIN/api/github/app/callback`
-
-   In the GitHub App settings:
-   - enable "Request user authorization (OAuth) during installation"
-   - use the GitHub App's Client ID and Client Secret for `NEXT_PUBLIC_GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`
-   - make the app public if you want org installs to work cleanly
-
-9. Add the GitHub App env vars and redeploy.
-10. Optionally add Redis/KV and the canonical production URL vars.
+8. Optionally add Redis/KV and the canonical production URL vars.
 
 ## Local setup
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, GitMerge } from "lucide-react";
+import { Archive } from "lucide-react";
 import { useState } from "react";
 import {
   Drawer,
@@ -66,42 +66,6 @@ function groupSessionsByDate(
   return groups;
 }
 
-function DiffStats({
-  added,
-  removed,
-}: {
-  added: number | null;
-  removed: number | null;
-}) {
-  if (added === null && removed === null) return null;
-
-  return (
-    <div className="flex items-center gap-1 font-mono text-xs">
-      {added !== null ? (
-        <span className="text-green-600 dark:text-green-500">+{added}</span>
-      ) : null}
-      {removed !== null ? (
-        <span className="text-red-600 dark:text-red-400">-{removed}</span>
-      ) : null}
-    </div>
-  );
-}
-
-function PrStatus({ status }: { status: "open" | "merged" | "closed" | null }) {
-  if (!status || status === "open") return null;
-
-  if (status === "merged") {
-    return (
-      <div className="flex items-center gap-1 rounded-md bg-purple-500/20 px-1.5 py-0.5 text-xs text-purple-700 dark:text-purple-400">
-        <GitMerge className="h-3 w-3" />
-        <span>Merged</span>
-      </div>
-    );
-  }
-
-  return null;
-}
-
 function SessionGroup({
   dateGroup,
   sessions,
@@ -135,18 +99,11 @@ function SessionGroup({
                   {session.title}
                 </p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {session.repoName ? (
-                    <span className="truncate">
-                      {session.repoName}
-                      {session.branch && (
-                        <span className="text-muted-foreground/50">
-                          /{session.branch}
-                        </span>
-                      )}
-                    </span>
-                  ) : session.hasStreaming ? (
+                  {session.hasStreaming ? (
                     <span className="text-muted-foreground/60">Working...</span>
-                  ) : null}
+                  ) : (
+                    formatTime(new Date(session.createdAt))
+                  )}
                 </p>
               </div>
             </div>
@@ -156,13 +113,6 @@ function SessionGroup({
                   new Date(session.lastActivityAt ?? session.createdAt),
                 )}
               </span>
-              <div className="flex items-center gap-2">
-                <PrStatus status={session.prStatus} />
-                <DiffStats
-                  added={session.linesAdded}
-                  removed={session.linesRemoved}
-                />
-              </div>
             </div>
           </button>
         ))}

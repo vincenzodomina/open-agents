@@ -1,6 +1,5 @@
 "use client";
 
-import { GitMerge } from "lucide-react";
 import type { SessionWithUnread } from "@/hooks/use-sessions";
 
 interface SessionListProps {
@@ -49,40 +48,6 @@ function groupSessionsByDate(
   return groups;
 }
 
-function DiffStats({
-  added,
-  removed,
-}: {
-  added: number | null;
-  removed: number | null;
-}) {
-  if (added === null && removed === null) return null;
-
-  return (
-    <div className="flex items-center gap-1 text-sm font-mono">
-      {added !== null ? <span className="text-green-500">+{added}</span> : null}
-      {removed !== null ? (
-        <span className="text-red-400">-{removed}</span>
-      ) : null}
-    </div>
-  );
-}
-
-function PrStatus({ status }: { status: "open" | "merged" | "closed" | null }) {
-  if (!status || status === "open") return null;
-
-  if (status === "merged") {
-    return (
-      <div className="flex items-center gap-1 rounded-md bg-purple-500/20 px-2 py-0.5 text-xs text-purple-400">
-        <GitMerge className="h-3 w-3" />
-        <span>Merged</span>
-      </div>
-    );
-  }
-
-  return null;
-}
-
 export function SessionList({
   sessions,
   onSessionClick,
@@ -126,33 +91,8 @@ export function SessionList({
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {formatTime(new Date(session.createdAt))}
-                        {session.repoName && (
-                          <>
-                            {" "}
-                            <span className="text-muted-foreground/50">
-                              -
-                            </span>{" "}
-                            {session.repoName}
-                            {session.branch && (
-                              <>
-                                {" "}
-                                <span className="text-muted-foreground/50">
-                                  -
-                                </span>{" "}
-                                {session.branch}
-                              </>
-                            )}
-                          </>
-                        )}
                       </p>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <PrStatus status={session.prStatus} />
-                    <DiffStats
-                      added={session.linesAdded}
-                      removed={session.linesRemoved}
-                    />
                   </div>
                 </button>
               ))}

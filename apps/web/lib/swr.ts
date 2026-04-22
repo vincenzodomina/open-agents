@@ -45,6 +45,6 @@ export const fetcherNoStore = async <T>(url: string): Promise<T> =>
  * SWR revalidateOnFocus guidelines:
  *
  * - Session/auth data: revalidateOnFocus: true (detect login state changes)
- * - GitHub data (branches, repos, models): default (true) - relatively static, cheap to refetch
- * - Session diff/files: revalidateOnFocus: false - requires sandbox connection, avoid unnecessary errors
+ * - Stable metadata: default (true) - cheap to refetch
+ * - Sandbox-backed files/status: revalidateOnFocus: false - avoid unnecessary reconnect errors
  */

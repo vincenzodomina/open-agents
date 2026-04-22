@@ -168,11 +168,6 @@ export class VercelSandbox implements Sandbox {
   readonly id: string;
   readonly workingDirectory: string;
   readonly env?: Record<string, string>;
-  /**
-   * The current git branch in the sandbox.
-   * Set when a newBranch is created, or when cloning from a specific branch.
-   */
-  readonly currentBranch?: string;
   readonly hooks?: SandboxHooks;
 
   private sdk: VercelSandboxSDK;
@@ -207,7 +202,6 @@ export class VercelSandbox implements Sandbox {
     id: string,
     workingDirectory: string,
     env?: Record<string, string>,
-    currentBranch?: string,
     hooks?: SandboxHooks,
     timeout?: number,
     startTime?: number,
@@ -219,7 +213,6 @@ export class VercelSandbox implements Sandbox {
     this.id = id;
     this.workingDirectory = workingDirectory;
     this.env = env;
-    this.currentBranch = currentBranch;
     this.hooks = hooks;
     this._ports = ports;
     this.isStopped = isStoppedSessionStatus(session.status);
@@ -652,9 +645,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       });
     }
 
-    // Track the current branch
-    let currentBranch: string | undefined;
-
     // Create and checkout a new branch if specified
     if (source?.newBranch) {
       const checkoutResult = await sdk.runCommand({
@@ -668,10 +658,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
           `Failed to create branch '${source.newBranch}': ${await checkoutResult.stderr()}`,
         );
       }
-
-      currentBranch = source.newBranch;
-    } else if (source?.branch) {
-      currentBranch = source.branch;
     }
 
     // Capture startTime AFTER all setup operations so users get their full timeout duration.
@@ -684,7 +670,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       session.sessionId,
       workingDirectory,
       env,
-      currentBranch,
       hooks,
       effectiveTimeout,
       startTime,
@@ -744,7 +729,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       session.sessionId,
       DEFAULT_WORKING_DIRECTORY,
       options.env,
-      undefined,
       options.hooks,
       remainingTimeout,
       startTime,

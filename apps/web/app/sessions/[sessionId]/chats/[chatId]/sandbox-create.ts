@@ -85,17 +85,12 @@ export function getSandboxCreateErrorDetails(
 }
 
 function getFallbackSandboxCreateErrorMessage(status: number): string {
-  if (status === 403) {
-    return "Sandbox access denied. Please reconnect GitHub and try again.";
-  }
-
-  return "Failed to create sandbox. Please try again.";
+  return status === 403
+    ? "Sandbox access denied. Please try again."
+    : "Failed to create sandbox. Please try again.";
 }
 
 export async function createSandbox(
-  cloneUrl: string | undefined,
-  branch: string | undefined,
-  isNewBranch: boolean,
   sessionId: string,
   sandboxType?: string,
 ): Promise<CreateSandboxResponse> {
@@ -103,9 +98,6 @@ export async function createSandbox(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      repoUrl: cloneUrl,
-      branch: cloneUrl ? (branch ?? "main") : undefined,
-      isNewBranch: cloneUrl ? isNewBranch : false,
       sessionId,
       sandboxType: sandboxType ?? "just-bash",
     }),

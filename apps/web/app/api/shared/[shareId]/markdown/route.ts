@@ -82,28 +82,16 @@ function getMessageBody(message: WebAgentUIMessage): string {
 
 function buildMarkdown({
   sessionTitle,
-  repo,
-  branch,
-  prUrl,
-  prNumber,
   createdAt,
   messages,
 }: {
   sessionTitle: string;
-  repo: string | null;
-  branch: string | null;
-  prUrl: string | null;
-  prNumber: number | null;
   createdAt: Date;
   messages: MarkdownMessage[];
 }): string {
   const sections = [
     buildFrontmatter([
       ["session_name", sessionTitle],
-      ["repo", repo],
-      ["branch", branch],
-      ["pr_url", prUrl],
-      ["pr_number", prNumber],
       ["created_at", createdAt.toISOString()],
     ]),
     "",
@@ -183,15 +171,6 @@ export async function GET(request: Request, context: RouteContext) {
     });
   }
 
-  const repo =
-    session.repoOwner && session.repoName
-      ? `${session.repoOwner}/${session.repoName}`
-      : null;
-  const prUrl =
-    repo && session.prNumber
-      ? `https://github.com/${repo}/pull/${session.prNumber}`
-      : null;
-
   const dbMessages = await getChatMessages(sharedChat.id);
   const messages: MarkdownMessage[] = dbMessages.map((messageRow, index) => {
     const message = redactSharedEnvContent(
@@ -214,10 +193,6 @@ export async function GET(request: Request, context: RouteContext) {
   return new Response(
     buildMarkdown({
       sessionTitle: session.title,
-      repo,
-      branch: session.branch,
-      prUrl,
-      prNumber: session.prNumber,
       createdAt: session.createdAt,
       messages,
     }),

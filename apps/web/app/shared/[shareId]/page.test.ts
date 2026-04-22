@@ -23,22 +23,10 @@ let sessionRecord: {
   id: string;
   userId: string;
   title: string;
-  repoOwner: string | null;
-  repoName: string | null;
-  branch: string | null;
-  cloneUrl: string | null;
-  prNumber: number | null;
-  prStatus: string | null;
 } | null = {
   id: "session-1",
   userId: "user-1",
   title: "Session Title",
-  repoOwner: "acme",
-  repoName: "repo",
-  branch: "main",
-  cloneUrl: "https://github.com/acme/repo.git",
-  prNumber: null,
-  prStatus: null,
 };
 let messageRows: Array<{ parts: unknown; role: string; createdAt: Date }> = [
   {
@@ -125,12 +113,6 @@ describe("/shared/[shareId] page", () => {
       id: "session-1",
       userId: "user-1",
       title: "Session Title",
-      repoOwner: "acme",
-      repoName: "repo",
-      branch: "main",
-      cloneUrl: "https://github.com/acme/repo.git",
-      prNumber: null,
-      prStatus: null,
     };
     messageRows = [
       {

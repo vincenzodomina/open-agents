@@ -5,7 +5,6 @@ import type {
   Chat,
   ChatMessage,
   ChatRead,
-  GitHubInstallation,
   Json,
   LinkedAccount,
   NewSession,
@@ -155,24 +154,6 @@ export function mapUserRow(row: Record<string, unknown>): {
   };
 }
 
-export function mapGitHubInstallationRow(
-  row: Record<string, unknown>,
-): GitHubInstallation {
-  return {
-    id: String(row.id),
-    userId: String(row.user_id),
-    installationId: Number(row.installation_id),
-    accountLogin: String(row.account_login),
-    accountType: row.account_type as GitHubInstallation["accountType"],
-    repositorySelection:
-      row.repository_selection as GitHubInstallation["repositorySelection"],
-    installationUrl:
-      row.installation_url != null ? String(row.installation_url) : null,
-    createdAt: parseTimestampRequired(row.created_at),
-    updatedAt: parseTimestampRequired(row.updated_at),
-  };
-}
-
 export function mapLinkedAccountRow(
   row: Record<string, unknown>,
 ): LinkedAccount {
@@ -206,12 +187,8 @@ export function mapUserPreferencesRow(
       row.default_sandbox_type as UserPreferences["defaultSandboxType"],
     defaultDiffMode:
       row.default_diff_mode as UserPreferences["defaultDiffMode"],
-    autoCommitPush: Boolean(row.auto_commit_push ?? false),
-    autoCreatePr: Boolean(row.auto_create_pr ?? false),
     alertsEnabled: Boolean(row.alerts_enabled ?? true),
     alertSoundEnabled: Boolean(row.alert_sound_enabled ?? true),
-    publicUsageEnabled: Boolean(row.public_usage_enabled ?? false),
-    globalSkillRefs: (row.global_skill_refs ?? []) as GlobalSkillRef[],
     modelVariants: (row.model_variants ?? []) as ModelVariant[],
     enabledModelIds: (row.enabled_model_ids ?? []) as string[],
     createdAt: parseTimestampRequired(row.created_at),

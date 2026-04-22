@@ -12,15 +12,6 @@ type CreateChatResult = {
 type SessionLayoutContextValue = {
   session: {
     title: string;
-    repoName: string | null;
-    repoOwner: string | null;
-    cloneUrl: string | null;
-    branch: string | null;
-    status: string;
-    prNumber: number | null;
-    prStatus: string | null;
-    linesAdded: number | null;
-    linesRemoved: number | null;
   };
   chats: SessionChatListItem[];
   chatsLoading: boolean;

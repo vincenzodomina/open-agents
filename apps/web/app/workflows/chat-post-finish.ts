@@ -1,8 +1,6 @@
 import type { LanguageModelUsage } from "ai";
-import type { SandboxState, Sandbox } from "@open-harness/sandbox";
+import type { SandboxState } from "@open-harness/sandbox";
 import type { WebAgentUIMessage } from "@/app/types";
-import type { AutoCommitResult } from "@/lib/chat/auto-commit-direct";
-import type { AutoCreatePrResult } from "@/lib/chat/auto-pr-direct";
 import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
@@ -23,64 +21,6 @@ import {
   type WorkflowRunStatus,
   type WorkflowRunStepTiming,
 } from "@/lib/db/workflow-runs";
-import { recordUsage } from "@/lib/db/usage";
-
-const cachedInputTokensFor = (usage: LanguageModelUsage) =>
-  usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
-
-type UsageByModel = {
-  usage: LanguageModelUsage;
-  toolCallCount: number;
-};
-
-function filterNewTaskUsageEvents<T extends { toolCallId?: string }>(
-  currentEvents: T[],
-  baselineEvents: T[],
-): T[] {
-  if (baselineEvents.length === 0) {
-    return currentEvents;
-  }
-
-  const existingToolCallIds = new Set<string>();
-  let existingEventsWithoutIds = 0;
-
-  for (const event of baselineEvents) {
-    const toolCallId =
-      typeof event.toolCallId === "string" ? event.toolCallId : undefined;
-
-    if (toolCallId) {
-      existingToolCallIds.add(toolCallId);
-    } else {
-      existingEventsWithoutIds += 1;
-    }
-  }
-
-  let skippedWithoutIds = 0;
-  const deltaEvents: T[] = [];
-
-  for (const event of currentEvents) {
-    const toolCallId =
-      typeof event.toolCallId === "string" ? event.toolCallId : undefined;
-
-    if (toolCallId) {
-      if (existingToolCallIds.has(toolCallId)) {
-        continue;
-      }
-
-      deltaEvents.push(event);
-      continue;
-    }
-
-    if (skippedWithoutIds < existingEventsWithoutIds) {
-      skippedWithoutIds += 1;
-      continue;
-    }
-
-    deltaEvents.push(event);
-  }
-
-  return deltaEvents;
-}
 
 export async function persistUserMessage(
   chatId: string,
@@ -248,8 +188,9 @@ export async function recordWorkflowUsage(
   "use step";
 
   try {
-    const { collectTaskToolUsageEvents, sumLanguageModelUsage } =
-      await import("@open-harness/agent");
+    void totalUsage;
+    void responseMessage;
+    void previousResponseMessage;
 
     if (workflowRun) {
       try {
@@ -269,187 +210,7 @@ export async function recordWorkflowUsage(
         console.error("[workflow] Failed to record workflow run:", error);
       }
     }
-
-    // Record main agent usage
-    if (totalUsage) {
-      await recordUsage(userId, {
-        source: "web",
-        agentType: "main",
-        model: modelId,
-        messages: [responseMessage],
-        usage: {
-          inputTokens: totalUsage.inputTokens ?? 0,
-          cachedInputTokens: cachedInputTokensFor(totalUsage),
-          outputTokens: totalUsage.outputTokens ?? 0,
-        },
-      });
-    }
-
-    // Record subagent usage (aggregated by model)
-    const baselineSubagentUsageEvents = previousResponseMessage
-      ? collectTaskToolUsageEvents(previousResponseMessage)
-      : [];
-    const subagentUsageEvents = filterNewTaskUsageEvents(
-      collectTaskToolUsageEvents(responseMessage),
-      baselineSubagentUsageEvents,
-    );
-
-    if (subagentUsageEvents.length > 0) {
-      const subagentUsageByModel = new Map<string, UsageByModel>();
-
-      for (const event of subagentUsageEvents) {
-        const eventModelId = event.modelId ?? modelId;
-        if (!eventModelId) {
-          continue;
-        }
-
-        const existing = subagentUsageByModel.get(eventModelId);
-        if (!existing) {
-          subagentUsageByModel.set(eventModelId, {
-            usage: event.usage,
-            toolCallCount: 1,
-          });
-          continue;
-        }
-
-        const combinedUsage = sumLanguageModelUsage(
-          existing.usage,
-          event.usage,
-        );
-        if (!combinedUsage) {
-          continue;
-        }
-
-        subagentUsageByModel.set(eventModelId, {
-          usage: combinedUsage,
-          toolCallCount: existing.toolCallCount + 1,
-        });
-      }
-
-      for (const [eventModelId, modelUsage] of subagentUsageByModel) {
-        await recordUsage(userId, {
-          source: "web",
-          agentType: "subagent",
-          model: eventModelId,
-          messages: [],
-          usage: {
-            inputTokens: modelUsage.usage.inputTokens ?? 0,
-            cachedInputTokens: cachedInputTokensFor(modelUsage.usage),
-            outputTokens: modelUsage.usage.outputTokens ?? 0,
-          },
-          toolCallCount: modelUsage.toolCallCount,
-        });
-      }
-    }
   } catch (error) {
-    console.error("[workflow] Failed to record usage:", error);
-  }
-}
-
-export async function refreshDiffCache(
-  sessionId: string,
-  sandboxState: SandboxState,
-): Promise<void> {
-  "use step";
-  try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
-    const { computeAndCacheDiff } = await import("@/lib/diff/compute-diff");
-    const sandbox: Sandbox = await connectSandbox(sandboxState);
-    await computeAndCacheDiff({ sandbox, sessionId });
-  } catch (error) {
-    console.error("[workflow] Failed to refresh diff cache:", error);
-  }
-}
-
-export async function hasAutoCommitChangesStep(params: {
-  sandboxState: SandboxState;
-}): Promise<boolean> {
-  "use step";
-  try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
-    const sandbox: Sandbox = await connectSandbox(params.sandboxState);
-    const statusResult = await sandbox.exec(
-      "git status --porcelain",
-      sandbox.workingDirectory,
-      10000,
-    );
-
-    if (!statusResult.success) {
-      return true;
-    }
-
-    return statusResult.stdout.trim().length > 0;
-  } catch (error) {
-    console.error("[workflow] Failed to preflight auto-commit changes:", error);
-    return true;
-  }
-}
-
-export async function runAutoCommitStep(params: {
-  userId: string;
-  sessionId: string;
-  sessionTitle: string;
-  repoOwner: string;
-  repoName: string;
-  sandboxState: SandboxState;
-}): Promise<AutoCommitResult> {
-  "use step";
-  try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
-    const { performAutoCommit } = await import("@/lib/chat/auto-commit-direct");
-    const sandbox = await connectSandbox(params.sandboxState);
-    return await performAutoCommit({
-      sandbox,
-      userId: params.userId,
-      sessionId: params.sessionId,
-      sessionTitle: params.sessionTitle,
-      repoOwner: params.repoOwner,
-      repoName: params.repoName,
-    });
-  } catch (error) {
-    console.error("[workflow] Auto-commit failed:", error);
-    return {
-      committed: false,
-      pushed: false,
-      error: error instanceof Error ? error.message : "Auto-commit failed",
-    };
-  }
-}
-
-export async function runAutoCreatePrStep(params: {
-  userId: string;
-  sessionId: string;
-  sessionTitle: string;
-  repoOwner: string;
-  repoName: string;
-  sandboxState: SandboxState;
-}): Promise<AutoCreatePrResult> {
-  "use step";
-  try {
-    const { connectSandbox } = await import("@open-harness/sandbox");
-    const { performAutoCreatePr } = await import("@/lib/chat/auto-pr-direct");
-    const sandbox = await connectSandbox(params.sandboxState);
-    const result = await performAutoCreatePr({
-      sandbox,
-      userId: params.userId,
-      sessionId: params.sessionId,
-      sessionTitle: params.sessionTitle,
-      repoOwner: params.repoOwner,
-      repoName: params.repoName,
-    });
-
-    if (result.error) {
-      console.warn("[workflow] Auto-PR failed:", result.error);
-    }
-
-    return result;
-  } catch (error) {
-    console.error("[workflow] Auto-PR failed:", error);
-    return {
-      created: false,
-      syncedExisting: false,
-      skipped: false,
-      error: error instanceof Error ? error.message : "Auto-PR failed",
-    };
+    console.error("[workflow] Failed to record workflow metadata:", error);
   }
 }

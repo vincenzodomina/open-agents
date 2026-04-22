@@ -6,22 +6,14 @@ import {
 } from "@/lib/db/user-preferences";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
 import type { SandboxType } from "@/components/sandbox-selector-compact";
-import {
-  globalSkillRefsSchema,
-  type GlobalSkillRef,
-} from "@/lib/skills/global-skill-refs";
 
 interface UpdatePreferencesRequest {
   defaultModelId?: string;
   defaultSubagentModelId?: string | null;
   defaultSandboxType?: SandboxType;
   defaultDiffMode?: DiffMode;
-  autoCommitPush?: boolean;
-  autoCreatePr?: boolean;
   alertsEnabled?: boolean;
   alertSoundEnabled?: boolean;
-  publicUsageEnabled?: boolean;
-  globalSkillRefs?: GlobalSkillRef[];
   enabledModelIds?: string[];
 }
 
@@ -73,26 +65,6 @@ export async function PATCH(req: Request) {
   }
 
   if (
-    body.autoCommitPush !== undefined &&
-    typeof body.autoCommitPush !== "boolean"
-  ) {
-    return Response.json(
-      { error: "Invalid autoCommitPush value" },
-      { status: 400 },
-    );
-  }
-
-  if (
-    body.autoCreatePr !== undefined &&
-    typeof body.autoCreatePr !== "boolean"
-  ) {
-    return Response.json(
-      { error: "Invalid autoCreatePr value" },
-      { status: 400 },
-    );
-  }
-
-  if (
     body.alertsEnabled !== undefined &&
     typeof body.alertsEnabled !== "boolean"
   ) {
@@ -110,30 +82,6 @@ export async function PATCH(req: Request) {
       { error: "Invalid alertSoundEnabled value" },
       { status: 400 },
     );
-  }
-
-  if (
-    body.publicUsageEnabled !== undefined &&
-    typeof body.publicUsageEnabled !== "boolean"
-  ) {
-    return Response.json(
-      { error: "Invalid publicUsageEnabled value" },
-      { status: 400 },
-    );
-  }
-
-  if (body.globalSkillRefs !== undefined) {
-    const parsedGlobalSkillRefs = globalSkillRefsSchema.safeParse(
-      body.globalSkillRefs,
-    );
-    if (!parsedGlobalSkillRefs.success) {
-      return Response.json(
-        { error: "Invalid globalSkillRefs value" },
-        { status: 400 },
-      );
-    }
-
-    body.globalSkillRefs = parsedGlobalSkillRefs.data;
   }
 
   if (body.enabledModelIds !== undefined) {

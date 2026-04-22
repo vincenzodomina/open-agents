@@ -34,7 +34,6 @@ export type OpenHarnessAgentModelInput = OpenAIAppModelId | AgentModelSelection;
 export interface AgentSandboxContext {
   state: SandboxState;
   workingDirectory: string;
-  currentBranch?: string;
   environmentDetails?: string;
 }
 
@@ -117,7 +116,6 @@ export const openHarnessAgent = new ToolLoopAgent({
 
     const instructions = buildSystemPrompt({
       cwd: sandbox.workingDirectory,
-      currentBranch: sandbox.currentBranch,
       customInstructions,
       environmentDetails: sandbox.environmentDetails,
       skills,

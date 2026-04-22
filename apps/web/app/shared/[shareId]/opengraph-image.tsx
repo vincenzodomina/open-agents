@@ -73,10 +73,6 @@ export default async function Image({
   );
   const messageCount = messageCountResult.count ?? 0;
 
-  const repoLabel =
-    session.repoOwner && session.repoName
-      ? `${session.repoOwner}/${session.repoName}`
-      : null;
   const modelLabel = chat.modelId ? displayModelName(chat.modelId) : null;
 
   // Build metadata pills
@@ -86,13 +82,6 @@ export default async function Image({
     pills.push({ icon: "clock", label: formatDuration(totalDurationMs) });
   if (messageCount > 0)
     pills.push({ icon: "messages", label: `${messageCount} messages` });
-  if (session.prNumber) {
-    const prLabel = `PR #${session.prNumber}`;
-    pills.push({
-      icon: "pr",
-      label: session.prStatus === "merged" ? `${prLabel} merged` : prLabel,
-    });
-  }
 
   return new ImageResponse(
     <div
@@ -203,37 +192,6 @@ export default async function Image({
           >
             {chat.title || "Shared Chat"}
           </div>
-
-          {/* Repo label */}
-          {repoLabel ? (
-            <div
-              style={{
-                marginTop: 18,
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"
-                  stroke="rgba(255,255,255,0.4)"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span
-                style={{
-                  fontSize: 22,
-                  color: "rgba(255, 255, 255, 0.45)",
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                {repoLabel}
-              </span>
-            </div>
-          ) : null}
         </div>
 
         {/* Bottom section */}

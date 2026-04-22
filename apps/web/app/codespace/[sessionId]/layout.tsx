@@ -40,13 +40,7 @@ export default async function CodespaceLayout({
   }
 
   return (
-    <CodespaceProvider
-      sessionTitle={sessionRecord.title}
-      repoName={sessionRecord.repoName}
-      repoOwner={sessionRecord.repoOwner}
-      branch={sessionRecord.branch}
-      cloneUrl={sessionRecord.cloneUrl}
-    >
+    <CodespaceProvider sessionTitle={sessionRecord.title}>
       {children}
     </CodespaceProvider>
   );

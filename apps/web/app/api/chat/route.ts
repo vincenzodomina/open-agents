@@ -211,15 +211,6 @@ export async function POST(req: Request) {
       })
     : undefined;
 
-  // Determine if auto-commit and auto-PR should run after a natural finish.
-  const shouldAutoCommitPush =
-    sessionRecord.autoCommitPushOverride ??
-    preferences?.autoCommitPush ??
-    false;
-  const shouldAutoCreatePr =
-    shouldAutoCommitPush &&
-    (sessionRecord.autoCreatePrOverride ?? preferences?.autoCreatePr ?? false);
-
   // Start the durable workflow
   const run = await start(runAgentWorkflow, [
     {
@@ -234,7 +225,6 @@ export async function POST(req: Request) {
         sandbox: {
           state: activeSandboxState,
           workingDirectory: sandbox.workingDirectory,
-          currentBranch: sandbox.currentBranch,
           environmentDetails: sandbox.environmentDetails,
         },
         model: mainModelSelection,
@@ -244,15 +234,6 @@ export async function POST(req: Request) {
         ...(skills.length > 0 && { skills }),
         customInstructions: assistantFileLinkPrompt,
       },
-      ...(shouldAutoCommitPush &&
-        sessionRecord.repoOwner &&
-        sessionRecord.repoName && {
-          autoCommitEnabled: true,
-          autoCreatePrEnabled: shouldAutoCreatePr,
-          sessionTitle: sessionRecord.title,
-          repoOwner: sessionRecord.repoOwner,
-          repoName: sessionRecord.repoName,
-        }),
     },
   ]);
 

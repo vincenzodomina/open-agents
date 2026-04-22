@@ -18,5 +18,5 @@ export default async function Home() {
   const store = await cookies();
   const hasSessionCookie = hasSupabaseAuthCookie(store.getAll());
 
-  return <HomePage hasSessionCookie={hasSessionCookie} lastRepo={null} />;
+  return <HomePage hasSessionCookie={hasSessionCookie} />;
 }

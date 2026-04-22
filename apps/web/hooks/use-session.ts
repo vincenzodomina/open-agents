@@ -17,8 +17,5 @@ export function useSession() {
     session: data ?? null,
     loading: isLoading,
     isAuthenticated: !!data?.user,
-    hasGitHub: data?.hasGitHub ?? false,
-    hasGitHubAccount: data?.hasGitHubAccount ?? false,
-    hasGitHubInstallations: data?.hasGitHubInstallations ?? false,
   };
 }

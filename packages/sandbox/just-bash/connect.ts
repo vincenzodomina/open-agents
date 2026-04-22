@@ -9,8 +9,6 @@ import { JustBashSandbox } from "./sandbox";
 
 interface ConnectOptions {
   env?: Record<string, string>;
-  githubToken?: string;
-  gitUser?: { name: string; email: string };
   hooks?: SandboxHooks;
   timeout?: number;
   ports?: number[];
@@ -19,7 +17,6 @@ interface ConnectOptions {
   createIfMissing?: boolean;
   persistent?: boolean;
   snapshotExpiration?: number;
-  skipGitWorkspaceBootstrap?: boolean;
 }
 
 function getSandboxName(state: VercelState): string | undefined {
@@ -40,21 +37,15 @@ function buildJustBashCreateConfig(
 ) {
   const sandboxName = getSandboxName(state);
 
+  if (state.source) {
+    throw new Error(
+      "Repository-backed just-bash sandboxes are no longer supported",
+    );
+  }
+
   return {
     ...(sandboxName ? { name: sandboxName } : {}),
-    ...(state.source
-      ? {
-          source: {
-            url: state.source.repo,
-            branch: state.source.branch,
-            token: state.source.token,
-            newBranch: state.source.newBranch,
-          },
-        }
-      : {}),
     env: options?.env,
-    githubToken: options?.githubToken,
-    gitUser: options?.gitUser,
     hooks: options?.hooks,
     ...(options?.timeout !== undefined && { timeout: options.timeout }),
     ...(options?.ports && { ports: options.ports }),
@@ -62,9 +53,6 @@ function buildJustBashCreateConfig(
       baseSnapshotId: options.baseSnapshotId,
     }),
     ...(state.snapshotId ? { restoreSnapshotId: state.snapshotId } : {}),
-    ...(options?.skipGitWorkspaceBootstrap && {
-      skipGitWorkspaceBootstrap: true,
-    }),
   };
 }
 
@@ -91,7 +79,6 @@ export async function connectJustBash(
           name: sandboxName,
           rootPath: dormantPathPeek,
           env: options?.env,
-          githubToken: options?.githubToken,
           hooks: options?.hooks,
           timeout: options?.timeout,
           ports: options?.ports ?? [],

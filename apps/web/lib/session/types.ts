@@ -13,7 +13,4 @@ export interface Session {
 export interface SessionUserInfo {
   user: Session["user"] | undefined;
   authProvider?: "supabase";
-  hasGitHub?: boolean;
-  hasGitHubAccount?: boolean;
-  hasGitHubInstallations?: boolean;
 }

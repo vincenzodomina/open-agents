@@ -14,10 +14,9 @@ import { useSessions } from "@/hooks/use-sessions";
 
 interface HomePageProps {
   hasSessionCookie: boolean;
-  lastRepo: { owner: string; repo: string } | null;
 }
 
-export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
+export function HomePage({ hasSessionCookie }: HomePageProps) {
   const router = useRouter();
   const { loading: sessionLoading, isAuthenticated } = useSession();
   const { sessions, loading, createSession } = useSessions({
@@ -30,28 +29,10 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const handleCreateSession = async (input: {
-    repoOwner?: string;
-    repoName?: string;
-    branch?: string;
-    cloneUrl?: string;
-    isNewBranch: boolean;
-    sandboxType: SandboxType;
-    autoCommitPush: boolean;
-    autoCreatePr: boolean;
-  }) => {
+  const handleCreateSession = async (input: { sandboxType: SandboxType }) => {
     setIsCreating(true);
     try {
-      const { session: createdSession, chat } = await createSession({
-        repoOwner: input.repoOwner,
-        repoName: input.repoName,
-        branch: input.branch,
-        cloneUrl: input.cloneUrl,
-        isNewBranch: input.isNewBranch,
-        sandboxType: input.sandboxType,
-        autoCommitPush: input.autoCommitPush,
-        autoCreatePr: input.autoCreatePr,
-      });
+      const { session: createdSession, chat } = await createSession(input);
 
       router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
     } catch (error) {
@@ -66,7 +47,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   };
 
   if (sessionLoading && hasSessionCookie) {
-    return <HomeSkeleton lastRepo={lastRepo} />;
+    return <HomeSkeleton />;
   }
 
   if (!isAuthenticated) {
@@ -106,11 +87,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
           What should we ship next?
         </h1>
 
-        <SessionStarter
-          onSubmit={handleCreateSession}
-          isLoading={isCreating}
-          lastRepo={lastRepo}
-        />
+        <SessionStarter onSubmit={handleCreateSession} isLoading={isCreating} />
       </main>
 
       <SessionDrawer

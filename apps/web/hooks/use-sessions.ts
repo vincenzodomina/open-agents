@@ -29,14 +29,7 @@ export type SessionWithUnread = Pick<
 
 interface CreateSessionInput {
   title?: string;
-  repoOwner?: string;
-  repoName?: string;
-  branch?: string;
-  cloneUrl?: string;
-  isNewBranch: boolean;
   sandboxType: SandboxType;
-  autoCommitPush: boolean;
-  autoCreatePr: boolean;
 }
 
 interface SessionsResponse {
@@ -110,8 +103,7 @@ export function useSessions(options?: {
         );
         // Poll quickly while any session is streaming so we detect
         // completion promptly for background-chat notifications.
-        // Otherwise poll every 30s to pick up external changes like
-        // PR merges delivered via GitHub webhooks.
+        // Otherwise poll every 30s to pick up external changes.
         return hasStreamingSession ? 3_000 : 30_000;
       },
     },

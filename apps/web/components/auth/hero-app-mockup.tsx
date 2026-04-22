@@ -69,7 +69,7 @@ export function AppMockup() {
             <div className="flex justify-end">
               <div className="max-w-[80%] rounded-2xl rounded-br-md bg-black/[0.04] px-3.5 py-2.5 dark:bg-white/[0.06]">
                 <p className="text-[12px] leading-relaxed text-black/70 dark:text-white/60">
-                  Build the auth flow with GitHub OAuth
+                  Build the email login flow
                 </p>
               </div>
             </div>
@@ -112,7 +112,7 @@ export function AppMockup() {
               {/* Agent text */}
               <div className="max-w-[90%]">
                 <p className="text-[12px] leading-relaxed text-black/60 dark:text-white/50">
-                  I&apos;ve set up the GitHub OAuth flow. Created the auth route
+                  I&apos;ve set up the email login flow. Created the auth route
                   handler, callback endpoint, and session middleware. Running
                   the typecheck now…
                 </p>

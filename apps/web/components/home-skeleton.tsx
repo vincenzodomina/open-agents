@@ -5,11 +5,7 @@ import { SessionStarter } from "@/components/session-starter";
 
 const NOOP = () => {};
 
-interface HomeSkeletonProps {
-  lastRepo?: { owner: string; repo: string } | null;
-}
-
-export function HomeSkeleton({ lastRepo = null }: HomeSkeletonProps) {
+export function HomeSkeleton() {
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <header className="flex items-center justify-between px-6 py-4 sm:grid sm:grid-cols-[1fr_auto_1fr]">
@@ -37,7 +33,7 @@ export function HomeSkeleton({ lastRepo = null }: HomeSkeletonProps) {
           What should we ship next?
         </h1>
 
-        <SessionStarter onSubmit={NOOP} isLoading lastRepo={lastRepo} />
+        <SessionStarter onSubmit={NOOP} isLoading />
       </main>
     </div>
   );

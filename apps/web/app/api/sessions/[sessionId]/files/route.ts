@@ -133,7 +133,7 @@ export async function GET(_req: Request, context: RouteContext) {
       }
       console.error("Git ls-files failed:", trackedResult.stderr);
       return Response.json(
-        { error: "Failed to list files. Ensure this is a git repository." },
+        { error: "Failed to list files from the sandbox workspace." },
         { status: 400 },
       );
     }

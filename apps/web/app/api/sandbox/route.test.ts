@@ -20,17 +20,8 @@ interface ConnectConfig {
   state: {
     type: "vercel" | "just-bash";
     sandboxName?: string;
-    source?: {
-      repo?: string;
-      branch?: string;
-      newBranch?: string;
-    };
   };
   options?: {
-    githubToken?: string;
-    gitUser?: {
-      email?: string;
-    };
     timeout?: number;
     persistent?: boolean;
     resume?: boolean;
@@ -49,7 +40,6 @@ const execCalls: Array<{ command: string; cwd: string; timeoutMs: number }> =
   [];
 
 let sessionRecord: TestSessionRecord;
-let currentGitHubToken: string | null;
 let connectSandboxError: Error | null;
 
 mock.module("@/lib/session/get-server-session", () => ({
@@ -61,20 +51,6 @@ mock.module("@/lib/session/get-server-session", () => ({
       email: "nico@example.com",
     },
   }),
-}));
-
-mock.module("@/lib/db/accounts", () => ({
-  getGitHubAccount: async () => ({
-    externalUserId: "12345",
-    username: "nico-gh",
-    accessToken: "token",
-    refreshToken: null,
-    expiresAt: null,
-  }),
-}));
-
-mock.module("@/lib/github/user-token", () => ({
-  getUserGitHubToken: async () => currentGitHubToken,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
@@ -105,7 +81,6 @@ mock.module("@open-harness/sandbox", () => ({
     const isJustBash = config.state.type === "just-bash";
 
     return {
-      currentBranch: "main",
       workingDirectory: "/vercel/sandbox",
       timeout: isJustBash ? undefined : DEFAULT_SANDBOX_TIMEOUT_MS,
       getState: () => ({
@@ -170,7 +145,6 @@ describe("/api/sandbox lifecycle kicks", () => {
     connectConfigs.length = 0;
     writeFileCalls.length = 0;
     execCalls.length = 0;
-    currentGitHubToken = null;
     connectSandboxError = null;
     sessionRecord = {
       id: "session-1",
@@ -257,10 +231,8 @@ describe("/api/sandbox lifecycle kicks", () => {
     expect(payload.mode).toBe("just-bash");
   });
 
-  test("repo sandboxes broker the user GitHub token instead of embedding it", async () => {
+  test("rejects repo-backed sandbox requests", async () => {
     const { POST } = await routeModulePromise;
-
-    currentGitHubToken = "github-user-token";
 
     const response = await POST(
       new Request("http://localhost/api/sandbox", {
@@ -273,21 +245,13 @@ describe("/api/sandbox lifecycle kicks", () => {
         }),
       }),
     );
+    const payload = (await response.json()) as { error: string };
 
-    expect(response.ok).toBe(true);
-    expect(connectConfigs[0]).toMatchObject({
-      state: {
-        type: "vercel",
-        source: {
-          repo: "https://github.com/acme/private-repo",
-          branch: "main",
-        },
-      },
-      options: {
-        githubToken: "github-user-token",
-      },
-    });
-    expect(connectConfigs[0]?.state.source).not.toHaveProperty("token");
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe(
+      "Repository-backed sandboxes are no longer supported",
+    );
+    expect(connectConfigs).toHaveLength(0);
   });
 
   test("Vercel CLI sync clears auth and project files without writing tokens", async () => {
@@ -312,9 +276,6 @@ describe("/api/sandbox lifecycle kicks", () => {
       },
     ]);
     expect(updateCalls.length).toBeGreaterThan(0);
-    expect(connectConfigs[0]?.options?.gitUser?.email).toBe(
-      "12345+nico-gh@users.noreply.github.com",
-    );
     const vercelCliWrites = writeFileCalls.filter(
       (call) =>
         call.path.includes("com.vercel.cli") || call.path.includes("/.vercel/"),

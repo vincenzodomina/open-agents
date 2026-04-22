@@ -2,10 +2,6 @@ import { nanoid } from "nanoid";
 import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { modelVariantsSchema, type ModelVariant } from "@/lib/model-variants";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
-import {
-  normalizeGlobalSkillRefs,
-  type GlobalSkillRef,
-} from "@/lib/skills/global-skill-refs";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { mapUserPreferencesRow } from "./maps";
 import type { UserPreferences } from "./schema";
@@ -17,12 +13,8 @@ export interface UserPreferencesData {
   defaultSubagentModelId: string | null;
   defaultSandboxType: SandboxType;
   defaultDiffMode: DiffMode;
-  autoCommitPush: boolean;
-  autoCreatePr: boolean;
   alertsEnabled: boolean;
   alertSoundEnabled: boolean;
-  publicUsageEnabled: boolean;
-  globalSkillRefs: GlobalSkillRef[];
   modelVariants: ModelVariant[];
   enabledModelIds: string[];
 }
@@ -32,12 +24,8 @@ const DEFAULT_PREFERENCES: UserPreferencesData = {
   defaultSubagentModelId: null,
   defaultSandboxType: "just-bash",
   defaultDiffMode: "unified",
-  autoCommitPush: false,
-  autoCreatePr: false,
   alertsEnabled: true,
   alertSoundEnabled: true,
-  publicUsageEnabled: false,
-  globalSkillRefs: [],
   modelVariants: [],
   enabledModelIds: [],
 };
@@ -85,12 +73,8 @@ export function toUserPreferencesData(
     | "defaultSubagentModelId"
     | "defaultSandboxType"
     | "defaultDiffMode"
-    | "autoCommitPush"
-    | "autoCreatePr"
     | "alertsEnabled"
     | "alertSoundEnabled"
-    | "publicUsageEnabled"
-    | "globalSkillRefs"
     | "modelVariants"
     | "enabledModelIds"
   >,
@@ -104,14 +88,9 @@ export function toUserPreferencesData(
     defaultSubagentModelId: row?.defaultSubagentModelId ?? null,
     defaultSandboxType: normalizeSandboxType(row?.defaultSandboxType),
     defaultDiffMode: normalizeDiffMode(row?.defaultDiffMode),
-    autoCommitPush: row?.autoCommitPush ?? DEFAULT_PREFERENCES.autoCommitPush,
-    autoCreatePr: row?.autoCreatePr ?? DEFAULT_PREFERENCES.autoCreatePr,
     alertsEnabled: row?.alertsEnabled ?? DEFAULT_PREFERENCES.alertsEnabled,
     alertSoundEnabled:
       row?.alertSoundEnabled ?? DEFAULT_PREFERENCES.alertSoundEnabled,
-    publicUsageEnabled:
-      row?.publicUsageEnabled ?? DEFAULT_PREFERENCES.publicUsageEnabled,
-    globalSkillRefs: normalizeGlobalSkillRefs(row?.globalSkillRefs),
     modelVariants: parsedModelVariants.success ? parsedModelVariants.data : [],
     enabledModelIds: normalizeEnabledModelIds(row?.enabledModelIds),
   };
@@ -165,23 +144,11 @@ export async function updateUserPreferences(
   if (updates.defaultDiffMode !== undefined) {
     patchSnake.default_diff_mode = updates.defaultDiffMode;
   }
-  if (updates.autoCommitPush !== undefined) {
-    patchSnake.auto_commit_push = updates.autoCommitPush;
-  }
-  if (updates.autoCreatePr !== undefined) {
-    patchSnake.auto_create_pr = updates.autoCreatePr;
-  }
   if (updates.alertsEnabled !== undefined) {
     patchSnake.alerts_enabled = updates.alertsEnabled;
   }
   if (updates.alertSoundEnabled !== undefined) {
     patchSnake.alert_sound_enabled = updates.alertSoundEnabled;
-  }
-  if (updates.publicUsageEnabled !== undefined) {
-    patchSnake.public_usage_enabled = updates.publicUsageEnabled;
-  }
-  if (updates.globalSkillRefs !== undefined) {
-    patchSnake.global_skill_refs = updates.globalSkillRefs;
   }
   if (updates.modelVariants !== undefined) {
     patchSnake.model_variants = updates.modelVariants;
@@ -221,12 +188,8 @@ export async function updateUserPreferences(
       default_subagent_model_id: merged.defaultSubagentModelId,
       default_sandbox_type: merged.defaultSandboxType,
       default_diff_mode: merged.defaultDiffMode,
-      auto_commit_push: merged.autoCommitPush,
-      auto_create_pr: merged.autoCreatePr,
       alerts_enabled: merged.alertsEnabled,
       alert_sound_enabled: merged.alertSoundEnabled,
-      public_usage_enabled: merged.publicUsageEnabled,
-      global_skill_refs: merged.globalSkillRefs,
       model_variants: merged.modelVariants,
       enabled_model_ids: merged.enabledModelIds,
       created_at: new Date().toISOString(),

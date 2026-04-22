@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  ArrowLeft,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-  Square,
-} from "lucide-react";
+import { ArrowLeft, Loader2, RefreshCw, Square } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -39,8 +33,7 @@ function getErrorMessage(body: unknown, fallback: string): string {
 export default function CodespacePage() {
   const router = useRouter();
   const { sessionId } = useParams<{ sessionId: string }>();
-  const { sessionTitle, repoName, repoOwner, branch, cloneUrl } =
-    useCodespaceContext();
+  const { sessionTitle } = useCodespaceContext();
   const [state, setState] = useState<EditorState>({ status: "loading" });
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -139,7 +132,7 @@ export default function CodespacePage() {
       {/* Header — matches session header style */}
       <header className="border-b border-border px-3 py-1.5">
         <div className="flex items-center justify-between gap-2">
-          {/* Left: back + repo info */}
+          {/* Left: back + session title */}
           <div className="flex min-w-0 items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -156,35 +149,6 @@ export default function CodespacePage() {
             </Tooltip>
 
             <div className="flex min-w-0 items-center gap-1.5 text-sm">
-              {repoName && (
-                <div className="hidden min-w-0 items-center gap-1.5 sm:flex">
-                  {cloneUrl ? (
-                    /* oxlint-disable-next-line nextjs/no-html-link-for-pages */
-                    <a
-                      href={`https://github.com/${repoOwner}/${repoName}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 truncate font-medium text-foreground hover:underline"
-                    >
-                      {repoName}
-                      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    </a>
-                  ) : (
-                    <span className="truncate font-medium text-foreground">
-                      {repoName}
-                    </span>
-                  )}
-                  {branch && (
-                    <>
-                      <span className="text-muted-foreground/40">/</span>
-                      <span className="truncate font-mono text-muted-foreground">
-                        {branch}
-                      </span>
-                    </>
-                  )}
-                  <span className="text-muted-foreground/40">/</span>
-                </div>
-              )}
               <span className="truncate font-medium text-foreground sm:font-normal sm:text-muted-foreground">
                 {sessionTitle}
               </span>

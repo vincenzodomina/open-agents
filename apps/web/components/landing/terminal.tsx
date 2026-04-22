@@ -10,7 +10,7 @@ const scenes: readonly Scene[] = [
   {
     name: "agent",
     data: [
-      { tone: "muted", text: "> build the auth flow with github oauth" },
+      { tone: "muted", text: "> build the email login flow" },
       { tone: "dim", text: "openai/gpt-5.4" },
       { tone: "plain", text: "" },
       { tone: "ok", text: "searching files matching auth*" },
@@ -29,7 +29,7 @@ const scenes: readonly Scene[] = [
     name: "sandbox",
     data: [
       { tone: "muted", text: "> refactor the api to use edge runtime" },
-      { tone: "dim", text: "sandbox: vercel (feat/edge-api)" },
+      { tone: "dim", text: "sandbox: vercel" },
       { tone: "plain", text: "" },
       { tone: "ok", text: "reading app/api/chat/route.ts" },
       { tone: "ok", text: "reading app/api/chat/[chatId]/stream/route.ts" },
@@ -46,8 +46,8 @@ const scenes: readonly Scene[] = [
         tone: "dim",
         text: "  +12 -23 app/api/chat/[chatId]/stream/route.ts",
       },
-      { tone: "ok", text: "auto-commit: WIP: migrate api to edge runtime" },
-      { tone: "ok", text: "pushed to origin/feat/edge-api" },
+      { tone: "ok", text: "state synced to the session record" },
+      { tone: "ok", text: "sandbox kept warm for follow-up work" },
     ],
   },
   {

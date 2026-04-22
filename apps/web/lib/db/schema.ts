@@ -26,7 +26,6 @@ export type ChatReadRow = TableRow<"chat_reads">;
 export type ShareRow = TableRow<"shares">;
 export type UserRow = TableRow<"users">;
 export type AccountRow = TableRow<"accounts">;
-export type GitHubInstallationRow = TableRow<"github_installations">;
 export type LinkedAccountRow = TableRow<"linked_accounts">;
 export type UserPreferencesRow = TableRow<"user_preferences">;
 export type UsageEventRow = TableRow<"usage_events">;
@@ -172,30 +171,6 @@ export type NewWorkflowRunStep = Omit<WorkflowRunStep, "createdAt"> & {
   createdAt?: Date;
 };
 
-type GiR = GitHubInstallationRow;
-
-export type GitHubInstallation = {
-  id: GiR["id"];
-  userId: GiR["user_id"];
-  installationId: GiR["installation_id"];
-  accountLogin: GiR["account_login"];
-  /** DB `text` check constraint; narrowed for app code. */
-  accountType: "User" | "Organization";
-  repositorySelection: "all" | "selected";
-  installationUrl: GiR["installation_url"];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type NewGitHubInstallation = Omit<
-  GitHubInstallation,
-  "id" | "createdAt" | "updatedAt"
-> & {
-  id?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-};
-
 type LaR = LinkedAccountRow;
 
 export type LinkedAccount = {
@@ -227,12 +202,8 @@ export type UserPreferences = {
   defaultSubagentModelId: UpR["default_subagent_model_id"];
   defaultSandboxType: UpR["default_sandbox_type"];
   defaultDiffMode: UpR["default_diff_mode"];
-  autoCommitPush: UpR["auto_commit_push"];
-  autoCreatePr: UpR["auto_create_pr"];
   alertsEnabled: UpR["alerts_enabled"];
   alertSoundEnabled: UpR["alert_sound_enabled"];
-  publicUsageEnabled: UpR["public_usage_enabled"];
-  globalSkillRefs: GlobalSkillRef[];
   modelVariants: ModelVariant[];
   enabledModelIds: string[];
   createdAt: Date;

@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { SignInButton } from "@/components/auth/sign-in-button";
 import { cn } from "@/lib/utils";
-import { GitHubLink } from "./github-link";
 import { Logo } from "./logo";
 
 export function LandingNav({
@@ -40,7 +39,6 @@ export function LandingNav({
                 : "pointer-events-none opacity-0 blur-xs",
             )}
           >
-            <GitHubLink variant="ghost" size="sm" />
             <SignInButton size="sm" />
           </div>
         </div>

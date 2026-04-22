@@ -2,11 +2,6 @@
 
 import {
   Archive,
-  ChevronDown,
-  FolderGit2,
-  GitBranch,
-  GitMerge,
-  GitPullRequest,
   Loader2,
   Monitor,
   Pencil,
@@ -15,8 +10,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BranchPickerDialog } from "@/components/branch-picker-dialog";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { getValidRenameTitle } from "@/components/inbox-sidebar-rename";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -58,12 +52,6 @@ type InboxSidebarProps = {
   onArchiveSession: (sessionId: string) => Promise<void>;
   onUnarchiveSession: (sessionId: string) => Promise<void>;
   onOpenNewSession: () => void;
-  onCreateSessionForRepo: (repoOwner: string, repoName: string) => void;
-  onCreateSessionFromBranch: (
-    repoOwner: string,
-    repoName: string,
-    branch: string,
-  ) => void;
   initialUser?: AuthSession["user"];
 };
 
@@ -93,125 +81,35 @@ function getAvatarFallback(username: string): string {
   return normalized.slice(0, 2).toUpperCase();
 }
 
-function DiffStats({
-  added,
-  removed,
-}: {
-  added: number | null;
-  removed: number | null;
-}) {
-  if (added === null && removed === null) return null;
-  if (added === 0 && removed === 0) return null;
-
-  return (
-    <span className="flex items-center gap-0.5 font-mono text-[10px]">
-      {added !== null ? (
-        <span className="text-green-600 dark:text-green-500">+{added}</span>
-      ) : null}
-      {removed !== null ? (
-        <span className="text-red-600 dark:text-red-400">-{removed}</span>
-      ) : null}
-    </span>
-  );
-}
-
 function getSessionStatusIcon(session: SessionWithUnread) {
-  // Actively streaming / waiting for LLM
   if (session.hasStreaming) {
     return (
       <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
     );
   }
 
-  // PR merged → purple merge icon
-  if (session.prNumber && session.prStatus === "merged") {
-    return <GitMerge className="h-3.5 w-3.5 shrink-0 text-purple-500" />;
-  }
-
-  // PR open → yellow-orange PR icon (awaiting review)
-  if (session.prNumber && session.prStatus === "open") {
-    return <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-green-500" />;
-  }
-
-  // PR closed (not merged)
-  if (session.prNumber && session.prStatus === "closed") {
-    return <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-red-500" />;
-  }
-
-  // Has a branch with code changes → needs human follow-up
-  const hasDiff = session.linesAdded || session.linesRemoved;
-  if (session.branch && hasDiff) {
-    return <GitBranch className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
-  }
-
-  // Has a branch but no changes yet → new session, still getting started
-  if (session.branch) {
-    return (
-      <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-    );
-  }
-
-  // Creating / instantiating sandbox (no branch yet)
   if (session.status === "running") {
     return (
       <Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
     );
   }
 
-  // Default: sandbox icon
   return <Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />;
 }
 
-function getSessionStatusLabel(session: SessionWithUnread): {
-  text: string;
-  prNumber: number | null;
-} {
-  if (session.hasStreaming) return { text: "Working", prNumber: null };
-  if (session.prNumber && session.prStatus === "merged")
-    return { text: `PR #${session.prNumber}`, prNumber: session.prNumber };
-  if (session.prNumber && session.prStatus === "open")
-    return { text: `PR #${session.prNumber}`, prNumber: session.prNumber };
-  if (session.prNumber && session.prStatus === "closed")
-    return { text: `PR #${session.prNumber}`, prNumber: session.prNumber };
-  const hasDiff = session.linesAdded || session.linesRemoved;
-  if (session.branch && hasDiff)
-    return { text: "Needs attention", prNumber: null };
-  if (session.branch) return { text: "New session", prNumber: null };
-  if (session.status === "running")
-    return { text: "Setting up", prNumber: null };
-  if (session.status === "completed")
-    return { text: "Completed", prNumber: null };
-  if (session.status === "failed") return { text: "Failed", prNumber: null };
-  if (session.status === "archived")
-    return { text: "Archived", prNumber: null };
-  return { text: "Idle", prNumber: null };
-}
-
-function getSessionBranchUrl(session: SessionWithUnread): string | null {
-  // Only link if the branch is known to exist on GitHub (has a PR).
-  // Local-only branches that haven't been pushed would 404.
-  if (
-    !session.branch ||
-    !session.repoOwner ||
-    !session.repoName ||
-    !session.prNumber
-  )
-    return null;
-  return `https://github.com/${session.repoOwner}/${session.repoName}/tree/${session.branch}`;
-}
-
-function getSessionPrUrl(session: SessionWithUnread): string | null {
-  if (!session.prNumber || !session.repoOwner || !session.repoName) return null;
-  return `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`;
+function getSessionStatusLabel(session: SessionWithUnread): string {
+  if (session.hasStreaming) return "Working";
+  if (session.status === "running") return "Setting up";
+  if (session.status === "completed") return "Completed";
+  if (session.status === "failed") return "Failed";
+  if (session.status === "archived") return "Archived";
+  return "Idle";
 }
 
 function SessionPopoverContent({ session }: { session: SessionWithUnread }) {
   const lastActivityLabel = formatRelativeTime(
     session.lastActivityAt ?? session.createdAt,
   );
-  const branchUrl = getSessionBranchUrl(session);
-  const prUrl = getSessionPrUrl(session);
-  const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
   const statusLabel = getSessionStatusLabel(session);
 
   return (
@@ -221,112 +119,17 @@ function SessionPopoverContent({ session }: { session: SessionWithUnread }) {
         {session.title}
       </p>
 
-      {/* Status + branch */}
+      {/* Status */}
       <div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
         <span className="shrink-0">{getSessionStatusIcon(session)}</span>
-        {prUrl && statusLabel.prNumber ? (
-          <a
-            href={prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 hover:text-foreground transition-colors"
-          >
-            {statusLabel.text}
-          </a>
-        ) : (
-          <span className="shrink-0">{statusLabel.text}</span>
-        )}
-        {session.branch ? (
-          <span className="flex min-w-0 items-center gap-1 ml-1">
-            <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-            {branchUrl ? (
-              <a
-                href={branchUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="min-w-0 truncate font-mono text-[11px] hover:text-foreground transition-colors"
-              >
-                {session.branch}
-              </a>
-            ) : (
-              <span className="min-w-0 truncate font-mono text-[11px]">
-                {session.branch}
-              </span>
-            )}
-          </span>
-        ) : null}
+        <span className="shrink-0">{statusLabel}</span>
       </div>
 
-      {/* Diff stats + time ago */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        {hasDiff ? (
-          <DiffStats
-            added={session.linesAdded}
-            removed={session.linesRemoved}
-          />
-        ) : (
-          <span />
-        )}
+      <div className="flex items-center justify-end text-xs text-muted-foreground">
         <span className="shrink-0">{lastActivityLabel}</span>
       </div>
     </div>
   );
-}
-
-type SessionRepoGroup = {
-  id: string;
-  label: string;
-  sessions: SessionWithUnread[];
-};
-
-function getRepoGroupId(session: SessionWithUnread): string {
-  const repoName = session.repoName?.trim();
-  const repoOwner = session.repoOwner?.trim();
-
-  if (!repoName) {
-    return "repo:unscoped";
-  }
-
-  return `repo:${repoOwner ?? ""}/${repoName}`.toLowerCase();
-}
-
-function getRepoGroupLabel(session: SessionWithUnread): string {
-  const repoName = session.repoName?.trim();
-  const repoOwner = session.repoOwner?.trim();
-
-  if (!repoName) {
-    return "No repository";
-  }
-
-  return repoOwner ? `${repoOwner}/${repoName}` : repoName;
-}
-
-function groupSessionsByRepo(
-  sessions: SessionWithUnread[],
-): SessionRepoGroup[] {
-  const groups = new Map<string, SessionRepoGroup>();
-
-  for (const session of sessions) {
-    const groupId = getRepoGroupId(session);
-    const existingGroup = groups.get(groupId);
-
-    if (existingGroup) {
-      existingGroup.sessions.push(session);
-      continue;
-    }
-
-    groups.set(groupId, {
-      id: groupId,
-      label: getRepoGroupLabel(session),
-      sessions: [session],
-    });
-  }
-
-  return Array.from(groups.values());
-}
-
-function getRepoGroupContentId(groupId: string): string {
-  return `repo-group-panel-${groupId.replace(/[^a-z0-9-]+/gi, "-")}`;
 }
 
 type SessionRowProps = {
@@ -375,7 +178,6 @@ const SessionRow = memo(function SessionRow({
     renameInputRef.current.select();
   }, [isRenaming]);
 
-  const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
   const showActionButtons = isHovered;
 
   const handleMouseEnter = useCallback(() => {
@@ -571,11 +373,6 @@ const SessionRow = memo(function SessionRow({
               </TooltipContent>
             </Tooltip>
           </>
-        ) : hasDiff ? (
-          <DiffStats
-            added={session.linesAdded}
-            removed={session.linesRemoved}
-          />
         ) : null}
       </span>
     </div>
@@ -621,13 +418,6 @@ function areSessionRowsEqual(
     prev.session.title === next.session.title &&
     prev.session.hasStreaming === next.session.hasStreaming &&
     prev.session.hasUnread === next.session.hasUnread &&
-    prev.session.repoOwner === next.session.repoOwner &&
-    prev.session.repoName === next.session.repoName &&
-    prev.session.branch === next.session.branch &&
-    prev.session.prNumber === next.session.prNumber &&
-    prev.session.prStatus === next.session.prStatus &&
-    prev.session.linesAdded === next.session.linesAdded &&
-    prev.session.linesRemoved === next.session.linesRemoved &&
     String(prev.session.lastActivityAt) === String(next.session.lastActivityAt)
   );
 }
@@ -644,8 +434,6 @@ export function InboxSidebar({
   onArchiveSession,
   onUnarchiveSession,
   onOpenNewSession,
-  onCreateSessionForRepo,
-  onCreateSessionFromBranch,
   initialUser,
 }: InboxSidebarProps) {
   const router = useRouter();
@@ -662,11 +450,6 @@ export function InboxSidebar({
   const [hasMoreArchivedSessions, setHasMoreArchivedSessions] = useState(false);
   const archivedRequestInFlightRef = useRef(false);
   const lastLoadedArchivedCountRef = useRef(0);
-  const [branchPickerRepo, setBranchPickerRepo] = useState<{
-    owner: string;
-    repo: string;
-  } | null>(null);
-  const [isCreatingFromBranch, setIsCreatingFromBranch] = useState(false);
   const [archiveConfirmSession, setArchiveConfirmSession] =
     useState<SessionWithUnread | null>(null);
 
@@ -747,47 +530,6 @@ export function InboxSidebar({
     (!showArchived && sessionsLoading && sessions.length === 0) ||
     (showArchived && archivedSessionsLoading && archivedSessions.length === 0);
   const sidebarUser = session?.user ?? initialUser;
-  const groupedSessions = useMemo(
-    () => groupSessionsByRepo(displayedSessions),
-    [displayedSessions],
-  );
-  const activeGroupId = useMemo(
-    () =>
-      groupedSessions.find((group) =>
-        group.sessions.some((session) => session.id === activeSessionId),
-      )?.id ?? null,
-    [activeSessionId, groupedSessions],
-  );
-  const [collapsedGroupIds, setCollapsedGroupIds] = useState<
-    Record<string, boolean>
-  >({});
-
-  useEffect(() => {
-    setCollapsedGroupIds((current) => {
-      const next: Record<string, boolean> = {};
-      let changed = false;
-
-      for (const group of groupedSessions) {
-        const nextCollapsed =
-          group.id === activeGroupId ? false : (current[group.id] ?? false);
-
-        next[group.id] = nextCollapsed;
-
-        if (current[group.id] !== nextCollapsed) {
-          changed = true;
-        }
-      }
-
-      if (!changed) {
-        const currentIds = Object.keys(current);
-        if (currentIds.length !== groupedSessions.length) {
-          changed = true;
-        }
-      }
-
-      return changed ? next : current;
-    });
-  }, [activeGroupId, groupedSessions]);
 
   const handleSessionClick = useCallback(
     (session: SessionWithUnread) => {
@@ -805,13 +547,6 @@ export function InboxSidebar({
     },
     [onSessionPrefetch],
   );
-
-  const handleToggleRepoGroup = useCallback((groupId: string) => {
-    setCollapsedGroupIds((current) => ({
-      ...current,
-      [groupId]: !current[groupId],
-    }));
-  }, []);
 
   const handleArchiveSession = useCallback((session: SessionWithUnread) => {
     setArchiveConfirmSession(session);
@@ -880,39 +615,6 @@ export function InboxSidebar({
   const handleRetryArchivedSessions = useCallback(() => {
     void fetchArchivedSessionsPage({ offset: 0, replace: true });
   }, [fetchArchivedSessionsPage]);
-
-  const handleCreateForRepo = useCallback(
-    (owner: string, repo: string) => {
-      if (isMobile) setOpenMobile(false);
-      onCreateSessionForRepo(owner, repo);
-    },
-    [isMobile, setOpenMobile, onCreateSessionForRepo],
-  );
-
-  const handleOpenBranchPicker = useCallback((owner: string, repo: string) => {
-    setBranchPickerRepo({ owner, repo });
-  }, []);
-
-  const handleBranchSelected = useCallback(
-    async (branch: string) => {
-      if (!branchPickerRepo) return;
-      setIsCreatingFromBranch(true);
-      try {
-        await onCreateSessionFromBranch(
-          branchPickerRepo.owner,
-          branchPickerRepo.repo,
-          branch,
-        );
-        setBranchPickerRepo(null);
-        if (isMobile) setOpenMobile(false);
-      } catch (error) {
-        console.error("Failed to create session from branch:", error);
-      } finally {
-        setIsCreatingFromBranch(false);
-      }
-    },
-    [branchPickerRepo, onCreateSessionFromBranch, isMobile, setOpenMobile],
-  );
 
   return (
     <>
@@ -1005,124 +707,19 @@ export function InboxSidebar({
         ) : (
           <>
             <div className="space-y-3 p-1.5">
-              {groupedSessions.map((group) => {
-                const isCollapsed = collapsedGroupIds[group.id] ?? false;
-                const groupHasActiveSession = group.id === activeGroupId;
-                const groupContentId = getRepoGroupContentId(group.id);
-
-                const groupRepoOwner =
-                  group.sessions[0]?.repoOwner?.trim() ?? "";
-                const groupRepoName = group.sessions[0]?.repoName?.trim() ?? "";
-                const hasRepo = Boolean(groupRepoOwner && groupRepoName);
-
-                return (
-                  <section key={group.id} className="space-y-1.5">
-                    <div
-                      className={`group/repo flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left transition-colors ${
-                        groupHasActiveSession
-                          ? "text-foreground"
-                          : "text-muted-foreground hover:text-foreground/85"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleToggleRepoGroup(group.id)}
-                        aria-controls={groupContentId}
-                        aria-expanded={!isCollapsed}
-                        className="flex min-w-0 flex-1 items-center gap-1.5"
-                      >
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground/80">
-                          <FolderGit2 className="h-3.5 w-3.5 group-hover/repo:hidden" />
-                          <ChevronDown
-                            className={`hidden h-3.5 w-3.5 text-muted-foreground/70 transition-transform duration-200 group-hover/repo:block ${
-                              isCollapsed ? "-rotate-90" : "rotate-0"
-                            }`}
-                          />
-                        </span>
-                        <span className="min-w-0 truncate text-[12px] font-medium">
-                          {group.label}
-                        </span>
-                      </button>
-                      {hasRepo ? (
-                        <span
-                          className={`shrink-0 items-center gap-0.5 ${isMobile ? "flex" : "hidden group-hover/repo:flex"}`}
-                        >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleOpenBranchPicker(
-                                    groupRepoOwner,
-                                    groupRepoName,
-                                  );
-                                }}
-                                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
-                                aria-label={`Create session from branch for ${group.label}`}
-                              >
-                                <GitBranch className="h-3 w-3" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" sideOffset={4}>
-                              Create from branch
-                            </TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleCreateForRepo(
-                                    groupRepoOwner,
-                                    groupRepoName,
-                                  );
-                                }}
-                                className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
-                                aria-label={`Create session for ${group.label}`}
-                              >
-                                <Plus className="h-3 w-3" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" sideOffset={4}>
-                              Create session
-                            </TooltipContent>
-                          </Tooltip>
-                        </span>
-                      ) : null}
-                    </div>
-                    <div
-                      id={groupContentId}
-                      aria-hidden={isCollapsed}
-                      inert={isCollapsed}
-                      className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${
-                        isCollapsed
-                          ? "grid-rows-[0fr] opacity-0 pointer-events-none"
-                          : "grid-rows-[1fr] opacity-100"
-                      }`}
-                    >
-                      <div className="overflow-hidden">
-                        <div className="ml-4 space-y-1 border-l border-border/40 pl-1.5">
-                          {group.sessions.map((session) => (
-                            <SessionRow
-                              key={session.id}
-                              session={session}
-                              isActive={session.id === activeSessionId}
-                              isPending={session.id === pendingSessionId}
-                              onSessionClick={handleSessionClick}
-                              onSessionPrefetch={handleSessionPrefetch}
-                              onRenameSession={onRenameSession}
-                              onArchiveSession={handleArchiveSession}
-                              onUnarchiveSession={handleUnarchiveSession}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                );
-              })}
+              {displayedSessions.map((session) => (
+                <SessionRow
+                  key={session.id}
+                  session={session}
+                  isActive={session.id === activeSessionId}
+                  isPending={session.id === pendingSessionId}
+                  onSessionClick={handleSessionClick}
+                  onSessionPrefetch={handleSessionPrefetch}
+                  onRenameSession={onRenameSession}
+                  onArchiveSession={handleArchiveSession}
+                  onUnarchiveSession={handleUnarchiveSession}
+                />
+              ))}
             </div>
             {showArchived &&
             (hasMoreArchivedSessions || archivedSessionsError) ? (
@@ -1187,19 +784,6 @@ export function InboxSidebar({
             </Button>
           </div>
         </div>
-      ) : null}
-
-      {branchPickerRepo ? (
-        <BranchPickerDialog
-          open={Boolean(branchPickerRepo)}
-          onOpenChange={(open) => {
-            if (!open) setBranchPickerRepo(null);
-          }}
-          owner={branchPickerRepo.owner}
-          repo={branchPickerRepo.repo}
-          isCreating={isCreatingFromBranch}
-          onSelectBranch={handleBranchSelected}
-        />
       ) : null}
 
       {/* Archive confirmation dialog */}

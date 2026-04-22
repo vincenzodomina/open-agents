@@ -5,10 +5,7 @@ import {
   requireOwnedSession,
   type SessionRecord,
 } from "@/app/api/sessions/_lib/session-context";
-import { getGitHubAccount } from "@/lib/db/accounts";
 import { updateSession } from "@/lib/db/sessions";
-import { parseGitHubUrl } from "@/lib/github/client";
-import { getUserGitHubToken } from "@/lib/github/user-token";
 import {
   DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
   DEFAULT_SANDBOX_PORTS,
@@ -88,13 +85,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
 
-  const {
-    repoUrl,
-    branch = "main",
-    isNewBranch = false,
-    sessionId,
-    sandboxType = "just-bash",
-  } = body;
+  const { repoUrl, sessionId, sandboxType = "just-bash" } = body;
 
   // Get session for auth
   const session = await getServerSession();
@@ -107,23 +98,11 @@ export async function POST(req: Request) {
     return Response.json({ error: "Access denied" }, { status: 403 });
   }
 
-  const githubToken = await getUserGitHubToken(session.user.id);
-
   if (repoUrl) {
-    const parsedRepo = parseGitHubUrl(repoUrl);
-    if (!parsedRepo) {
-      return Response.json(
-        { error: "Invalid GitHub repository URL" },
-        { status: 400 },
-      );
-    }
-
-    if (!githubToken) {
-      return Response.json(
-        { error: "Connect GitHub to access repositories" },
-        { status: 403 },
-      );
-    }
+    return Response.json(
+      { error: "Repository-backed sandboxes are no longer supported" },
+      { status: 400 },
+    );
   }
 
   // Validate session ownership
@@ -141,19 +120,6 @@ export async function POST(req: Request) {
   }
 
   const sandboxName = sessionId ? getSessionSandboxName(sessionId) : undefined;
-  const githubAccount = await getGitHubAccount(session.user.id);
-  const githubNoreplyEmail =
-    githubAccount?.externalUserId && githubAccount.username
-      ? `${githubAccount.externalUserId}+${githubAccount.username}@users.noreply.github.com`
-      : undefined;
-
-  const gitUser = {
-    name: session.user.name ?? githubAccount?.username ?? session.user.username,
-    email:
-      githubNoreplyEmail ??
-      session.user.email ??
-      `${session.user.username}@users.noreply.github.com`,
-  };
 
   // ============================================
   // CREATE OR RESUME: Create a named persistent sandbox for this session.
@@ -162,24 +128,13 @@ export async function POST(req: Request) {
   const sandboxTimeout =
     sandboxType === "vercel" ? DEFAULT_SANDBOX_TIMEOUT_MS : undefined;
 
-  const source = repoUrl
-    ? {
-        repo: repoUrl,
-        branch: isNewBranch ? undefined : branch,
-        newBranch: isNewBranch ? branch : undefined,
-      }
-    : undefined;
-
   try {
     const sandbox = await connectSandbox({
       state: {
         type: sandboxType,
         ...(sandboxName ? { sandboxName } : {}),
-        source,
       },
       options: {
-        githubToken: githubToken ?? undefined,
-        gitUser,
         ...(sandboxTimeout !== undefined ? { timeout: sandboxTimeout } : {}),
         ports: DEFAULT_SANDBOX_PORTS,
         ...(sandboxType === "vercel"
@@ -243,7 +198,6 @@ export async function POST(req: Request) {
       timeout:
         sandbox.timeout ??
         (sandboxType === "vercel" ? DEFAULT_SANDBOX_TIMEOUT_MS : null),
-      currentBranch: repoUrl ? branch : undefined,
       mode: sandboxType,
       timing: { readyMs },
     });

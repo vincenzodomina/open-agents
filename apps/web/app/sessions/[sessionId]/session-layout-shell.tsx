@@ -15,10 +15,7 @@ import {
   useSessionChats,
 } from "@/hooks/use-session-chats";
 import type { Session } from "@/lib/db/schema";
-import {
-  GitPanelProvider,
-  useGitPanel,
-} from "./chats/[chatId]/git-panel-context";
+import { ChatLayoutProvider } from "./chats/[chatId]/chat-layout-context";
 import { SessionHeader } from "./chats/[chatId]/session-header";
 import { ChatTabs } from "./chats/[chatId]/chat-tabs";
 import { SessionLayoutContext } from "./session-layout-context";
@@ -32,10 +29,6 @@ type SessionLayoutShellProps = {
   children: ReactNode;
 };
 
-/**
- * Inner component that reads panelContent from context and renders
- * the horizontal split: left column (header + tabs + page) | right panel.
- */
 function SessionLayoutInner({
   activeChatId,
   children,
@@ -43,36 +36,11 @@ function SessionLayoutInner({
   activeChatId: string;
   children: ReactNode;
 }) {
-  const { panelPortalRef, gitPanelOpen, setGitPanelOpen } = useGitPanel();
-
   return (
-    <div className="relative flex h-full overflow-hidden">
-      {/* Left column: header + tabs + page content */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <SessionHeader />
-        {activeChatId && <ChatTabs activeChatId={activeChatId} />}
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-      </div>
-
-      {/* Mobile backdrop for outside-click dismissal */}
-      {gitPanelOpen && (
-        <button
-          type="button"
-          aria-label="Close right sidebar"
-          className="absolute inset-0 z-20 bg-background/20 sm:hidden"
-          onClick={() => setGitPanelOpen(false)}
-        />
-      )}
-
-      {/* Portal target for the git panel — slideover on mobile, sidebar on larger screens */}
-      <div
-        ref={panelPortalRef}
-        className={`absolute right-0 top-0 z-30 flex h-full w-72 flex-col overflow-hidden border-l border-border bg-background shadow-lg transition-transform duration-200 ease-in-out sm:relative sm:right-auto sm:top-auto sm:z-0 sm:shrink-0 sm:translate-x-0 sm:shadow-none sm:transition-[width] ${
-          gitPanelOpen
-            ? "translate-x-0 sm:w-72 sm:border-l xl:w-80"
-            : "translate-x-full sm:w-0 sm:border-l-0"
-        }`}
-      />
+    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+      <SessionHeader />
+      {activeChatId && <ChatTabs activeChatId={activeChatId} />}
+      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
     </div>
   );
 }
@@ -152,15 +120,6 @@ export function SessionLayoutShell({
     () => ({
       session: {
         title: initialSession.title,
-        repoName: initialSession.repoName,
-        repoOwner: initialSession.repoOwner,
-        cloneUrl: initialSession.cloneUrl,
-        branch: initialSession.branch,
-        status: initialSession.status,
-        prNumber: initialSession.prNumber,
-        prStatus: initialSession.prStatus ?? null,
-        linesAdded: initialSession.linesAdded,
-        linesRemoved: initialSession.linesRemoved,
       },
       chats,
       chatsLoading,
@@ -182,11 +141,11 @@ export function SessionLayoutShell({
 
   return (
     <SessionLayoutContext.Provider value={layoutContext}>
-      <GitPanelProvider>
+      <ChatLayoutProvider>
         <SessionLayoutInner activeChatId={activeChatId}>
           {children}
         </SessionLayoutInner>
-      </GitPanelProvider>
+      </ChatLayoutProvider>
     </SessionLayoutContext.Provider>
   );
 }

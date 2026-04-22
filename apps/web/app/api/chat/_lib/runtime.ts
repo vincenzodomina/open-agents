@@ -1,6 +1,5 @@
 import { discoverSkills } from "@open-harness/agent";
 import { connectSandbox } from "@open-harness/sandbox";
-import { getUserGitHubToken } from "@/lib/github/user-token";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import {
   getVercelCliSandboxSetup,
@@ -49,19 +48,18 @@ export async function createChatRuntime(params: {
     throw new Error("Sandbox state is required to create chat runtime");
   }
 
-  const [githubToken, vercelCliSetup] = await Promise.all([
-    getUserGitHubToken(userId),
-    getVercelCliSandboxSetup({ userId, sessionRecord }).catch((error) => {
-      console.warn(
-        `Failed to prepare Vercel CLI setup for session ${sessionId}:`,
-        error,
-      );
-      return null;
-    }),
-  ]);
+  const vercelCliSetup = await getVercelCliSandboxSetup({
+    userId,
+    sessionRecord,
+  }).catch((error) => {
+    console.warn(
+      `Failed to prepare Vercel CLI setup for session ${sessionId}:`,
+      error,
+    );
+    return null;
+  });
 
   const sandbox = await connectSandbox(sandboxState, {
-    githubToken: githubToken ?? undefined,
     ports: DEFAULT_SANDBOX_PORTS,
   });
 

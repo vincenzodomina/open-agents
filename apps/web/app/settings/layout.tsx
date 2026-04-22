@@ -2,11 +2,9 @@
 
 import {
   ArrowLeft,
-  Cable,
   LogOut,
   Menu,
   Settings as SettingsIcon,
-  SlidersHorizontal,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -21,8 +19,6 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { AccountsSectionSkeleton } from "./accounts-section";
-import { ModelVariantsSectionSkeleton } from "./model-variants-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
 
 /** Skeleton shown while auth is loading for the combined profile page */
@@ -55,10 +51,6 @@ function ProfilePageSkeleton() {
   );
 }
 
-function ConnectionsPageSkeleton() {
-  return <AccountsSectionSkeleton />;
-}
-
 const sidebarItems = [
   {
     id: "profile",
@@ -67,22 +59,10 @@ const sidebarItems = [
     icon: User,
   },
   {
-    id: "connections",
-    label: "Connections",
-    href: "/settings/connections",
-    icon: Cable,
-  },
-  {
     id: "preferences",
     label: "Preferences",
     href: "/settings/preferences",
     icon: SettingsIcon,
-  },
-  {
-    id: "model-variants",
-    label: "Model Variants",
-    href: "/settings/model-variants",
-    icon: SlidersHorizontal,
   },
 ];
 
@@ -221,12 +201,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const activeItem = sidebarItems.find((item) => item.href === pathname);
   const fallbackTitle = activeItem?.label ?? "Profile";
   const fallbackContent =
-    activeItem?.id === "connections" ? (
-      <ConnectionsPageSkeleton />
-    ) : activeItem?.id === "preferences" ? (
+    activeItem?.id === "preferences" ? (
       <PreferencesSectionSkeleton />
-    ) : activeItem?.id === "model-variants" ? (
-      <ModelVariantsSectionSkeleton />
     ) : (
       <ProfilePageSkeleton />
     );

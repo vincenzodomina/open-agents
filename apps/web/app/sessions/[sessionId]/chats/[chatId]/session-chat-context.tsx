@@ -7,7 +7,6 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -15,18 +14,12 @@ import {
 import { useSWRConfig } from "swr";
 import type { ReconnectResponse } from "@/app/api/sandbox/reconnect/route";
 import type { SandboxStatusResponse } from "@/app/api/sandbox/status/route";
-import type { DiffResponse } from "@/app/api/sessions/[sessionId]/diff/route";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 import type { WebAgentUIMessage } from "@/app/types";
 import { useModelOptions } from "@/hooks/use-model-options";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
-import { useSessionDiff } from "@/hooks/use-session-diff";
 import { useSessionFiles } from "@/hooks/use-session-files";
-import {
-  type SessionGitStatus,
-  useSessionGitStatus,
-} from "@/hooks/use-session-git-status";
 import { useSessionSkills } from "@/hooks/use-session-skills";
 import type { Chat, Session } from "@/lib/db/schema";
 import { type ModelOption, withMissingModelOption } from "@/lib/model-options";
@@ -54,7 +47,6 @@ function asKnownSandboxType(value: unknown): KnownSandboxType | null {
 export type SandboxInfo = {
   createdAt: number;
   timeout: number | null;
-  currentBranch?: string;
 };
 
 export type ReconnectionStatus =
@@ -117,28 +109,6 @@ type SessionChatContextValue = {
   hadInitialMessages: boolean;
   /** The initial message snapshot used for SSR hydration */
   initialMessages: WebAgentUIMessage[];
-  /** Diff data (from live sandbox or cache) */
-  diff: DiffResponse | null;
-  /** Whether diff is loading */
-  diffLoading: boolean;
-  /** Whether a diff refresh/revalidation is in progress */
-  diffRefreshing: boolean;
-  /** Diff error message */
-  diffError: string | null;
-  /** Whether diff data is stale (from cache) */
-  diffIsStale: boolean;
-  /** When the cached diff was saved */
-  diffCachedAt: Date | null;
-  /** Trigger a diff refresh */
-  refreshDiff: () => Promise<void>;
-  /** Git status for the current session workspace */
-  gitStatus: SessionGitStatus | null;
-  /** Whether git status is loading */
-  gitStatusLoading: boolean;
-  /** Git status error message */
-  gitStatusError: string | null;
-  /** Trigger a git status refresh */
-  refreshGitStatus: () => Promise<SessionGitStatus | undefined>;
   /** File suggestions from sandbox */
   files: FileSuggestion[] | null;
   /** Whether files are loading */
@@ -159,10 +129,6 @@ type SessionChatContextValue = {
   updateSessionSnapshot: (snapshotUrl: string, snapshotCreatedAt: Date) => void;
   /** Preferred sandbox mode to request when creating a new sandbox */
   preferredSandboxType: string;
-  /** Whether the current sandbox mode supports git diff */
-  supportsDiff: boolean;
-  /** Whether creating a repo is supported for the current sandbox mode */
-  supportsRepoCreation: boolean;
   /** Whether session state currently has runtime sandbox data */
   hasRuntimeSandboxState: boolean;
   /** Whether the session currently has a saved snapshot available */
@@ -179,20 +145,6 @@ type SessionChatContextValue = {
   attemptReconnection: () => Promise<ReconnectionStatus>;
   /** Clear a transient chat error and attempt to resume an active stream */
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
-  /** Update session repo info after creating a repo */
-  updateSessionRepo: (info: {
-    cloneUrl: string;
-    repoOwner: string;
-    repoName: string;
-    branch: string;
-  }) => void;
-  /** Update local PR metadata after creating/discovering a PR */
-  updateSessionPullRequest: (info: {
-    prNumber: number;
-    prStatus: "open" | "merged" | "closed";
-  }) => void;
-  /** Check sandbox branch and look for existing PRs, persisting to DB */
-  checkBranchAndPr: () => Promise<void>;
   /** Available model options (base models + variants) */
   modelOptions: ModelOption[];
   /** Whether model options are still loading */
@@ -212,17 +164,6 @@ type SessionChatRuntimeContextValue = Pick<
 type SessionChatWorkspaceContextValue = Pick<
   SessionChatContextValue,
   | "sandboxInfo"
-  | "diff"
-  | "diffLoading"
-  | "diffRefreshing"
-  | "diffError"
-  | "diffIsStale"
-  | "diffCachedAt"
-  | "refreshDiff"
-  | "gitStatus"
-  | "gitStatusLoading"
-  | "gitStatusError"
-  | "refreshGitStatus"
   | "files"
   | "filesLoading"
   | "filesError"
@@ -245,8 +186,6 @@ type SessionChatMetadataContextValue = Pick<
   | "updateChatModel"
   | "updateSessionSnapshot"
   | "preferredSandboxType"
-  | "supportsDiff"
-  | "supportsRepoCreation"
   | "hasRuntimeSandboxState"
   | "hasSnapshot"
   | "setSandboxTypeFromUnknown"
@@ -254,9 +193,6 @@ type SessionChatMetadataContextValue = Pick<
   | "lifecycleTiming"
   | "syncSandboxStatus"
   | "attemptReconnection"
-  | "updateSessionRepo"
-  | "updateSessionPullRequest"
-  | "checkBranchAndPr"
   | "modelOptions"
   | "modelOptionsLoading"
 >;
@@ -635,133 +571,6 @@ export function SessionChatProvider({
       applyLifecycleTiming,
     ]);
 
-  const updateSessionRepo = useCallback(
-    (info: {
-      cloneUrl: string;
-      repoOwner: string;
-      repoName: string;
-      branch: string;
-    }) => {
-      setSessionRecord((prev) => ({
-        ...prev,
-        cloneUrl: info.cloneUrl,
-        repoOwner: info.repoOwner,
-        repoName: info.repoName,
-        branch: info.branch,
-      }));
-    },
-    [],
-  );
-
-  const updateSessionPullRequest = useCallback(
-    (info: { prNumber: number; prStatus: "open" | "merged" | "closed" }) => {
-      setSessionRecord((prev) => ({
-        ...prev,
-        prNumber: info.prNumber,
-        prStatus: info.prStatus,
-      }));
-
-      void mutate<SessionsResponse>(
-        "/api/sessions",
-        (current) =>
-          current
-            ? {
-                ...current,
-                sessions: current.sessions.map((s) =>
-                  s.id === sessionId
-                    ? {
-                        ...s,
-                        prNumber: info.prNumber,
-                        prStatus: info.prStatus,
-                      }
-                    : s,
-                ),
-              }
-            : current,
-        { revalidate: false },
-      );
-    },
-    [mutate, sessionId],
-  );
-
-  const checkBranchAndPr = useCallback(async () => {
-    // Only check if the session has repo info. The API will return a 400
-    // if the sandbox is not active, which we silently ignore.
-    if (!sessionRecord.repoOwner || !sessionRecord.repoName) return;
-
-    try {
-      const res = await fetch("/api/check-pr", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: sessionRecord.id }),
-      });
-      if (!res.ok) return;
-
-      const data = (await res.json()) as {
-        branch: string | null;
-        prNumber: number | null;
-        prStatus: "open" | "merged" | "closed" | null;
-      };
-      const nextPrFields =
-        data.prNumber && data.prStatus
-          ? { prNumber: data.prNumber, prStatus: data.prStatus }
-          : { prNumber: null, prStatus: null };
-
-      // Update local session state with branch and PR info
-      setSessionRecord((prev) => ({
-        ...prev,
-        ...(data.branch ? { branch: data.branch } : {}),
-        ...nextPrFields,
-      }));
-
-      // Optimistically update the sessions list cache so sidebar reflects changes
-      void mutate<SessionsResponse>(
-        "/api/sessions",
-        (current) =>
-          current
-            ? {
-                ...current,
-                sessions: current.sessions.map((s) =>
-                  s.id === sessionId
-                    ? {
-                        ...s,
-                        ...(data.branch ? { branch: data.branch } : {}),
-                        ...nextPrFields,
-                      }
-                    : s,
-                ),
-              }
-            : current,
-        { revalidate: false },
-      );
-    } catch (error) {
-      console.error("Failed to check branch/PR:", error);
-    }
-  }, [
-    sessionRecord.id,
-    sessionRecord.repoOwner,
-    sessionRecord.repoName,
-    mutate,
-    sessionId,
-  ]);
-
-  // When entering a session on a branch that already has a PR, hydrate PR
-  // metadata as soon as we know the sandbox is connected so the header action
-  // reflects existing PR state immediately.
-  useEffect(() => {
-    if (sessionRecord.prNumber != null) return;
-    if (!sessionRecord.repoOwner || !sessionRecord.repoName) return;
-    if (reconnectionStatus !== "connected") return;
-
-    void checkBranchAndPr();
-  }, [
-    sessionRecord.prNumber,
-    sessionRecord.repoOwner,
-    sessionRecord.repoName,
-    reconnectionStatus,
-    checkBranchAndPr,
-  ]);
-
   const updateSessionSnapshot = useCallback(
     (snapshotUrl: string, snapshotCreatedAt: Date) => {
       setHasSnapshotState(true);
@@ -793,14 +602,6 @@ export function SessionChatProvider({
 
   const preferredSandboxType =
     asKnownSandboxType(sessionRecord.sandboxState?.type) ?? "just-bash";
-  const supportsDiff =
-    sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel" ||
-    sessionRecord.sandboxState.type === "just-bash";
-  const supportsRepoCreation =
-    sessionRecord.sandboxState?.type === undefined ||
-    sessionRecord.sandboxState.type === "vercel" ||
-    sessionRecord.sandboxState.type === "just-bash";
   const hasRuntimeSandboxState = hasRuntimeSandboxStateValue(
     sessionRecord.sandboxState,
   );
@@ -812,28 +613,6 @@ export function SessionChatProvider({
 
   // Use SWR hooks for diff and files
   const sandboxConnected = sandboxInfo !== null;
-
-  // Note: cachedDiff is stored as jsonb and cast to DiffResponse without runtime validation.
-  // This is safe as long as the schema is only written by our own diff route.
-  const {
-    diff,
-    isLoading: diffLoading,
-    isValidating: diffRefreshing,
-    error: diffError,
-    isStale: diffIsStale,
-    cachedAt: diffCachedAt,
-    refresh: refreshDiffSWR,
-  } = useSessionDiff(sessionRecord.id, sandboxConnected, {
-    initialData: initialSession.cachedDiff as DiffResponse | null,
-    initialCachedAt: initialSession.cachedDiffUpdatedAt ?? null,
-  });
-
-  const {
-    gitStatus,
-    isLoading: gitStatusLoading,
-    error: gitStatusError,
-    refresh: refreshGitStatusSWR,
-  } = useSessionGitStatus(sessionRecord.id, sandboxConnected);
 
   const {
     files,
@@ -848,26 +627,6 @@ export function SessionChatProvider({
     error: skillsError,
     refresh: refreshSkillsSWR,
   } = useSessionSkills(sessionRecord.id, sandboxConnected);
-
-  // Update local session state when fresh diff data is received from the live sandbox.
-  // This ensures cachedDiff is available when the sandbox disconnects.
-  useEffect(() => {
-    if (diff && !diffIsStale) {
-      setSessionRecord((prev) => ({
-        ...prev,
-        cachedDiff: diff,
-        cachedDiffUpdatedAt: new Date(),
-      }));
-    }
-  }, [diff, diffIsStale]);
-
-  const refreshDiff = useCallback(async () => {
-    await refreshDiffSWR();
-  }, [refreshDiffSWR]);
-
-  const refreshGitStatus = useCallback(async () => {
-    return refreshGitStatusSWR();
-  }, [refreshGitStatusSWR]);
 
   const refreshFiles = useCallback(async () => {
     await refreshFilesSWR();
@@ -1063,17 +822,6 @@ export function SessionChatProvider({
   const workspaceContextValue = useMemo<SessionChatWorkspaceContextValue>(
     () => ({
       sandboxInfo,
-      diff,
-      diffLoading,
-      diffRefreshing,
-      diffError,
-      diffIsStale,
-      diffCachedAt,
-      refreshDiff,
-      gitStatus,
-      gitStatusLoading,
-      gitStatusError,
-      refreshGitStatus,
       files,
       filesLoading,
       filesError,
@@ -1085,17 +833,6 @@ export function SessionChatProvider({
     }),
     [
       sandboxInfo,
-      diff,
-      diffLoading,
-      diffRefreshing,
-      diffError,
-      diffIsStale,
-      diffCachedAt,
-      refreshDiff,
-      gitStatus,
-      gitStatusLoading,
-      gitStatusError,
-      refreshGitStatus,
       files,
       filesLoading,
       filesError,
@@ -1119,8 +856,6 @@ export function SessionChatProvider({
       updateChatModel,
       updateSessionSnapshot,
       preferredSandboxType,
-      supportsDiff,
-      supportsRepoCreation,
       hasRuntimeSandboxState,
       hasSnapshot,
       setSandboxTypeFromUnknown,
@@ -1128,9 +863,6 @@ export function SessionChatProvider({
       lifecycleTiming,
       syncSandboxStatus,
       attemptReconnection,
-      updateSessionRepo,
-      updateSessionPullRequest,
-      checkBranchAndPr,
       modelOptions,
       modelOptionsLoading,
     }),
@@ -1145,8 +877,6 @@ export function SessionChatProvider({
       updateChatModel,
       updateSessionSnapshot,
       preferredSandboxType,
-      supportsDiff,
-      supportsRepoCreation,
       hasRuntimeSandboxState,
       hasSnapshot,
       setSandboxTypeFromUnknown,
@@ -1154,9 +884,6 @@ export function SessionChatProvider({
       lifecycleTiming,
       syncSandboxStatus,
       attemptReconnection,
-      updateSessionRepo,
-      updateSessionPullRequest,
-      checkBranchAndPr,
       modelOptions,
       modelOptionsLoading,
     ],

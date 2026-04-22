@@ -16,18 +16,10 @@ let chatRecord: {
 let sessionRecord: {
   id: string;
   title: string;
-  repoOwner: string | null;
-  repoName: string | null;
-  branch: string | null;
-  prNumber: number | null;
   createdAt: Date;
 } | null = {
   id: "session-1",
   title: "Debug flaky tests",
-  repoOwner: "acme",
-  repoName: "repo",
-  branch: "fix/flaky-ci",
-  prNumber: 123,
   createdAt: new Date("2025-01-01T12:00:00Z"),
 };
 
@@ -118,10 +110,6 @@ describe("GET /api/shared/:shareId/markdown", () => {
     sessionRecord = {
       id: "session-1",
       title: "Debug flaky tests",
-      repoOwner: "acme",
-      repoName: "repo",
-      branch: "fix/flaky-ci",
-      prNumber: 123,
       createdAt: new Date("2025-01-01T12:00:00Z"),
     };
     messageRows = [
@@ -203,10 +191,6 @@ describe("GET /api/shared/:shareId/markdown", () => {
     expect(response.headers.get("content-type")).toContain("text/markdown");
     expect(response.headers.get("vary")).toBe("Accept");
     expect(body).toContain('session_name: "Debug flaky tests"');
-    expect(body).toContain('repo: "acme/repo"');
-    expect(body).toContain('branch: "fix/flaky-ci"');
-    expect(body).toContain('pr_url: "https://github.com/acme/repo/pull/123"');
-    expect(body).toContain("pr_number: 123");
     expect(body).toContain('created_at: "2025-01-01T12:00:00.000Z"');
     expect(body).toContain("## User\nPlease debug the flaky tests.");
     expect(body).toContain(

@@ -1,14 +1,14 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Plus, Search, Trash2, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import { type ThemePreference, useTheme } from "@/app/providers";
 import {
   DEFAULT_SANDBOX_TYPE,
   SANDBOX_OPTIONS,
   type SandboxType,
 } from "@/components/sandbox-selector-compact";
-import { Button } from "@/components/ui/button";
+import { ModelCombobox } from "@/components/model-combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,17 +20,8 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import { ModelCombobox } from "@/components/model-combobox";
 import { useModelOptions } from "@/hooks/use-model-options";
-import { useSession } from "@/hooks/use-session";
-import {
-  type DiffMode,
-  useUserPreferences,
-} from "@/hooks/use-user-preferences";
-import {
-  globalSkillRefSchema,
-  type GlobalSkillRef,
-} from "@/lib/skills/global-skill-refs";
+import { useUserPreferences } from "@/hooks/use-user-preferences";
 import {
   type ModelOption,
   getDefaultModelOptionId,
@@ -43,36 +34,8 @@ const THEME_OPTIONS: Array<{ id: ThemePreference; name: string }> = [
   { id: "dark", name: "Dark" },
 ];
 
-const DIFF_MODE_OPTIONS: Array<{ id: DiffMode; name: string }> = [
-  { id: "unified", name: "Unified" },
-  { id: "split", name: "Split" },
-];
-
 function isThemePreference(value: string): value is ThemePreference {
   return THEME_OPTIONS.some((option) => option.id === value);
-}
-
-function getGlobalSkillRefError(params: {
-  source: string;
-  skillName: string;
-  existingRefs: GlobalSkillRef[];
-}): string | null {
-  const parsedRef = globalSkillRefSchema.safeParse({
-    source: params.source,
-    skillName: params.skillName,
-  });
-
-  if (!parsedRef.success) {
-    return parsedRef.error.issues[0]?.message ?? "Invalid global skill ref";
-  }
-
-  const duplicateExists = params.existingRefs.some(
-    (ref) =>
-      ref.source.toLowerCase() === parsedRef.data.source.toLowerCase() &&
-      ref.skillName.toLowerCase() === parsedRef.data.skillName.toLowerCase(),
-  );
-
-  return duplicateExists ? "That global skill has already been added" : null;
 }
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
@@ -102,7 +65,7 @@ export function PreferencesSectionSkeleton() {
           <Skeleton className="h-16 w-full" />
           <Skeleton className="h-16 w-full" />
         </div>
-        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-40 w-full" />
       </div>
     </div>
   );
@@ -110,23 +73,13 @@ export function PreferencesSectionSkeleton() {
 
 export function PreferencesSection() {
   const { theme, setTheme } = useTheme();
-  const { session } = useSession();
   const { preferences, loading, updatePreferences } = useUserPreferences();
   const { modelOptions, loading: modelOptionsLoading } = useModelOptions();
   const [isSaving, setIsSaving] = useState(false);
-  const [globalSkillSource, setGlobalSkillSource] = useState("");
-  const [globalSkillName, setGlobalSkillName] = useState("");
-  const [globalSkillsError, setGlobalSkillsError] = useState<string | null>(
-    null,
-  );
-  const [copiedPublicProfile, setCopiedPublicProfile] = useState(false);
 
   const selectedDefaultModelId =
     preferences?.defaultModelId ?? getDefaultModelOptionId(modelOptions);
   const selectedSubagentModelId = preferences?.defaultSubagentModelId ?? "auto";
-  const publicProfilePath = session?.user?.username
-    ? `/u/${session.user.username}`
-    : null;
 
   const defaultModelOptions = useMemo(
     () => withMissingModelOption(modelOptions, selectedDefaultModelId),
@@ -137,6 +90,10 @@ export function PreferencesSection() {
       withMissingModelOption(modelOptions, preferences?.defaultSubagentModelId),
     [modelOptions, preferences?.defaultSubagentModelId],
   );
+  const enabledModelIds = useMemo(
+    () => new Set(preferences?.enabledModelIds),
+    [preferences?.enabledModelIds],
+  );
 
   const handleThemeChange = (nextTheme: string) => {
     if (isThemePreference(nextTheme)) {
@@ -144,230 +101,69 @@ export function PreferencesSection() {
     }
   };
 
-  const handleModelChange = async (modelId: string) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ defaultModelId: modelId });
-    } catch (error) {
-      console.error("Failed to update model preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSubagentModelChange = async (value: string) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({
-        defaultSubagentModelId: value === "auto" ? null : value,
-      });
-    } catch (error) {
-      console.error("Failed to update subagent model preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSandboxChange = async (sandboxType: SandboxType) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ defaultSandboxType: sandboxType });
-    } catch (error) {
-      console.error("Failed to update sandbox preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleDiffModeChange = async (diffMode: DiffMode) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ defaultDiffMode: diffMode });
-    } catch (error) {
-      console.error("Failed to update diff mode preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAutoCommitPushChange = async (enabled: boolean) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ autoCommitPush: enabled });
-    } catch (error) {
-      console.error("Failed to update auto-commit preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAutoCreatePrChange = async (enabled: boolean) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ autoCreatePr: enabled });
-    } catch (error) {
-      console.error("Failed to update auto-PR preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAlertsEnabledChange = async (enabled: boolean) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ alertsEnabled: enabled });
-    } catch (error) {
-      console.error("Failed to update alerts preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAlertSoundEnabledChange = async (enabled: boolean) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ alertSoundEnabled: enabled });
-    } catch (error) {
-      console.error("Failed to update alert sound preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handlePublicUsageEnabledChange = async (enabled: boolean) => {
-    setIsSaving(true);
-    try {
-      await updatePreferences({ publicUsageEnabled: enabled });
-      if (!enabled) {
-        setCopiedPublicProfile(false);
-      }
-    } catch (error) {
-      console.error("Failed to update public usage preference:", error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleCopyPublicProfileUrl = async () => {
-    if (!publicProfilePath || typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(
-        `${window.location.origin}${publicProfilePath}`,
-      );
-      setCopiedPublicProfile(true);
-      window.setTimeout(() => setCopiedPublicProfile(false), 1500);
-    } catch (error) {
-      console.error("Failed to copy public usage URL:", error);
-    }
-  };
-
-  const handleAddGlobalSkillRef = async () => {
-    const existingRefs = preferences?.globalSkillRefs ?? [];
-    const errorMessage = getGlobalSkillRefError({
-      source: globalSkillSource,
-      skillName: globalSkillName,
-      existingRefs,
-    });
-
-    if (errorMessage) {
-      setGlobalSkillsError(errorMessage);
-      return;
-    }
-
-    setIsSaving(true);
-    setGlobalSkillsError(null);
-    try {
-      const nextRef = globalSkillRefSchema.parse({
-        source: globalSkillSource,
-        skillName: globalSkillName,
-      });
-      await updatePreferences({
-        globalSkillRefs: [...existingRefs, nextRef],
-      });
-      setGlobalSkillSource("");
-      setGlobalSkillName("");
-    } catch (error) {
-      console.error("Failed to add global skill preference:", error);
-      setGlobalSkillsError("Failed to add global skill");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleRemoveGlobalSkillRef = async (index: number) => {
-    const existingRefs = preferences?.globalSkillRefs ?? [];
-
-    setIsSaving(true);
-    setGlobalSkillsError(null);
-    try {
-      await updatePreferences({
-        globalSkillRefs: existingRefs.filter(
-          (_, refIndex) => refIndex !== index,
-        ),
-      });
-    } catch (error) {
-      console.error("Failed to remove global skill preference:", error);
-      setGlobalSkillsError("Failed to remove global skill");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const enabledModelIds = useMemo(
-    () => new Set(preferences?.enabledModelIds),
-    [preferences?.enabledModelIds],
-  );
-
-  const handleAddModel = useCallback(
-    async (modelId: string) => {
-      const currentIds = preferences?.enabledModelIds ?? [];
-      if (currentIds.includes(modelId)) return;
-
+  const runPreferenceUpdate = useCallback(
+    async (updates: Parameters<typeof updatePreferences>[0]) => {
       setIsSaving(true);
       try {
-        await updatePreferences({ enabledModelIds: [...currentIds, modelId] });
+        await updatePreferences(updates);
       } catch (error) {
-        console.error("Failed to update enabled models:", error);
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [preferences?.enabledModelIds, updatePreferences],
-  );
-
-  const handleRemoveModel = useCallback(
-    async (modelId: string) => {
-      const currentIds = preferences?.enabledModelIds ?? [];
-
-      setIsSaving(true);
-      try {
-        await updatePreferences({
-          enabledModelIds: currentIds.filter((id) => id !== modelId),
-        });
-      } catch (error) {
-        console.error("Failed to update enabled models:", error);
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [preferences?.enabledModelIds, updatePreferences],
-  );
-
-  const handleSetEnabledModels = useCallback(
-    async (nextIds: string[]) => {
-      setIsSaving(true);
-      try {
-        await updatePreferences({ enabledModelIds: nextIds });
-      } catch (error) {
-        console.error("Failed to update enabled models:", error);
+        console.error("Failed to update preferences:", error);
       } finally {
         setIsSaving(false);
       }
     },
     [updatePreferences],
+  );
+
+  const handleModelChange = async (modelId: string) => {
+    await runPreferenceUpdate({ defaultModelId: modelId });
+  };
+
+  const handleSubagentModelChange = async (value: string) => {
+    await runPreferenceUpdate({
+      defaultSubagentModelId: value === "auto" ? null : value,
+    });
+  };
+
+  const handleSandboxChange = async (sandboxType: SandboxType) => {
+    await runPreferenceUpdate({ defaultSandboxType: sandboxType });
+  };
+
+  const handleAlertsEnabledChange = async (enabled: boolean) => {
+    await runPreferenceUpdate({ alertsEnabled: enabled });
+  };
+
+  const handleAlertSoundEnabledChange = async (enabled: boolean) => {
+    await runPreferenceUpdate({ alertSoundEnabled: enabled });
+  };
+
+  const handleAddModel = useCallback(
+    async (modelId: string) => {
+      const currentIds = preferences?.enabledModelIds ?? [];
+      if (currentIds.includes(modelId)) {
+        return;
+      }
+
+      await runPreferenceUpdate({ enabledModelIds: [...currentIds, modelId] });
+    },
+    [preferences?.enabledModelIds, runPreferenceUpdate],
+  );
+
+  const handleRemoveModel = useCallback(
+    async (modelId: string) => {
+      const currentIds = preferences?.enabledModelIds ?? [];
+      await runPreferenceUpdate({
+        enabledModelIds: currentIds.filter((id) => id !== modelId),
+      });
+    },
+    [preferences?.enabledModelIds, runPreferenceUpdate],
+  );
+
+  const handleSetEnabledModels = useCallback(
+    async (nextIds: string[]) => {
+      await runPreferenceUpdate({ enabledModelIds: nextIds });
+    },
+    [runPreferenceUpdate],
   );
 
   if (loading) {
@@ -376,185 +172,84 @@ export function PreferencesSection() {
 
   return (
     <div className="space-y-8">
-      {/* ── General: Theme, Notifications, Environment, Automation ── */}
       <div className="space-y-4">
         <SectionHeader>General</SectionHeader>
         <div className="grid gap-6 sm:grid-cols-2">
-          {/* Left column: dropdowns */}
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="appearance">Theme</Label>
-              <Select value={theme} onValueChange={handleThemeChange}>
-                <SelectTrigger id="appearance" className="w-full">
-                  <SelectValue placeholder="Select an appearance" />
-                </SelectTrigger>
-                <SelectContent>
-                  {THEME_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Saved in your current browser.
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="sandbox">Default Sandbox</Label>
-              <Select
-                value={preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE}
-                onValueChange={(value) =>
-                  handleSandboxChange(value as SandboxType)
-                }
-                disabled={isSaving}
-              >
-                <SelectTrigger id="sandbox" className="w-full">
-                  <SelectValue placeholder="Select a sandbox type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SANDBOX_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="diff-mode">Default Diff Mode</Label>
-              <Select
-                value={preferences?.defaultDiffMode ?? "unified"}
-                onValueChange={(value) =>
-                  handleDiffModeChange(value as DiffMode)
-                }
-                disabled={isSaving}
-              >
-                <SelectTrigger id="diff-mode" className="w-full">
-                  <SelectValue placeholder="Select a diff mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DIFF_MODE_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="grid gap-2">
+            <Label htmlFor="appearance">Theme</Label>
+            <Select value={theme} onValueChange={handleThemeChange}>
+              <SelectTrigger id="appearance" className="w-full">
+                <SelectValue placeholder="Select an appearance" />
+              </SelectTrigger>
+              <SelectContent>
+                {THEME_OPTIONS.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Saved in your current browser.
+            </p>
           </div>
 
-          {/* Right column: toggles */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="auto-commit-push">Auto commit &amp; push</Label>
-                <p className="text-xs text-muted-foreground">
-                  Commit and push when an agent turn finishes.
-                </p>
-              </div>
-              <Switch
-                id="auto-commit-push"
-                checked={preferences?.autoCommitPush ?? false}
-                onCheckedChange={handleAutoCommitPushChange}
-                disabled={isSaving}
-              />
+          <div className="grid gap-2">
+            <Label htmlFor="sandbox">Default Sandbox</Label>
+            <Select
+              value={preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE}
+              onValueChange={(value) =>
+                handleSandboxChange(value as SandboxType)
+              }
+              disabled={isSaving}
+            >
+              <SelectTrigger id="sandbox" className="w-full">
+                <SelectValue placeholder="Select a sandbox type" />
+              </SelectTrigger>
+              <SelectContent>
+                {SANDBOX_OPTIONS.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="alerts-enabled">Alerts</Label>
+              <p className="text-xs text-muted-foreground">
+                Notify when a background agent finishes.
+              </p>
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="auto-create-pr">Auto create PR</Label>
-                <p className="text-xs text-muted-foreground">
-                  Open a pull request after auto commit.
-                </p>
-              </div>
-              <Switch
-                id="auto-create-pr"
-                checked={preferences?.autoCreatePr ?? false}
-                onCheckedChange={handleAutoCreatePrChange}
-                disabled={isSaving || !(preferences?.autoCommitPush ?? false)}
-              />
+            <Switch
+              id="alerts-enabled"
+              checked={preferences?.alertsEnabled ?? true}
+              onCheckedChange={handleAlertsEnabledChange}
+              disabled={isSaving}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 p-4">
+            <div className="space-y-0.5">
+              <Label htmlFor="alert-sound-enabled">Alert sound</Label>
+              <p className="text-xs text-muted-foreground">
+                Play a sound together with alerts.
+              </p>
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="alerts-enabled">Alerts</Label>
-                <p className="text-xs text-muted-foreground">
-                  Notify when a background agent finishes.
-                </p>
-              </div>
-              <Switch
-                id="alerts-enabled"
-                checked={preferences?.alertsEnabled ?? true}
-                onCheckedChange={handleAlertsEnabledChange}
-                disabled={isSaving}
-              />
-            </div>
-            {(preferences?.alertsEnabled ?? true) && (
-              <div className="flex items-center justify-between gap-4 pl-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="alert-sound-enabled">Alert sound</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Play a sound with alerts.
-                  </p>
-                </div>
-                <Switch
-                  id="alert-sound-enabled"
-                  checked={preferences?.alertSoundEnabled ?? true}
-                  onCheckedChange={handleAlertSoundEnabledChange}
-                  disabled={isSaving}
-                />
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="public-usage-enabled">
-                  Public usage profile
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Publish a shareable wrapped page at <code>/u/username</code>.
-                </p>
-              </div>
-              <Switch
-                id="public-usage-enabled"
-                checked={preferences?.publicUsageEnabled ?? false}
-                onCheckedChange={handlePublicUsageEnabledChange}
-                disabled={isSaving}
-              />
-            </div>
-            {(preferences?.publicUsageEnabled ?? false) &&
-              publicProfilePath && (
-                <div className="grid gap-2 pl-4">
-                  <Label htmlFor="public-usage-url">Public profile URL</Label>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      id="public-usage-url"
-                      readOnly
-                      value={publicProfilePath}
-                      className="font-mono text-xs sm:text-sm"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCopyPublicProfileUrl}
-                      disabled={isSaving}
-                    >
-                      {copiedPublicProfile ? "Copied" : "Copy URL"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Share filtered snapshots with <code>?date=30d</code> or
-                    <code> ?date=2026-01-01..2026-01-31</code>.
-                  </p>
-                </div>
-              )}
+            <Switch
+              id="alert-sound-enabled"
+              checked={preferences?.alertSoundEnabled ?? true}
+              onCheckedChange={handleAlertSoundEnabledChange}
+              disabled={isSaving || !(preferences?.alertsEnabled ?? true)}
+            />
           </div>
         </div>
       </div>
 
       <div className="border-t border-border/50" />
 
-      {/* ── Models: Default + Subagent side by side, Custom Model Set below ── */}
       <div className="space-y-4">
         <SectionHeader>Models</SectionHeader>
 
@@ -577,9 +272,7 @@ export function PreferencesSection() {
               disabled={isSaving || modelOptionsLoading}
               onChange={handleModelChange}
             />
-            <p className="text-xs text-muted-foreground">
-              The AI model used for new chats.
-            </p>
+            <p className="text-xs text-muted-foreground">Used for new chats.</p>
           </div>
 
           <div className="grid gap-2">
@@ -604,7 +297,7 @@ export function PreferencesSection() {
               onChange={handleSubagentModelChange}
             />
             <p className="text-xs text-muted-foreground">
-              For explorer and executor subagents.
+              Used for supporting subagents.
             </p>
           </div>
         </div>
@@ -618,110 +311,6 @@ export function PreferencesSection() {
           onSetEnabledModels={handleSetEnabledModels}
           disabled={isSaving}
         />
-      </div>
-
-      <div className="border-t border-border/50" />
-
-      {/* ── Skills ── */}
-      <div className="space-y-4">
-        <SectionHeader>Skills</SectionHeader>
-
-        <div className="grid gap-3">
-          <div className="space-y-1">
-            <Label>Global Skills</Label>
-            <p className="text-xs text-muted-foreground">
-              Skills from GitHub installed outside the repo for every new
-              session. Repo skills with the same name take precedence.
-            </p>
-          </div>
-
-          {(preferences?.globalSkillRefs ?? []).length > 0 ? (
-            <div className="divide-y divide-border/60 rounded-lg border border-border/70">
-              {(preferences?.globalSkillRefs ?? []).map(
-                (globalSkillRef, index) => (
-                  <div
-                    key={`${globalSkillRef.source}-${globalSkillRef.skillName}`}
-                    className="flex items-center gap-3 px-3 py-2.5"
-                  >
-                    <div className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="truncate text-sm font-medium">
-                        {globalSkillRef.skillName}
-                      </span>
-                      <span className="truncate font-mono text-xs text-muted-foreground">
-                        {globalSkillRef.source}
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive shrink-0"
-                      onClick={() => handleRemoveGlobalSkillRef(index)}
-                      disabled={isSaving}
-                      aria-label={`Remove ${globalSkillRef.skillName}`}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                ),
-              )}
-            </div>
-          ) : (
-            <p className="text-xs italic text-muted-foreground">
-              No global skills configured yet.
-            </p>
-          )}
-
-          <div className="grid gap-2.5 rounded-lg border border-dashed border-border/60 p-3">
-            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <div className="grid gap-1.5">
-                <Label
-                  htmlFor="global-skill-source"
-                  className="text-xs font-medium"
-                >
-                  Repository source
-                </Label>
-                <Input
-                  id="global-skill-source"
-                  value={globalSkillSource}
-                  onChange={(event) => setGlobalSkillSource(event.target.value)}
-                  placeholder="vercel/ai"
-                  disabled={isSaving}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label
-                  htmlFor="global-skill-name"
-                  className="text-xs font-medium"
-                >
-                  Skill name
-                </Label>
-                <Input
-                  id="global-skill-name"
-                  value={globalSkillName}
-                  onChange={(event) => setGlobalSkillName(event.target.value)}
-                  placeholder="ai-sdk"
-                  disabled={isSaving}
-                />
-              </div>
-              <Button
-                type="button"
-                onClick={handleAddGlobalSkillRef}
-                disabled={isSaving}
-              >
-                <Plus />
-                Add
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Enter the GitHub <code>owner/repo</code> source and the skill
-              name, e.g. <code>vercel/ai</code> + <code>ai-sdk</code>.
-            </p>
-            {globalSkillsError && (
-              <p className="text-xs text-destructive">{globalSkillsError}</p>
-            )}
-          </div>
-        </div>
       </div>
     </div>
   );

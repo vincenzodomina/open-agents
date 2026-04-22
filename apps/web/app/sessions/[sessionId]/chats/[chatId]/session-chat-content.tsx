@@ -15,10 +15,6 @@ import {
   Check,
   Code2,
   Copy,
-  ExternalLink,
-  GitBranch,
-  GitCommitHorizontal,
-  GitPullRequest,
   Globe,
   Link2,
   Loader2,
@@ -43,14 +39,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
-import useSWR from "swr";
 import type { ChatRefreshResponse } from "@/app/api/sessions/[sessionId]/chats/[chatId]/route";
-import type { MergePullRequestResponse } from "@/app/api/sessions/[sessionId]/merge/route";
-import type { PrDeploymentResponse } from "@/app/api/sessions/[sessionId]/pr-deployment/route";
-import type { PullRequestCheckRun } from "@/lib/github/client";
 import type {
-  WebAgentCommitDataPart,
-  WebAgentPrDataPart,
   WebAgentSnippetDataPart,
   WebAgentUIMessage,
   WebAgentUIMessagePart,
@@ -100,14 +90,10 @@ import { useTextAttachments } from "@/hooks/use-text-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
-import { useUserPreferences } from "@/hooks/use-user-preferences";
 import {
-  getGitFinalizationState,
   hasRenderableAssistantPart,
   isChatInFlight as isChatInFlightStatus,
-  isGitDataPart,
   shouldKeepCollapsedReasoningStreaming,
-  shouldRenderGitDataPart,
   shouldShowThinkingIndicator,
 } from "@/lib/chat-streaming-state";
 import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
@@ -117,8 +103,6 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   estimateModelUsageCost,
 } from "@/lib/models";
-import { getPrDeploymentRefreshInterval } from "@/lib/pr-deployment-polling";
-import { fetcher } from "@/lib/swr";
 import { streamdownPlugins } from "@/lib/streamdown-config";
 import { cn } from "@/lib/utils";
 import {
@@ -127,11 +111,10 @@ import {
   useSessionChatRuntimeContext,
   useSessionChatWorkspaceContext,
 } from "./session-chat-context";
+import { useChatLayout } from "./chat-layout-context";
 import { useStreamRecovery } from "./hooks/use-stream-recovery";
-import { useAutoCommitStatus } from "./hooks/use-auto-commit-status";
 import { useCodeEditor } from "./hooks/use-code-editor";
 import { useDevServer } from "./hooks/use-dev-server";
-import { useGitPanel } from "./git-panel-context";
 import {
   createSandbox,
   getSandboxCreateErrorDetails,
@@ -144,40 +127,10 @@ import "streamdown/styles.css";
 /** Minimum interval between textarea-focus activity pings (5 minutes). */
 const ACTIVITY_PING_THROTTLE_MS = 5 * 60 * 1000;
 
-const DiffViewer = dynamic(
-  () => import("./diff-viewer").then((m) => m.DiffViewer),
-  { ssr: false },
-);
-
-const MergePrDialog = dynamic(
-  () => import("@/components/merge-pr-dialog").then((m) => m.MergePrDialog),
-  { ssr: false },
-);
-const ClosePrDialog = dynamic(
-  () => import("@/components/close-pr-dialog").then((m) => m.ClosePrDialog),
-  { ssr: false },
-);
-
-const CreateRepoDialog = dynamic(
-  () =>
-    import("@/components/create-repo-dialog").then((m) => m.CreateRepoDialog),
-  { ssr: false },
-);
 const Streamdown = dynamic(
   () => import("streamdown").then((m) => m.Streamdown),
   { ssr: false },
 );
-const DiffTabView = dynamic(
-  () => import("./diff-tab-view").then((m) => m.DiffTabView),
-  { ssr: false },
-);
-const FileTabView = dynamic(
-  () => import("./file-tab-view").then((m) => m.FileTabView),
-  { ssr: false },
-);
-const GitPanel = dynamic(() => import("./git-panel").then((m) => m.GitPanel), {
-  ssr: false,
-});
 
 const emptySubscribe = () => () => {};
 
@@ -233,10 +186,6 @@ function getPartIdentity(part: WebAgentUIMessagePart): string {
     return "file";
   }
 
-  if (isGitDataPart(part)) {
-    return part.id ? `data:${part.type}:${part.id}` : `data:${part.type}`;
-  }
-
   return `part:${part.type}`;
 }
 
@@ -245,153 +194,6 @@ function getReasoningGroupText(parts: ReasoningMessagePart[]): string {
     .map((part) => part.text)
     .filter((text) => text.trim().length > 0)
     .join("\n\n");
-}
-
-function GitDataPartCard({
-  part,
-}: {
-  part: WebAgentCommitDataPart | WebAgentPrDataPart;
-}) {
-  const isCommit = part.type === "data-commit";
-  const { status } = part.data;
-  const isPending = status === "pending";
-  const isSuccess = status === "success";
-  const isError = status === "error";
-
-  const url = part.data.url;
-
-  // Commit-specific data
-  const shortSha =
-    isCommit && part.data.commitSha
-      ? part.data.commitSha.slice(0, 7)
-      : undefined;
-  const commitMessage = isCommit ? part.data.commitMessage : undefined;
-
-  // PR-specific data
-  const prNumber = !isCommit ? part.data.prNumber : undefined;
-
-  // Determine primary label
-  let label: string;
-  if (isCommit) {
-    if (isPending) label = "Creating commit…";
-    else if (isSuccess) {
-      if (part.data.committed && part.data.pushed) {
-        label = "Committed & pushed";
-      } else if (part.data.committed) {
-        label = "Committed";
-      } else if (part.data.pushed) {
-        label = "Pushed commits";
-      } else {
-        label = "Commit complete";
-      }
-    } else if (isError) label = part.data.error ?? "Commit failed";
-    else label = "No changes to commit";
-  } else {
-    if (isPending) label = "Creating pull request…";
-    else if (isSuccess) {
-      if (part.data.requiresManualCreation) {
-        label = "Ready to create on GitHub";
-      } else if (part.data.syncedExisting && prNumber) {
-        label = `Synced to existing PR #${prNumber}`;
-      } else if (prNumber) {
-        label = `Opened PR #${prNumber}`;
-      } else {
-        label = "Pull request ready";
-      }
-    } else if (isError) label = part.data.error ?? "PR failed";
-    else label = part.data.skipReason ?? "PR skipped";
-  }
-
-  // Build the detail fragment shown after the dot separator
-  const detail = isCommit ? (shortSha ?? commitMessage) : undefined;
-
-  // The icon shown inline in the separator
-  const IconEl = isPending ? (
-    <Loader2 className="h-3 w-3 animate-spin text-muted-foreground/50" />
-  ) : isError ? (
-    <X className="h-3 w-3 text-red-500/70" />
-  ) : isCommit ? (
-    <GitCommitHorizontal className="h-3 w-3 text-muted-foreground/50" />
-  ) : (
-    <GitPullRequest className="h-3 w-3 text-muted-foreground/50" />
-  );
-
-  // For commits with both a SHA and a message, show the message beneath
-  const subtitle =
-    isCommit && shortSha && commitMessage ? commitMessage : undefined;
-
-  const textColor = isError
-    ? "text-red-500/70 dark:text-red-400/70"
-    : "text-muted-foreground/70";
-
-  const Wrapper = url && !isPending ? "a" : "div";
-  const wrapperProps =
-    url && !isPending
-      ? ({
-          href: url,
-          target: "_blank",
-          rel: "noreferrer",
-        } as const)
-      : {};
-
-  return (
-    <div className="flex items-center gap-3 py-1">
-      {/* Left rule */}
-      <div className="h-px flex-1 bg-border/60" />
-
-      {/* Center label */}
-      <Wrapper
-        {...wrapperProps}
-        className={cn(
-          "group/sep flex max-w-[80%] items-center gap-1.5",
-          url && !isPending && "cursor-pointer",
-        )}
-      >
-        {IconEl}
-        <span
-          className={cn(
-            "truncate text-xs font-medium",
-            textColor,
-            url &&
-              !isPending &&
-              "group-hover/sep:text-foreground transition-colors",
-          )}
-        >
-          {label}
-        </span>
-        {detail && (
-          <>
-            <span className="text-muted-foreground/30">·</span>
-            <span
-              className={cn(
-                "truncate font-mono text-[11px]",
-                textColor,
-                url &&
-                  !isPending &&
-                  "group-hover/sep:text-foreground transition-colors",
-              )}
-            >
-              {detail}
-            </span>
-          </>
-        )}
-        {url && !isPending && (
-          <ExternalLink
-            className={cn(
-              "h-3 w-3 shrink-0 text-muted-foreground/0 transition-colors",
-              "group-hover/sep:text-muted-foreground",
-            )}
-          />
-        )}
-      </Wrapper>
-
-      {/* Right rule */}
-      <div className="h-px flex-1 bg-border/60" />
-
-      {/* Subtitle (commit message when SHA is shown as detail) */}
-      {subtitle && <p className="sr-only">{subtitle}</p>}
-    </div>
-  );
 }
 
 function isSandboxValid(sandboxInfo: SandboxInfo | null): boolean {
@@ -1024,10 +826,6 @@ export function SessionChatContent({
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
   const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
   const [_isUnarchiving, _setIsUnarchiving] = useState(false);
-  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
-  const [closeDialogOpen, setCloseDialogOpen] = useState(false);
-  const [repoDialogOpen, setRepoDialogOpen] = useState(false);
-  const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [selectedWorkspaceFile, setSelectedWorkspaceFile] = useState<
     string | null
   >(null);
@@ -1041,21 +839,9 @@ export function SessionChatContent({
   const [forkingAssistantMessageId, setForkingAssistantMessageId] = useState<
     string | null
   >(null);
-  const [branchPreviewUrlChangeBaseline, setBranchPreviewUrlChangeBaseline] =
-    useState<string | null | undefined>(undefined);
   const hasMounted = useHasMounted();
-  const {
-    activeView,
-    gitPanelOpen,
-    shareRequested,
-    setShareRequested,
-    setHasActionNeeded,
-    setChangesCount,
-    setHasCommittedChanges,
-    panelPortalRef,
-    headerActionsRef,
-  } = useGitPanel();
-  const { preferences } = useUserPreferences();
+  const { shareRequested, setShareRequested, headerActionsRef } =
+    useChatLayout();
   const isIosDevice = useMemo(() => {
     if (typeof navigator === "undefined") {
       return false;
@@ -1183,8 +969,6 @@ export function SessionChatContent({
     updateChatModel,
     updateSessionTitle,
     preferredSandboxType,
-    supportsDiff,
-    supportsRepoCreation,
     hasRuntimeSandboxState,
     hasSnapshot,
     setSandboxTypeFromUnknown,
@@ -1192,9 +976,6 @@ export function SessionChatContent({
     lifecycleTiming,
     syncSandboxStatus,
     attemptReconnection,
-    updateSessionRepo,
-    updateSessionPullRequest,
-    checkBranchAndPr,
     modelOptions,
     modelOptionsLoading,
   } = useSessionChatMetadataContext();
@@ -1208,12 +989,6 @@ export function SessionChatContent({
   } = useSessionChatRuntimeContext();
   const {
     sandboxInfo,
-    diff,
-    diffRefreshing,
-    refreshDiff,
-    gitStatus,
-    gitStatusLoading,
-    refreshGitStatus,
     files,
     filesLoading,
     refreshFiles,
@@ -1240,22 +1015,6 @@ export function SessionChatContent({
     });
   }, [session.id]);
 
-  const autoCommitEnabled = Boolean(
-    session.cloneUrl &&
-    session.repoOwner &&
-    session.repoName &&
-    (session.autoCommitPushOverride ?? preferences?.autoCommitPush ?? false),
-  );
-  const { isAutoCommitting, markAutoCommitStarted } = useAutoCommitStatus(
-    autoCommitEnabled,
-    gitStatus,
-    () => {
-      void refreshGitStatus().catch(() => undefined);
-      void refreshDiff().catch(() => undefined);
-      void refreshFiles().catch(() => undefined);
-      void checkBranchAndPr().catch(() => undefined);
-    },
-  );
   const {
     messages,
     error,
@@ -1299,52 +1058,6 @@ export function SessionChatContent({
     },
     [chatInfo.id, forkChat, forkingAssistantMessageId, router, session.id],
   );
-  const upsertSyntheticAssistantGitMessage = useCallback(
-    async (message: WebAgentUIMessage) => {
-      setMessages((currentMessages) => {
-        const existingIndex = currentMessages.findIndex(
-          (currentMessage) => currentMessage.id === message.id,
-        );
-
-        if (existingIndex < 0) {
-          return [...currentMessages, message];
-        }
-
-        const nextMessages = [...currentMessages];
-        nextMessages[existingIndex] = message;
-        return nextMessages;
-      });
-
-      try {
-        const response = await fetch(
-          `/api/sessions/${session.id}/chats/${chatInfo.id}/messages`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message }),
-          },
-        );
-
-        if (!response.ok) {
-          const body = (await response.json().catch(() => null)) as {
-            error?: string;
-          } | null;
-          throw new Error(
-            body?.error ?? "Failed to persist synthetic assistant message",
-          );
-        }
-
-        await refreshChats().catch(() => undefined);
-        await markChatRead(chatInfo.id).catch(() => undefined);
-      } catch (error) {
-        console.error(
-          "Failed to persist synthetic assistant git message:",
-          error,
-        );
-      }
-    },
-    [chatInfo.id, markChatRead, refreshChats, session.id, setMessages],
-  );
   const renderMessages = useMemo(
     () => (hasMounted ? messages : initialMessages),
     [hasMounted, messages, initialMessages],
@@ -1357,15 +1070,6 @@ export function SessionChatContent({
   const lastMessage = useMemo(
     () => renderMessages[renderMessages.length - 1],
     [renderMessages],
-  );
-  const gitFinalizationState = useMemo(
-    () =>
-      getGitFinalizationState({
-        status,
-        lastMessageRole: lastMessage?.role,
-        lastMessageParts: lastMessage?.parts,
-      }),
-    [lastMessage, status],
   );
   const hasAssistantRenderableContent = useMemo(
     () =>
@@ -1430,7 +1134,6 @@ export function SessionChatContent({
       ? "streaming"
       : status;
   const _isChatReady = effectiveStatus === "ready";
-  const _isFinalizingGitActions = gitFinalizationState.isFinalizing;
   const showThinkingIndicator = useMemo(() => {
     // During the optimistic pending phase (user just clicked send but the
     // AI SDK status hasn't caught up yet due to throttling), always show
@@ -1659,23 +1362,17 @@ export function SessionChatContent({
         requestStatusSync("force"),
         refreshCurrentChatSnapshot(),
         refreshChats(),
-        refreshGitStatus(),
-        refreshDiff(),
         refreshFiles(),
         refreshSkills(),
-        checkBranchAndPr(),
       ]);
     } finally {
       tabResumeRefreshRef.current.lastAt = Date.now();
       tabResumeRefreshRef.current.inFlight = false;
     }
   }, [
-    checkBranchAndPr,
     refreshChats,
     refreshCurrentChatSnapshot,
-    refreshDiff,
     refreshFiles,
-    refreshGitStatus,
     refreshSkills,
     requestStatusSync,
   ]);
@@ -1875,69 +1572,6 @@ export function SessionChatContent({
     [chatInfo.id, sendMessage, setChatStreaming],
   );
 
-  const handleFixChecks = useCallback(
-    async (failedRuns: PullRequestCheckRun[]) => {
-      const names = failedRuns.map((run) => run.name).join(", ");
-      const fallbackPrompt = `# Fix Failing Checks\n\nThe following checks are failing: ${names}. Please investigate and push a fix.`;
-      let messagePayload: Parameters<typeof sendMessageWithPendingState>[0] = {
-        text: fallbackPrompt,
-      };
-
-      try {
-        const res = await fetch(`/api/sessions/${session.id}/checks/fix`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ checkRuns: failedRuns }),
-        });
-        if (res.ok) {
-          const data = (await res.json()) as {
-            prompt?: string;
-            snippets?: Array<{ filename: string; content: string }>;
-            message?: string;
-          };
-          const prompt = data.prompt?.trim() || data.message?.trim();
-          const snippets = Array.isArray(data.snippets) ? data.snippets : [];
-
-          if (prompt && snippets.length > 0) {
-            messagePayload = {
-              parts: [
-                {
-                  type: "text" as const,
-                  text: prompt,
-                },
-                ...snippets.map((snippet, index) => ({
-                  type: "data-snippet" as const,
-                  id: `fix-check-${index}`,
-                  data: snippet,
-                })),
-              ],
-            };
-          } else if (prompt) {
-            messagePayload = { text: prompt };
-          }
-        }
-      } catch {
-        // Fall through to fallback
-      }
-
-      await sendMessageWithPendingState(messagePayload);
-    },
-    [sendMessageWithPendingState, session.id],
-  );
-
-  const handleFixConflicts = useCallback(
-    async (baseBranchRef: string, closeMergeDialog = false) => {
-      if (closeMergeDialog) {
-        setMergeDialogOpen(false);
-      }
-
-      await sendMessageWithPendingState({
-        text: `# Resolve Merge Conflicts\n\nThere is a merge conflict with ${baseBranchRef}. Fetch and then fix the conflicts. Do not rebase.`,
-      });
-    },
-    [sendMessageWithPendingState],
-  );
-
   const handleDeleteUserMessage = useCallback(
     async (messageId: string) => {
       if (hasMessageActionInFlight) {
@@ -2133,18 +1767,10 @@ export function SessionChatContent({
   const refreshWorkspaceAfterRestore = useCallback(async () => {
     await requestStatusSync("force").catch(() => undefined);
     await Promise.all([
-      refreshGitStatus().catch(() => undefined),
-      refreshDiff().catch(() => undefined),
       refreshFiles().catch(() => undefined),
-      checkBranchAndPr().catch(() => undefined),
+      refreshSkills().catch(() => undefined),
     ]);
-  }, [
-    requestStatusSync,
-    refreshGitStatus,
-    refreshDiff,
-    refreshFiles,
-    checkBranchAndPr,
-  ]);
+  }, [requestStatusSync, refreshFiles, refreshSkills]);
 
   const handleRestoreSnapshot = useCallback(async () => {
     setIsRestoringSnapshot(true);
@@ -2229,16 +1855,7 @@ export function SessionChatContent({
     setSandboxCreateError(null);
 
     try {
-      const branchExistsOnOrigin = session.prNumber != null;
-      const shouldCreateNewBranch =
-        session.isNewBranch && !branchExistsOnOrigin;
-      const newSandbox = await createSandbox(
-        session.cloneUrl ?? undefined,
-        session.branch ?? undefined,
-        shouldCreateNewBranch,
-        session.id,
-        preferredSandboxType,
-      );
+      const newSandbox = await createSandbox(session.id, preferredSandboxType);
       setSandboxInfo(newSandbox);
       setSandboxTypeFromUnknown(newSandbox.type);
       setSandboxCreateError(null);
@@ -2251,10 +1868,6 @@ export function SessionChatContent({
       setIsCreatingSandbox(false);
     }
   }, [
-    session.prNumber,
-    session.isNewBranch,
-    session.cloneUrl,
-    session.branch,
     session.id,
     preferredSandboxType,
     setSandboxInfo,
@@ -2275,8 +1888,6 @@ export function SessionChatContent({
   }, [isChatInFlight]);
 
   // After a chat turn completes, immediately sync state from the server.
-  // Auto-commit itself runs server-side so it still happens when this page is
-  // not open; the client just reconciles git, diff, and PR state.
   // Initialize to null (not `status`) so the first render always reconciles.
   // When navigating back to a chat whose stream finished in the background,
   // status is already "ready" but the optimistic streaming overlay may still
@@ -2309,57 +1920,31 @@ export function SessionChatContent({
       pendingOptimisticTitleChatIdRef.current = null;
     }
 
-    let followUpTimeout: ReturnType<typeof setTimeout> | null = null;
     if (
       (wasStreaming || wasSubmitted) &&
       status === "ready" &&
       isMountedRef.current
     ) {
-      if (!userStopped) {
-        markAutoCommitStarted();
-      }
-
       const refreshCompletedTurnState = async () => {
         await requestStatusSync("force").catch(() => undefined);
-        await refreshGitStatus().catch(() => undefined);
-        await refreshDiff().catch(() => undefined);
         await refreshFiles().catch(() => undefined);
-        await checkBranchAndPr().catch(() => undefined);
+        await refreshSkills().catch(() => undefined);
       };
 
       void refreshCompletedTurnState();
       void requestMarkChatRead("force");
       void refreshChats();
-
-      if (session.cloneUrl && session.repoOwner && session.repoName) {
-        followUpTimeout = setTimeout(() => {
-          void refreshCompletedTurnState();
-        }, 3000);
-      }
     }
-
-    return () => {
-      if (followUpTimeout !== null) {
-        clearTimeout(followUpTimeout);
-      }
-    };
   }, [
     status,
     chatInfo.id,
     setChatStreaming,
     clearChatTitle,
     requestStatusSync,
-    refreshGitStatus,
-    refreshDiff,
     refreshFiles,
-    checkBranchAndPr,
+    refreshSkills,
     requestMarkChatRead,
     refreshChats,
-    session.cloneUrl,
-    session.repoOwner,
-    session.repoName,
-    markAutoCommitStarted,
-    userStopped,
   ]);
 
   // Track whether we've auto-attempted sandbox startup for this page load.
@@ -2475,16 +2060,7 @@ export function SessionChatContent({
       setIsCreatingSandbox(true);
       setSandboxCreateError(null);
 
-      const branchExistsOnOrigin = session.prNumber != null;
-      const shouldCreateNewBranch =
-        session.isNewBranch && !branchExistsOnOrigin;
-      const newSandbox = await createSandbox(
-        session.cloneUrl ?? undefined,
-        session.branch ?? undefined,
-        shouldCreateNewBranch,
-        session.id,
-        preferredSandboxType,
-      );
+      const newSandbox = await createSandbox(session.id, preferredSandboxType);
       setSandboxInfo(newSandbox);
       setSandboxTypeFromUnknown(newSandbox.type);
       setSandboxCreateError(null);
@@ -2501,10 +2077,6 @@ export function SessionChatContent({
   }, [
     sandboxInfo,
     isCreatingSandbox,
-    session.prNumber,
-    session.isNewBranch,
-    session.cloneUrl,
-    session.branch,
     session.id,
     preferredSandboxType,
     setSandboxInfo,
@@ -2596,20 +2168,13 @@ export function SessionChatContent({
     prevToolStatesRef.current = currentToolStates;
 
     if (hasFileChange) {
-      // Refresh diff and files when files change.
+      // Refresh workspace suggestions when files change.
       // Fire-and-forget with error handling - SWR updates error state internally,
       // but we catch here to prevent unhandled rejection warnings.
-      refreshDiff().catch(() => {});
-      refreshGitStatus().catch(() => {});
       refreshFiles().catch(() => {});
+      refreshSkills().catch(() => {});
     }
-  }, [
-    currentToolStates,
-    messages,
-    refreshDiff,
-    refreshGitStatus,
-    refreshFiles,
-  ]);
+  }, [currentToolStates, messages, refreshFiles, refreshSkills]);
 
   // Note: SWR handles automatic fetching when sandbox becomes available
   // and caching/deduplication of requests
@@ -2815,259 +2380,10 @@ export function SessionChatContent({
     !canUseCodeEditor ||
     codeEditor.state.status === "starting" ||
     codeEditor.state.status === "stopping";
-
-  const hasRepo = Boolean(session.cloneUrl);
-  const hasExistingPr = session.prNumber != null;
-  const previewLookupBranch =
-    gitStatus?.branch && gitStatus.branch !== "HEAD"
-      ? gitStatus.branch
-      : session.branch;
-  const existingPrUrl =
-    hasExistingPr && session.repoOwner && session.repoName
-      ? `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`
-      : null;
-  const prDeploymentQuery = new URLSearchParams(
-    Object.entries({
-      ...(hasExistingPr ? { prNumber: String(session.prNumber) } : {}),
-      ...(previewLookupBranch ? { branch: previewLookupBranch } : {}),
-    }),
-  ).toString();
-  const { data: prDeploymentData, mutate: refreshPrDeployment } =
-    useSWR<PrDeploymentResponse>(
-      hasExistingPr
-        ? `/api/sessions/${session.id}/pr-deployment${
-            prDeploymentQuery ? `?${prDeploymentQuery}` : ""
-          }`
-        : null,
-      fetcher,
-      {
-        revalidateOnFocus: true,
-        revalidateOnReconnect: true,
-        // Poll while we're still waiting for the first deployment, or while a
-        // branch preview is rolling forward to a newer deployment after a push.
-        refreshInterval: (latestData) =>
-          getPrDeploymentRefreshInterval({
-            shouldPoll: hasExistingPr,
-            deploymentUrl: latestData?.deploymentUrl,
-            documentHasFocus:
-              typeof document === "undefined" ? true : document.hasFocus(),
-            waitForDeploymentUrlChangeFrom: branchPreviewUrlChangeBaseline,
-          }),
-        shouldRetryOnError: false,
-      },
-    );
-  const prDeploymentUrl = prDeploymentData?.deploymentUrl ?? null;
-  const buildingDeploymentUrl = prDeploymentData?.buildingDeploymentUrl ?? null;
-  const failedDeploymentUrl = prDeploymentData?.failedDeploymentUrl ?? null;
-
-  useEffect(() => {
-    if (!hasExistingPr) {
-      if (branchPreviewUrlChangeBaseline !== undefined) {
-        setBranchPreviewUrlChangeBaseline(undefined);
-      }
-      return;
-    }
-
-    if (branchPreviewUrlChangeBaseline === undefined) {
-      return;
-    }
-
-    if (prDeploymentUrl !== branchPreviewUrlChangeBaseline) {
-      setBranchPreviewUrlChangeBaseline(undefined);
-    }
-  }, [hasExistingPr, branchPreviewUrlChangeBaseline, prDeploymentUrl]);
-
-  const isDeploymentStale = branchPreviewUrlChangeBaseline !== undefined;
-  const isDeploymentFailed =
-    !prDeploymentUrl &&
-    !buildingDeploymentUrl &&
-    !hasExistingPr &&
-    Boolean(failedDeploymentUrl);
-  const previewDeploymentTargetUrl =
-    (isDeploymentStale ? buildingDeploymentUrl : null) ??
-    prDeploymentUrl ??
-    (isDeploymentFailed ? failedDeploymentUrl : null);
-  const showHeaderActions =
-    canRunDevServer || Boolean(previewDeploymentTargetUrl);
-
-  // When auto-commit lands (transitions from committing to clean), mark the
-  // current preview deployment as stale so the UI shows "Deploying…" until
-  // the new Vercel build finishes.
-  const prevIsAutoCommittingRef = useRef(isAutoCommitting);
-  useEffect(() => {
-    const wasAutoCommitting = prevIsAutoCommittingRef.current;
-    prevIsAutoCommittingRef.current = isAutoCommitting;
-
-    if (wasAutoCommitting && !isAutoCommitting && hasExistingPr) {
-      setBranchPreviewUrlChangeBaseline(prDeploymentUrl);
-      refreshPrDeployment().catch(() => undefined);
-    }
-  }, [isAutoCommitting, hasExistingPr, prDeploymentUrl, refreshPrDeployment]);
-
-  const hasUncommittedGitChanges = gitStatus?.hasUncommittedChanges ?? false;
-  const hasUnpushedCommits = gitStatus?.hasUnpushedCommits ?? false;
-  const showCommitAction =
-    hasRepo &&
-    (hasUncommittedGitChanges || (hasExistingPr && hasUnpushedCommits));
-
-  // Sync the "action needed" indicator for the right sidebar toggle button
-  useEffect(() => {
-    setHasActionNeeded(showCommitAction);
-  }, [showCommitAction, setHasActionNeeded]);
-
-  // Sync the file change count for the badge on the toggle button
-  const totalChangesCount = diff?.files?.length ?? 0;
-  useEffect(() => {
-    setChangesCount(totalChangesCount);
-  }, [totalChangesCount, setChangesCount]);
-
-  // Sync the "committed changes" indicator (blue dot) — branch has committed
-  // changes, no PR created yet, and no uncommitted changes to deal with
-  useEffect(() => {
-    setHasCommittedChanges(
-      hasRepo &&
-        totalChangesCount > 0 &&
-        !hasExistingPr &&
-        !hasUncommittedGitChanges,
-    );
-  }, [
-    hasRepo,
-    totalChangesCount,
-    hasExistingPr,
-    hasUncommittedGitChanges,
-    setHasCommittedChanges,
-  ]);
-  const hasOpenPr = hasExistingPr && session.prStatus === "open";
-  const canCloseAndArchive = hasOpenPr && !isArchived;
-  const handleCommitted = useCallback(async () => {
-    if (hasExistingPr) {
-      setBranchPreviewUrlChangeBaseline(prDeploymentUrl);
-    }
-
-    await Promise.all([
-      refreshGitStatus().catch(() => undefined),
-      refreshDiff().catch(() => undefined),
-      refreshFiles().catch(() => undefined),
-      checkBranchAndPr().catch(() => undefined),
-    ]);
-
-    if (hasExistingPr) {
-      await refreshPrDeployment().catch(() => undefined);
-    }
-  }, [
-    hasExistingPr,
-    prDeploymentUrl,
-    refreshGitStatus,
-    refreshDiff,
-    refreshFiles,
-    checkBranchAndPr,
-    refreshPrDeployment,
-  ]);
-
-  const handleMerged = useCallback(
-    async (mergeResult: MergePullRequestResponse) => {
-      updateSessionPullRequest({
-        prNumber: mergeResult.prNumber,
-        prStatus: "merged",
-      });
-
-      if (mergeResult.branchDeleteError) {
-        console.warn(
-          "PR merged but source branch was not deleted:",
-          mergeResult.branchDeleteError,
-        );
-      }
-
-      try {
-        await archiveSession();
-        router.push("/sessions");
-      } catch (archiveError) {
-        const archiveMessage =
-          archiveError instanceof Error
-            ? archiveError.message
-            : "Failed to archive session";
-        throw new Error(
-          `Pull request merged, but archiving the session failed: ${archiveMessage}`,
-          {
-            cause: archiveError,
-          },
-        );
-      }
-    },
-    [archiveSession, router, updateSessionPullRequest],
-  );
-
-  const handleClosed = useCallback(
-    async (closeResult: { closed: boolean; prNumber: number }) => {
-      updateSessionPullRequest({
-        prNumber: closeResult.prNumber,
-        prStatus: "closed",
-      });
-
-      try {
-        await archiveSession();
-        router.push("/sessions");
-      } catch (archiveError) {
-        const archiveMessage =
-          archiveError instanceof Error
-            ? archiveError.message
-            : "Failed to archive session";
-        throw new Error(
-          `Pull request closed, but archiving the session failed: ${archiveMessage}`,
-          {
-            cause: archiveError,
-          },
-        );
-      }
-    },
-    [archiveSession, router, updateSessionPullRequest],
-  );
-
-  const gitPanelElement = gitPanelOpen ? (
-    <GitPanel
-      session={session}
-      hasRepo={hasRepo}
-      hasExistingPr={hasExistingPr}
-      existingPrUrl={existingPrUrl}
-      prDeploymentUrl={prDeploymentUrl}
-      buildingDeploymentUrl={buildingDeploymentUrl}
-      failedDeploymentUrl={failedDeploymentUrl}
-      isDeploymentStale={isDeploymentStale}
-      isDeploymentFailed={isDeploymentFailed}
-      hasUncommittedGitChanges={hasUncommittedGitChanges}
-      supportsRepoCreation={supportsRepoCreation}
-      hasDiff={Boolean(diff || session.cachedDiff)}
-      canCloseAndArchive={canCloseAndArchive}
-      diffFiles={diff?.files ?? null}
-      diffSummary={diff?.summary ?? null}
-      diffRefreshing={diffRefreshing}
-      onCreateRepoClick={() => setRepoDialogOpen(true)}
-      refreshDiff={refreshDiff}
-      onMerged={handleMerged}
-      onCloseAndArchiveClick={() => setCloseDialogOpen(true)}
-      onFixChecks={handleFixChecks}
-      onFixConflicts={(baseBranchRef) => handleFixConflicts(baseBranchRef)}
-      hasSandbox={sandboxInfo !== null}
-      gitStatus={gitStatus}
-      gitStatusLoading={gitStatusLoading}
-      refreshGitStatus={refreshGitStatus}
-      onCommitted={handleCommitted}
-      isAgentWorking={hasPendingResponse || isChatInFlight}
-      onPrDetected={(pr) => {
-        updateSessionPullRequest(pr);
-        void refreshGitStatus().catch(() => {});
-      }}
-      onGitMessage={upsertSyntheticAssistantGitMessage}
-    />
-  ) : null;
+  const showHeaderActions = canRunDevServer;
 
   return (
     <>
-      {/* Git panel portaled to layout-level for full page height */}
-      {gitPanelOpen &&
-        panelPortalRef.current &&
-        createPortal(gitPanelElement, panelPortalRef.current)}
-
       {/* Header actions portaled from chat-level state */}
       {headerActionsRef.current &&
         showHeaderActions &&
@@ -3173,47 +2489,6 @@ export function SessionChatContent({
                 </div>
               </>
             )}
-            {previewDeploymentTargetUrl && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    className="hidden h-7 w-7 sm:inline-flex"
-                  >
-                    <a
-                      href={previewDeploymentTargetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={
-                        isDeploymentStale
-                          ? "Open latest preview deployment (building)"
-                          : "Open latest preview deployment"
-                      }
-                    >
-                      <Globe
-                        className={cn(
-                          "h-3.5 w-3.5",
-                          isDeploymentFailed && "text-red-500",
-                          !isDeploymentFailed &&
-                            !isDeploymentStale &&
-                            "text-green-500",
-                          !isDeploymentFailed &&
-                            isDeploymentStale &&
-                            "animate-pulse text-amber-500",
-                        )}
-                      />
-                    </a>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {isDeploymentStale
-                    ? "Open latest preview deployment (building)"
-                    : "Open latest preview deployment"}
-                </TooltipContent>
-              </Tooltip>
-            )}
           </div>,
           headerActionsRef.current,
         )}
@@ -3263,1154 +2538,1063 @@ export function SessionChatContent({
           </DialogContent>
         </Dialog>
 
-        {/* Main content: chat, diff, or file */}
+        {/* Main content */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {activeView === "diff" ? (
-            <DiffTabView />
-          ) : activeView === "file" ? (
-            <FileTabView />
-          ) : (
-            <>
-              {/* Transient error banner (e.g. iOS "Load failed" after sleep) */}
-              {error && (
-                <div className="flex items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-                  <p className="min-w-0 truncate">{error.message}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
-                    onClick={() => retryChatStream()}
+          <>
+            {/* Transient error banner (e.g. iOS "Load failed" after sleep) */}
+            {error && (
+              <div className="flex items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                <p className="min-w-0 truncate">{error.message}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                  onClick={() => retryChatStream()}
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Retry
+                </Button>
+              </div>
+            )}
+
+            {/* Messages */}
+            <div className="relative flex-1 overflow-hidden">
+              <div ref={containerRef} className="h-full overflow-y-auto">
+                <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
+                  <OpenFileProvider
+                    onOpenFile={(fp) => setSelectedWorkspaceFile(fp)}
                   >
-                    <RefreshCw className="h-3 w-3" />
-                    Retry
-                  </Button>
-                </div>
-              )}
-
-              {/* Messages */}
-              <div className="relative flex-1 overflow-hidden">
-                <div ref={containerRef} className="h-full overflow-y-auto">
-                  <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
-                    <OpenFileProvider
-                      onOpenFile={(fp) => setSelectedWorkspaceFile(fp)}
-                    >
-                      <div className="space-y-6">
-                        {groupedRenderMessages.length === 0 &&
-                          !hasPendingResponse && (
-                            <div className="flex h-full min-h-[40vh] items-center justify-center">
-                              {!isArchived &&
-                              (isCreatingSandbox ||
-                                isRestoringSnapshot ||
-                                isReconnectingSandbox ||
-                                isHibernatingUi ||
-                                isServerRestoring ||
-                                isAutoRestoringOnEntry) ? (
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                  <p>Sandbox is initializing…</p>
-                                </div>
-                              ) : (
-                                <p className="text-sm text-muted-foreground">
-                                  Send a message to get started
-                                </p>
-                              )}
-                            </div>
-                          )}
-                        {groupedRenderMessages.map(
-                          ({
-                            message: m,
-                            groups,
-                            isStreaming: isMessageStreaming,
-                          }) => {
-                            const renderGroups = (
-                              isToolCallsExpanded: boolean,
-                            ) =>
-                              groups.map((group) => {
-                                if (group.type === "reasoning-group") {
-                                  if (!isToolCallsExpanded) return null;
-                                  const hasRenderableContentAfterGroup = m.parts
-                                    .slice(
-                                      group.startIndex + group.parts.length,
-                                    )
-                                    .some(hasRenderableAssistantPart);
-
-                                  return (
-                                    <div
-                                      key={`${m.id}-${group.renderKey}`}
-                                      className="max-w-full pl-[22px]"
-                                    >
-                                      <ThinkingBlock
-                                        text={getReasoningGroupText(
-                                          group.parts,
-                                        )}
-                                        isStreaming={shouldKeepCollapsedReasoningStreaming(
-                                          {
-                                            isMessageStreaming,
-                                            hasStreamingReasoningPart:
-                                              group.parts.some(
-                                                (part) =>
-                                                  part.state === "streaming",
-                                              ),
-                                            hasRenderableContentAfterGroup,
-                                          },
-                                        )}
-                                        partCount={group.parts.length}
-                                      />
-                                    </div>
-                                  );
-                                }
-
-                                const p = group.part;
-
-                                if (isReasoningUIPart(p)) {
-                                  if (!isToolCallsExpanded) return null;
-                                  const hasRenderableContentAfterGroup = m.parts
-                                    .slice(group.index + 1)
-                                    .some(hasRenderableAssistantPart);
-
-                                  return (
-                                    <div
-                                      key={`${m.id}-${group.renderKey}`}
-                                      className="max-w-full pl-[22px]"
-                                    >
-                                      <ThinkingBlock
-                                        text={p.text}
-                                        isStreaming={shouldKeepCollapsedReasoningStreaming(
-                                          {
-                                            isMessageStreaming,
-                                            hasStreamingReasoningPart:
-                                              p.state === "streaming",
-                                            hasRenderableContentAfterGroup,
-                                          },
-                                        )}
-                                      />
-                                    </div>
-                                  );
-                                }
-
-                                if (p.type === "text") {
-                                  if (p.text.length === 0) {
-                                    return null;
-                                  }
-
-                                  const isFinalAssistantTextPart =
-                                    m.role === "assistant" &&
-                                    !m.parts
-                                      .slice(group.index + 1)
-                                      .some(
-                                        (messagePart) =>
-                                          messagePart.type === "text",
-                                      );
-
-                                  // When collapsed, hide every text part except the
-                                  // final one.  The final text part streams in live so
-                                  // the user always sees the latest assistant prose.
-                                  if (
-                                    !isToolCallsExpanded &&
-                                    m.role === "assistant" &&
-                                    !isFinalAssistantTextPart
-                                  ) {
-                                    return null;
-                                  }
-
-                                  const canCopyAssistantMessage =
-                                    isFinalAssistantTextPart &&
-                                    !isMessageStreaming &&
-                                    p.text.trim().length > 0;
-
-                                  return (
-                                    <div
-                                      key={`${m.id}-${group.renderKey}`}
-                                      className={cn(
-                                        "flex min-w-0 py-2",
-                                        m.role === "user"
-                                          ? "justify-end"
-                                          : "justify-start",
-                                        // Breathing room above final assistant text after tool calls
-                                        isFinalAssistantTextPart &&
-                                          group.index > 0 &&
-                                          "mt-4",
-                                        // Indent non-final text parts (they're collapsible content)
-                                        m.role === "assistant" &&
-                                          !isFinalAssistantTextPart &&
-                                          "pl-[22px]",
-                                      )}
-                                    >
-                                      {m.role === "user" ? (
-                                        <div className="group relative w-fit min-w-0 max-w-[80%]">
-                                          <div className="rounded-3xl bg-secondary px-4 py-2">
-                                            <p className="whitespace-pre-wrap wrap-break-word">
-                                              {p.text}
-                                            </p>
-                                          </div>
-                                          {group.index === 0 && (
-                                            <div className="absolute -left-20 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 transition group-hover:opacity-100">
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  void handleResendUserMessage(
-                                                    m.id,
-                                                  )
-                                                }
-                                                disabled={
-                                                  hasMessageActionInFlight
-                                                }
-                                                aria-label="Resend this message and delete everything after it"
-                                                className="rounded p-1 transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                                              >
-                                                {resendingMessageId === m.id ? (
-                                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                  <RotateCcw className="h-4 w-4" />
-                                                )}
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  void handleDeleteUserMessage(
-                                                    m.id,
-                                                  )
-                                                }
-                                                disabled={
-                                                  hasMessageActionInFlight
-                                                }
-                                                aria-label="Delete this message and everything after it"
-                                                className="rounded p-1 transition hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
-                                              >
-                                                {deletingMessageId === m.id ? (
-                                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                  <Trash2 className="h-4 w-4" />
-                                                )}
-                                              </button>
-                                            </div>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <div className="group min-w-0 w-full overflow-hidden">
-                                          <Streamdown
-                                            animated={
-                                              isMessageStreaming
-                                                ? {
-                                                    animation: "fadeIn",
-                                                    duration: 250,
-                                                    easing: "ease-out",
-                                                  }
-                                                : undefined
-                                            }
-                                            mode={
-                                              isMessageStreaming
-                                                ? "streaming"
-                                                : "static"
-                                            }
-                                            isAnimating={isMessageStreaming}
-                                            components={streamdownComponents}
-                                            plugins={streamdownPlugins}
-                                          >
-                                            {p.text}
-                                          </Streamdown>
-                                          {(canCopyAssistantMessage ||
-                                            (!isMessageStreaming &&
-                                              isFinalAssistantTextPart &&
-                                              m.metadata)) && (
-                                            <div className="mt-1 flex items-center justify-start">
-                                              {canCopyAssistantMessage && (
-                                                <div className="flex items-center gap-1">
-                                                  <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                      void handleCopyAssistantMessage(
-                                                        m.id,
-                                                        p.text,
-                                                      )
-                                                    }
-                                                    aria-label="Copy assistant response"
-                                                    className="rounded p-1 text-muted-foreground opacity-0 transition hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
-                                                  >
-                                                    {copiedAssistantMessageId ===
-                                                    m.id ? (
-                                                      <Check className="h-4 w-4" />
-                                                    ) : (
-                                                      <Copy className="h-4 w-4" />
-                                                    )}
-                                                  </button>
-                                                  <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                      void handleForkAssistantMessage(
-                                                        m.id,
-                                                      )
-                                                    }
-                                                    disabled={
-                                                      forkingAssistantMessageId !==
-                                                      null
-                                                    }
-                                                    aria-label="Fork conversation from this response"
-                                                    className={cn(
-                                                      "rounded p-1 text-muted-foreground opacity-0 transition hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-40",
-                                                      forkingAssistantMessageId ===
-                                                        m.id && "opacity-100",
-                                                    )}
-                                                  >
-                                                    {forkingAssistantMessageId ===
-                                                    m.id ? (
-                                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                                    ) : (
-                                                      <GitBranch className="h-4 w-4" />
-                                                    )}
-                                                  </button>
-                                                </div>
-                                              )}
-                                              {!isMessageStreaming &&
-                                                isFinalAssistantTextPart &&
-                                                m.metadata && (
-                                                  <span className="opacity-0 transition group-hover:opacity-100">
-                                                    <MessageModelPill
-                                                      metadata={m.metadata}
-                                                      modelOptions={
-                                                        modelOptions
-                                                      }
-                                                    />
-                                                  </span>
-                                                )}
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                }
-
-                                if (isToolUIPart(p)) {
-                                  if (!isToolCallsExpanded) return null;
-                                  return (
-                                    <div
-                                      key={`${m.id}-${group.renderKey}`}
-                                      className="max-w-full pl-[22px]"
-                                    >
-                                      <ToolCall
-                                        part={p as WebAgentUIToolPart}
-                                        isStreaming={isMessageStreaming}
-                                        onApprove={(id) =>
-                                          addToolApprovalResponse({
-                                            id,
-                                            approved: true,
-                                          })
-                                        }
-                                        onDeny={(id, reason) =>
-                                          addToolApprovalResponse({
-                                            id,
-                                            approved: false,
-                                            reason,
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                  );
-                                }
-
-                                if (isGitDataPart(p)) {
-                                  if (!shouldRenderGitDataPart(p)) {
-                                    return null;
-                                  }
-
-                                  return (
-                                    <div
-                                      key={`${m.id}-${group.renderKey}`}
-                                      className="max-w-full"
-                                    >
-                                      <GitDataPartCard part={p} />
-                                    </div>
-                                  );
-                                }
-
-                                // Render image attachments
-                                if (
-                                  p.type === "file" &&
-                                  p.mediaType?.startsWith("image/")
-                                ) {
-                                  if (
-                                    !isToolCallsExpanded &&
-                                    m.role === "assistant"
-                                  ) {
-                                    return null;
-                                  }
-                                  return (
-                                    <div
-                                      key={`${m.id}-${group.renderKey}`}
-                                      className="flex justify-end"
-                                    >
-                                      <div className="group relative w-fit max-w-[80%]">
-                                        {/* eslint-disable-next-line @next/next/no-img-element -- Data URLs not supported by next/image */}
-                                        <img
-                                          src={p.url}
-                                          alt={p.filename ?? "Attached image"}
-                                          className="max-h-64 rounded-lg"
-                                        />
-                                        {m.role === "user" &&
-                                          group.index === 0 && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                void handleDeleteUserMessage(
-                                                  m.id,
-                                                )
-                                              }
-                                              disabled={
-                                                hasMessageActionInFlight
-                                              }
-                                              aria-label="Delete this message and everything after it"
-                                              className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                            >
-                                              {deletingMessageId === m.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                              ) : (
-                                                <Trash2 className="h-4 w-4" />
-                                              )}
-                                            </button>
-                                          )}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
-                                if (p.type === "data-snippet") {
-                                  if (
-                                    !isToolCallsExpanded &&
-                                    m.role === "assistant"
-                                  ) {
-                                    return null;
-                                  }
-                                  return (
-                                    <div
-                                      key={`${m.id}-${group.renderKey}`}
-                                      className={cn(
-                                        "flex",
-                                        m.role === "user"
-                                          ? "justify-end"
-                                          : "justify-start",
-                                      )}
-                                    >
-                                      <div className="group relative w-fit max-w-[80%]">
-                                        <SnippetChip
-                                          filename={p.data.filename}
-                                          content={p.data.content}
-                                        />
-                                        {m.role === "user" &&
-                                          group.index === 0 && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                void handleDeleteUserMessage(
-                                                  m.id,
-                                                )
-                                              }
-                                              disabled={
-                                                hasMessageActionInFlight
-                                              }
-                                              aria-label="Delete this message and everything after it"
-                                              className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                            >
-                                              {deletingMessageId === m.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                              ) : (
-                                                <Trash2 className="h-4 w-4" />
-                                              )}
-                                            </button>
-                                          )}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-
-                                return null;
-                              });
-
-                            if (m.role === "assistant") {
-                              return (
-                                <AssistantMessageGroups
-                                  key={m.id}
-                                  message={m}
-                                  isStreaming={isMessageStreaming}
-                                  durationMs={messageDurationMap[m.id] ?? null}
-                                  startedAt={
-                                    messageStartedAtMap[m.id] ??
-                                    (isMessageStreaming
-                                      ? lastSendTimestampRef.current
-                                        ? new Date(
-                                            lastSendTimestampRef.current,
-                                          ).toISOString()
-                                        : lastUserMessageSentAt
-                                      : null)
-                                  }
-                                >
-                                  {renderGroups}
-                                </AssistantMessageGroups>
-                              );
-                            }
-
-                            return (
-                              <div key={m.id} className="flex flex-col gap-1">
-                                {renderGroups(true)}
+                    <div className="space-y-6">
+                      {groupedRenderMessages.length === 0 &&
+                        !hasPendingResponse && (
+                          <div className="flex h-full min-h-[40vh] items-center justify-center">
+                            {!isArchived &&
+                            (isCreatingSandbox ||
+                              isRestoringSnapshot ||
+                              isReconnectingSandbox ||
+                              isHibernatingUi ||
+                              isServerRestoring ||
+                              isAutoRestoringOnEntry) ? (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <p>Sandbox is initializing…</p>
                               </div>
-                            );
-                          },
-                        )}
-                        {showThinkingIndicator && (
-                          <div className="my-1.5 border border-transparent py-0.5">
-                            <div className="inline-flex items-center gap-2 rounded-md py-px text-sm text-muted-foreground">
-                              <span className="flex size-3.5 shrink-0 items-center justify-center">
-                                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-muted-foreground" />
-                              </span>
-                              <span className="leading-none">Thinking…</span>
-                            </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Send a message to get started
+                              </p>
+                            )}
                           </div>
                         )}
-                      </div>
-                    </OpenFileProvider>
-                  </div>
-                </div>
-                {!isAtBottom && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
-                    onClick={scrollToBottom}
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+                      {groupedRenderMessages.map(
+                        ({
+                          message: m,
+                          groups,
+                          isStreaming: isMessageStreaming,
+                        }) => {
+                          const renderGroups = (isToolCallsExpanded: boolean) =>
+                            groups.map((group) => {
+                              if (group.type === "reasoning-group") {
+                                if (!isToolCallsExpanded) return null;
+                                const hasRenderableContentAfterGroup = m.parts
+                                  .slice(group.startIndex + group.parts.length)
+                                  .some(hasRenderableAssistantPart);
 
-              {/* Input */}
-              <div className="p-4 pb-2 sm:pb-8">
-                <div className="mx-auto max-w-4xl space-y-2">
-                  {sandboxCreateError && (
-                    <SandboxCreateErrorBanner
-                      error={sandboxCreateError}
-                      onDismiss={() => setSandboxCreateError(null)}
+                                return (
+                                  <div
+                                    key={`${m.id}-${group.renderKey}`}
+                                    className="max-w-full pl-[22px]"
+                                  >
+                                    <ThinkingBlock
+                                      text={getReasoningGroupText(group.parts)}
+                                      isStreaming={shouldKeepCollapsedReasoningStreaming(
+                                        {
+                                          isMessageStreaming,
+                                          hasStreamingReasoningPart:
+                                            group.parts.some(
+                                              (part) =>
+                                                part.state === "streaming",
+                                            ),
+                                          hasRenderableContentAfterGroup,
+                                        },
+                                      )}
+                                      partCount={group.parts.length}
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              const p = group.part;
+
+                              if (isReasoningUIPart(p)) {
+                                if (!isToolCallsExpanded) return null;
+                                const hasRenderableContentAfterGroup = m.parts
+                                  .slice(group.index + 1)
+                                  .some(hasRenderableAssistantPart);
+
+                                return (
+                                  <div
+                                    key={`${m.id}-${group.renderKey}`}
+                                    className="max-w-full pl-[22px]"
+                                  >
+                                    <ThinkingBlock
+                                      text={p.text}
+                                      isStreaming={shouldKeepCollapsedReasoningStreaming(
+                                        {
+                                          isMessageStreaming,
+                                          hasStreamingReasoningPart:
+                                            p.state === "streaming",
+                                          hasRenderableContentAfterGroup,
+                                        },
+                                      )}
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              if (p.type === "text") {
+                                if (p.text.length === 0) {
+                                  return null;
+                                }
+
+                                const isFinalAssistantTextPart =
+                                  m.role === "assistant" &&
+                                  !m.parts
+                                    .slice(group.index + 1)
+                                    .some(
+                                      (messagePart) =>
+                                        messagePart.type === "text",
+                                    );
+
+                                // When collapsed, hide every text part except the
+                                // final one.  The final text part streams in live so
+                                // the user always sees the latest assistant prose.
+                                if (
+                                  !isToolCallsExpanded &&
+                                  m.role === "assistant" &&
+                                  !isFinalAssistantTextPart
+                                ) {
+                                  return null;
+                                }
+
+                                const canCopyAssistantMessage =
+                                  isFinalAssistantTextPart &&
+                                  !isMessageStreaming &&
+                                  p.text.trim().length > 0;
+
+                                return (
+                                  <div
+                                    key={`${m.id}-${group.renderKey}`}
+                                    className={cn(
+                                      "flex min-w-0 py-2",
+                                      m.role === "user"
+                                        ? "justify-end"
+                                        : "justify-start",
+                                      // Breathing room above final assistant text after tool calls
+                                      isFinalAssistantTextPart &&
+                                        group.index > 0 &&
+                                        "mt-4",
+                                      // Indent non-final text parts (they're collapsible content)
+                                      m.role === "assistant" &&
+                                        !isFinalAssistantTextPart &&
+                                        "pl-[22px]",
+                                    )}
+                                  >
+                                    {m.role === "user" ? (
+                                      <div className="group relative w-fit min-w-0 max-w-[80%]">
+                                        <div className="rounded-3xl bg-secondary px-4 py-2">
+                                          <p className="whitespace-pre-wrap wrap-break-word">
+                                            {p.text}
+                                          </p>
+                                        </div>
+                                        {group.index === 0 && (
+                                          <div className="absolute -left-20 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 transition group-hover:opacity-100">
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                void handleResendUserMessage(
+                                                  m.id,
+                                                )
+                                              }
+                                              disabled={
+                                                hasMessageActionInFlight
+                                              }
+                                              aria-label="Resend this message and delete everything after it"
+                                              className="rounded p-1 transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                                            >
+                                              {resendingMessageId === m.id ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                              ) : (
+                                                <RotateCcw className="h-4 w-4" />
+                                              )}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                void handleDeleteUserMessage(
+                                                  m.id,
+                                                )
+                                              }
+                                              disabled={
+                                                hasMessageActionInFlight
+                                              }
+                                              aria-label="Delete this message and everything after it"
+                                              className="rounded p-1 transition hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+                                            >
+                                              {deletingMessageId === m.id ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                              ) : (
+                                                <Trash2 className="h-4 w-4" />
+                                              )}
+                                            </button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="group min-w-0 w-full overflow-hidden">
+                                        <Streamdown
+                                          animated={
+                                            isMessageStreaming
+                                              ? {
+                                                  animation: "fadeIn",
+                                                  duration: 250,
+                                                  easing: "ease-out",
+                                                }
+                                              : undefined
+                                          }
+                                          mode={
+                                            isMessageStreaming
+                                              ? "streaming"
+                                              : "static"
+                                          }
+                                          isAnimating={isMessageStreaming}
+                                          components={streamdownComponents}
+                                          plugins={streamdownPlugins}
+                                        >
+                                          {p.text}
+                                        </Streamdown>
+                                        {(canCopyAssistantMessage ||
+                                          (!isMessageStreaming &&
+                                            isFinalAssistantTextPart &&
+                                            m.metadata)) && (
+                                          <div className="mt-1 flex items-center justify-start">
+                                            {canCopyAssistantMessage && (
+                                              <div className="flex items-center gap-1">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    void handleCopyAssistantMessage(
+                                                      m.id,
+                                                      p.text,
+                                                    )
+                                                  }
+                                                  aria-label="Copy assistant response"
+                                                  className="rounded p-1 text-muted-foreground opacity-0 transition hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                                                >
+                                                  {copiedAssistantMessageId ===
+                                                  m.id ? (
+                                                    <Check className="h-4 w-4" />
+                                                  ) : (
+                                                    <Copy className="h-4 w-4" />
+                                                  )}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    void handleForkAssistantMessage(
+                                                      m.id,
+                                                    )
+                                                  }
+                                                  disabled={
+                                                    forkingAssistantMessageId !==
+                                                    null
+                                                  }
+                                                  aria-label="Fork conversation from this response"
+                                                  className={cn(
+                                                    "rounded p-1 text-muted-foreground opacity-0 transition hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100 disabled:cursor-not-allowed disabled:opacity-40",
+                                                    forkingAssistantMessageId ===
+                                                      m.id && "opacity-100",
+                                                  )}
+                                                >
+                                                  {forkingAssistantMessageId ===
+                                                  m.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                  ) : (
+                                                    <Link2 className="h-4 w-4" />
+                                                  )}
+                                                </button>
+                                              </div>
+                                            )}
+                                            {!isMessageStreaming &&
+                                              isFinalAssistantTextPart &&
+                                              m.metadata && (
+                                                <span className="opacity-0 transition group-hover:opacity-100">
+                                                  <MessageModelPill
+                                                    metadata={m.metadata}
+                                                    modelOptions={modelOptions}
+                                                  />
+                                                </span>
+                                              )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              if (isToolUIPart(p)) {
+                                if (!isToolCallsExpanded) return null;
+                                return (
+                                  <div
+                                    key={`${m.id}-${group.renderKey}`}
+                                    className="max-w-full pl-[22px]"
+                                  >
+                                    <ToolCall
+                                      part={p as WebAgentUIToolPart}
+                                      isStreaming={isMessageStreaming}
+                                      onApprove={(id) =>
+                                        addToolApprovalResponse({
+                                          id,
+                                          approved: true,
+                                        })
+                                      }
+                                      onDeny={(id, reason) =>
+                                        addToolApprovalResponse({
+                                          id,
+                                          approved: false,
+                                          reason,
+                                        })
+                                      }
+                                    />
+                                  </div>
+                                );
+                              }
+
+                              // Render image attachments
+                              if (
+                                p.type === "file" &&
+                                p.mediaType?.startsWith("image/")
+                              ) {
+                                if (
+                                  !isToolCallsExpanded &&
+                                  m.role === "assistant"
+                                ) {
+                                  return null;
+                                }
+                                return (
+                                  <div
+                                    key={`${m.id}-${group.renderKey}`}
+                                    className="flex justify-end"
+                                  >
+                                    <div className="group relative w-fit max-w-[80%]">
+                                      {/* eslint-disable-next-line @next/next/no-img-element -- Data URLs not supported by next/image */}
+                                      <img
+                                        src={p.url}
+                                        alt={p.filename ?? "Attached image"}
+                                        className="max-h-64 rounded-lg"
+                                      />
+                                      {m.role === "user" &&
+                                        group.index === 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void handleDeleteUserMessage(m.id)
+                                            }
+                                            disabled={hasMessageActionInFlight}
+                                            aria-label="Delete this message and everything after it"
+                                            className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                          >
+                                            {deletingMessageId === m.id ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-4 w-4" />
+                                            )}
+                                          </button>
+                                        )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              if (p.type === "data-snippet") {
+                                if (
+                                  !isToolCallsExpanded &&
+                                  m.role === "assistant"
+                                ) {
+                                  return null;
+                                }
+                                return (
+                                  <div
+                                    key={`${m.id}-${group.renderKey}`}
+                                    className={cn(
+                                      "flex",
+                                      m.role === "user"
+                                        ? "justify-end"
+                                        : "justify-start",
+                                    )}
+                                  >
+                                    <div className="group relative w-fit max-w-[80%]">
+                                      <SnippetChip
+                                        filename={p.data.filename}
+                                        content={p.data.content}
+                                      />
+                                      {m.role === "user" &&
+                                        group.index === 0 && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              void handleDeleteUserMessage(m.id)
+                                            }
+                                            disabled={hasMessageActionInFlight}
+                                            aria-label="Delete this message and everything after it"
+                                            className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                          >
+                                            {deletingMessageId === m.id ? (
+                                              <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                              <Trash2 className="h-4 w-4" />
+                                            )}
+                                          </button>
+                                        )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              return null;
+                            });
+
+                          if (m.role === "assistant") {
+                            return (
+                              <AssistantMessageGroups
+                                key={m.id}
+                                message={m}
+                                isStreaming={isMessageStreaming}
+                                durationMs={messageDurationMap[m.id] ?? null}
+                                startedAt={
+                                  messageStartedAtMap[m.id] ??
+                                  (isMessageStreaming
+                                    ? lastSendTimestampRef.current
+                                      ? new Date(
+                                          lastSendTimestampRef.current,
+                                        ).toISOString()
+                                      : lastUserMessageSentAt
+                                    : null)
+                                }
+                              >
+                                {renderGroups}
+                              </AssistantMessageGroups>
+                            );
+                          }
+
+                          return (
+                            <div key={m.id} className="flex flex-col gap-1">
+                              {renderGroups(true)}
+                            </div>
+                          );
+                        },
+                      )}
+                      {showThinkingIndicator && (
+                        <div className="my-1.5 border border-transparent py-0.5">
+                          <div className="inline-flex items-center gap-2 rounded-md py-px text-sm text-muted-foreground">
+                            <span className="flex size-3.5 shrink-0 items-center justify-center">
+                              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-muted-foreground" />
+                            </span>
+                            <span className="leading-none">Thinking…</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </OpenFileProvider>
+                </div>
+              </div>
+              {!isAtBottom && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
+                  onClick={scrollToBottom}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="p-4 pb-2 sm:pb-8">
+              <div className="mx-auto max-w-4xl space-y-2">
+                {sandboxCreateError && (
+                  <SandboxCreateErrorBanner
+                    error={sandboxCreateError}
+                    onDismiss={() => setSandboxCreateError(null)}
+                  />
+                )}
+                {restoreError && (
+                  <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    <span>{restoreError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setRestoreError(null)}
+                      className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                {deleteMessageError && (
+                  <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    <span>{deleteMessageError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteMessageError(null)}
+                      className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPT_IMAGE_TYPES}
+                  multiple
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                      addImages(files);
+                    }
+                    e.target.value = "";
+                  }}
+                  className="hidden"
+                />
+                <div className="relative">
+                  {showSuggestions && (
+                    <FileSuggestionsDropdown
+                      suggestions={suggestions}
+                      selectedIndex={selectedIndex}
+                      onSelect={(suggestion) => {
+                        if (mentionInfo) {
+                          handleFileSelect(
+                            suggestion.value,
+                            mentionInfo.mentionStart,
+                            cursorPosition,
+                          );
+                        }
+                      }}
+                      isLoading={filesLoading}
                     />
                   )}
-                  {restoreError && (
-                    <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <span>{restoreError}</span>
-                      <button
-                        type="button"
-                        onClick={() => setRestoreError(null)}
-                        className="ml-2 rounded p-0.5 hover:bg-destructive/20"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
+                  {showSlashCommands && !showSuggestions && (
+                    <SlashCommandDropdown
+                      suggestions={slashSuggestions}
+                      selectedIndex={selectedSlashIndex}
+                      onSelect={(suggestion) => {
+                        if (slashInfo) {
+                          handleSlashCommandSelect(
+                            suggestion.name,
+                            slashInfo.slashStart,
+                            cursorPosition,
+                          );
+                        }
+                      }}
+                      isLoading={skillsLoading}
+                    />
                   )}
-                  {deleteMessageError && (
-                    <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <span>{deleteMessageError}</span>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteMessageError(null)}
-                        className="ml-2 rounded p-0.5 hover:bg-destructive/20"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                  {/* Hidden file input */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={ACCEPT_IMAGE_TYPES}
-                    multiple
-                    onChange={(e) => {
-                      const files = e.target.files;
-                      if (files && files.length > 0) {
-                        addImages(files);
-                      }
-                      e.target.value = "";
-                    }}
-                    className="hidden"
-                  />
-                  <div className="relative">
-                    {showSuggestions && (
-                      <FileSuggestionsDropdown
-                        suggestions={suggestions}
-                        selectedIndex={selectedIndex}
-                        onSelect={(suggestion) => {
-                          if (mentionInfo) {
-                            handleFileSelect(
-                              suggestion.value,
-                              mentionInfo.mentionStart,
-                              cursorPosition,
-                            );
-                          }
-                        }}
-                        isLoading={filesLoading}
-                      />
-                    )}
-                    {showSlashCommands && !showSuggestions && (
-                      <SlashCommandDropdown
-                        suggestions={slashSuggestions}
-                        selectedIndex={selectedSlashIndex}
-                        onSelect={(suggestion) => {
-                          if (slashInfo) {
-                            handleSlashCommandSelect(
-                              suggestion.name,
-                              slashInfo.slashStart,
-                              cursorPosition,
-                            );
-                          }
-                        }}
-                        isLoading={skillsLoading}
-                      />
-                    )}
-                    {/* Pinned Todo Panel — sits above the input box */}
-                    <PinnedTodoPanel todos={latestTodos} />
-                    {/* Input form */}
-                    <div
-                      className={`overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
-                    >
-                      <form
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          // When inline question is active, don't send a chat message
-                          if (showInlineQuestion) return;
-                          if (
-                            isArchived ||
-                            !isSandboxActive ||
-                            isChatInFlight ||
-                            hasPendingResponse
-                          ) {
-                            return;
-                          }
-                          const hasContent =
-                            input.trim() ||
-                            images.length > 0 ||
-                            textAttachments.length > 0;
-                          if (!hasContent) return;
+                  {/* Pinned Todo Panel — sits above the input box */}
+                  <PinnedTodoPanel todos={latestTodos} />
+                  {/* Input form */}
+                  <div
+                    className={`overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
+                  >
+                    <form
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        // When inline question is active, don't send a chat message
+                        if (showInlineQuestion) return;
+                        if (
+                          isArchived ||
+                          !isSandboxActive ||
+                          isChatInFlight ||
+                          hasPendingResponse
+                        ) {
+                          return;
+                        }
+                        const hasContent =
+                          input.trim() ||
+                          images.length > 0 ||
+                          textAttachments.length > 0;
+                        if (!hasContent) return;
 
-                          const messageText = input;
-                          const files = getFileParts();
+                        const messageText = input;
+                        const files = getFileParts();
 
-                          // Build the message payload. When text attachments are
-                          // present we use the parts-based form so we can include
-                          // data-snippet parts alongside text and file parts.
-                          const hasSnippets = textAttachments.length > 0;
-                          let messagePayload: Parameters<
-                            typeof sendMessageWithPendingState
-                          >[0];
+                        // Build the message payload. When text attachments are
+                        // present we use the parts-based form so we can include
+                        // data-snippet parts alongside text and file parts.
+                        const hasSnippets = textAttachments.length > 0;
+                        let messagePayload: Parameters<
+                          typeof sendMessageWithPendingState
+                        >[0];
 
-                          if (hasSnippets) {
-                            const parts: WebAgentUIMessage["parts"] = [];
-                            if (messageText.trim()) {
-                              parts.push({
-                                type: "text" as const,
-                                text: messageText,
-                              });
+                        if (hasSnippets) {
+                          const parts: WebAgentUIMessage["parts"] = [];
+                          if (messageText.trim()) {
+                            parts.push({
+                              type: "text" as const,
+                              text: messageText,
+                            });
+                          }
+                          if (files) {
+                            for (const f of files) {
+                              parts.push(f);
                             }
-                            if (files) {
-                              for (const f of files) {
-                                parts.push(f);
+                          }
+                          for (const attachment of textAttachments) {
+                            parts.push({
+                              type: "data-snippet" as const,
+                              id: attachment.id,
+                              data: {
+                                content: attachment.content,
+                                filename: attachment.filename,
+                              },
+                            });
+                          }
+                          messagePayload = { parts };
+                        } else {
+                          messagePayload = {
+                            text: messageText,
+                            files,
+                          };
+                        }
+
+                        setInput("");
+                        clearImages();
+                        clearTextAttachments();
+
+                        const isFirstChatInSession = initialIsOnlyChatInSession;
+                        const shouldSetOptimisticTitle =
+                          isFirstChatInSession &&
+                          !hadInitialMessages &&
+                          messages.length === 0;
+                        const trimmedText = messageText.trim();
+                        const shouldGenerateSessionTitle =
+                          shouldSetOptimisticTitle &&
+                          trimmedText.length > 0 &&
+                          !hasRequestedSessionTitleGenerationRef.current;
+                        if (
+                          shouldSetOptimisticTitle &&
+                          trimmedText.length > 0
+                        ) {
+                          const nextTitle =
+                            trimmedText.length > 80
+                              ? `${trimmedText.slice(0, 80)}...`
+                              : trimmedText;
+                          pendingOptimisticTitleChatIdRef.current = chatInfo.id;
+                          void setChatTitle(chatInfo.id, nextTitle);
+
+                          if (shouldGenerateSessionTitle) {
+                            hasRequestedSessionTitleGenerationRef.current = true;
+                            // Generate a title in parallel and persist it as soon as it
+                            // resolves, without waiting for the assistant response.
+                            const generatedTitlePromise = fetch(
+                              "/api/generate-title",
+                              {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({
+                                  message: trimmedText,
+                                }),
+                              },
+                            )
+                              .then(async (res) => {
+                                if (!res.ok) {
+                                  return null;
+                                }
+
+                                const data = (await res
+                                  .json()
+                                  .catch(() => null)) as {
+                                  title?: unknown;
+                                } | null;
+                                if (typeof data?.title !== "string") {
+                                  return null;
+                                }
+
+                                const title = data.title.trim();
+                                return title.length > 0 ? title : null;
+                              })
+                              .catch(() => null);
+
+                            void generatedTitlePromise
+                              .then((generatedTitle) => {
+                                if (!generatedTitle) {
+                                  return;
+                                }
+                                return updateSessionTitle(generatedTitle);
+                              })
+                              .catch(() => {
+                                // Ignore failures and keep the existing session title.
+                              });
+                          }
+                        }
+                        try {
+                          await sendMessageWithPendingState(messagePayload);
+                        } catch (err) {
+                          if (pendingOptimisticTitleChatIdRef.current) {
+                            void clearChatTitle(
+                              pendingOptimisticTitleChatIdRef.current,
+                            );
+                            pendingOptimisticTitleChatIdRef.current = null;
+                          }
+                          console.error("Failed to send message:", err);
+                        }
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragging(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        // Only set isDragging to false if we're leaving the form entirely
+                        // (not just moving to a child element)
+                        if (
+                          !e.currentTarget.contains(e.relatedTarget as Node)
+                        ) {
+                          setIsDragging(false);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragging(false);
+                        const files = e.dataTransfer.files;
+                        if (files.length > 0) {
+                          addImages(files);
+                        }
+                      }}
+                    >
+                      {/* Sandbox overlay when inactive */}
+                      <SandboxInputOverlay
+                        isSandboxActive={isSandboxActive}
+                        isCreating={isCreatingSandbox}
+                        isRestoring={isRestoringSnapshot}
+                        isReconnecting={
+                          isReconnectingSandbox && !isHibernatingUi
+                        }
+                        isHibernating={isHibernatingUi}
+                        isArchived={isArchived}
+                        isInitializing={
+                          reconnectionStatus === "idle" ||
+                          isAutoRestoringOnEntry
+                        }
+                        snapshotPending={isArchiveSnapshotPending}
+                        hasSnapshot={hasSnapshot}
+                        onRestore={handleRestoreSnapshot}
+                        onCreateNew={handleCreateNewSandbox}
+                      />
+
+                      {/* Attachments preview */}
+                      {(images.length > 0 || textAttachments.length > 0) && (
+                        <div className="flex min-w-0 flex-wrap items-start gap-2 px-2 pb-1 pt-2">
+                          {images.length > 0 && (
+                            <ImageAttachmentsPreview
+                              images={images}
+                              onRemove={removeImage}
+                              className="p-0"
+                            />
+                          )}
+                          {textAttachments.length > 0 && (
+                            <TextAttachmentsPreview
+                              attachments={textAttachments}
+                              onRemove={removeTextAttachment}
+                              className="p-0"
+                            />
+                          )}
+                        </div>
+                      )}
+
+                      {/* Inline question UI for mobile — rendered inside prompt box */}
+                      {showInlineQuestion && inlineQuestion.questionHeaderUI}
+
+                      {/* Textarea area */}
+                      <div className="px-4 pb-2 pt-3">
+                        <textarea
+                          ref={inputRef}
+                          value={input}
+                          placeholder={
+                            showInlineQuestion
+                              ? inlineQuestion.placeholder
+                              : "Request changes or ask a question..."
+                          }
+                          rows={1}
+                          onFocus={handleTextareaFocus}
+                          onChange={(e) => {
+                            setInput(e.currentTarget.value);
+                            setCursorPosition(
+                              e.currentTarget.selectionStart ?? 0,
+                            );
+                          }}
+                          onKeyDown={(e) => {
+                            // When inline question is active, Enter advances the question
+                            if (
+                              showInlineQuestion &&
+                              e.key === "Enter" &&
+                              !e.shiftKey
+                            ) {
+                              e.preventDefault();
+                              inlineQuestion.handleNext();
+                              return;
+                            }
+                            // Let suggestions handle keyboard events first
+                            if (handleSuggestionsKeyDown(e)) {
+                              return;
+                            }
+                            if (handleSlashKeyDown(e)) {
+                              return;
+                            }
+                            // On iOS, Return should insert a newline (send via submit button)
+                            if (
+                              e.key === "Enter" &&
+                              !e.shiftKey &&
+                              !isIosDevice &&
+                              !isChatInFlight &&
+                              !hasPendingResponse
+                            ) {
+                              e.preventDefault();
+                              if (!isArchived && isSandboxActive) {
+                                e.currentTarget.form?.requestSubmit();
                               }
                             }
-                            for (const attachment of textAttachments) {
-                              parts.push({
-                                type: "data-snippet" as const,
-                                id: attachment.id,
-                                data: {
-                                  content: attachment.content,
-                                  filename: attachment.filename,
-                                },
-                              });
-                            }
-                            messagePayload = { parts };
-                          } else {
-                            messagePayload = {
-                              text: messageText,
-                              files,
-                            };
-                          }
-
-                          setInput("");
-                          clearImages();
-                          clearTextAttachments();
-
-                          const isFirstChatInSession =
-                            initialIsOnlyChatInSession;
-                          const shouldSetOptimisticTitle =
-                            isFirstChatInSession &&
-                            !hadInitialMessages &&
-                            messages.length === 0;
-                          const trimmedText = messageText.trim();
-                          const shouldGenerateSessionTitle =
-                            shouldSetOptimisticTitle &&
-                            trimmedText.length > 0 &&
-                            !hasRequestedSessionTitleGenerationRef.current;
-                          if (
-                            shouldSetOptimisticTitle &&
-                            trimmedText.length > 0
-                          ) {
-                            const nextTitle =
-                              trimmedText.length > 80
-                                ? `${trimmedText.slice(0, 80)}...`
-                                : trimmedText;
-                            pendingOptimisticTitleChatIdRef.current =
-                              chatInfo.id;
-                            void setChatTitle(chatInfo.id, nextTitle);
-
-                            if (shouldGenerateSessionTitle) {
-                              hasRequestedSessionTitleGenerationRef.current = true;
-                              // Generate a title in parallel and persist it as soon as it
-                              // resolves, without waiting for the assistant response.
-                              const generatedTitlePromise = fetch(
-                                "/api/generate-title",
-                                {
-                                  method: "POST",
-                                  headers: {
-                                    "Content-Type": "application/json",
-                                  },
-                                  body: JSON.stringify({
-                                    message: trimmedText,
-                                  }),
-                                },
-                              )
-                                .then(async (res) => {
-                                  if (!res.ok) {
-                                    return null;
-                                  }
-
-                                  const data = (await res
-                                    .json()
-                                    .catch(() => null)) as {
-                                    title?: unknown;
-                                  } | null;
-                                  if (typeof data?.title !== "string") {
-                                    return null;
-                                  }
-
-                                  const title = data.title.trim();
-                                  return title.length > 0 ? title : null;
-                                })
-                                .catch(() => null);
-
-                              void generatedTitlePromise
-                                .then((generatedTitle) => {
-                                  if (!generatedTitle) {
+                          }}
+                          onKeyUp={(e) => {
+                            setCursorPosition(
+                              e.currentTarget.selectionStart ?? 0,
+                            );
+                          }}
+                          onClick={(e) => {
+                            setCursorPosition(
+                              e.currentTarget.selectionStart ?? 0,
+                            );
+                          }}
+                          onPaste={(e) => {
+                            const items = e.clipboardData?.items;
+                            if (items) {
+                              for (const item of items) {
+                                if (isValidImageType(item.type)) {
+                                  const file = item.getAsFile();
+                                  if (file) {
+                                    e.preventDefault();
+                                    addImage(file).catch(() => {
+                                      // Silently ignore paste errors - rare edge case
+                                    });
                                     return;
                                   }
-                                  return updateSessionTitle(generatedTitle);
-                                })
-                                .catch(() => {
-                                  // Ignore failures and keep the existing session title.
-                                });
+                                }
+                              }
                             }
-                          }
-                          try {
-                            await sendMessageWithPendingState(messagePayload);
-                          } catch (err) {
-                            if (pendingOptimisticTitleChatIdRef.current) {
-                              void clearChatTitle(
-                                pendingOptimisticTitleChatIdRef.current,
-                              );
-                              pendingOptimisticTitleChatIdRef.current = null;
+
+                            // Handle large text pastes – convert to file attachment
+                            const pastedText =
+                              e.clipboardData?.getData("text/plain");
+                            if (pastedText && isLargeText(pastedText)) {
+                              e.preventDefault();
+                              addTextAttachment(pastedText);
                             }
-                            console.error("Failed to send message:", err);
-                          }
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setIsDragging(true);
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault();
-                          // Only set isDragging to false if we're leaving the form entirely
-                          // (not just moving to a child element)
-                          if (
-                            !e.currentTarget.contains(e.relatedTarget as Node)
-                          ) {
-                            setIsDragging(false);
-                          }
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setIsDragging(false);
-                          const files = e.dataTransfer.files;
-                          if (files.length > 0) {
-                            addImages(files);
-                          }
-                        }}
-                      >
-                        {/* Sandbox overlay when inactive */}
-                        <SandboxInputOverlay
-                          isSandboxActive={isSandboxActive}
-                          isCreating={isCreatingSandbox}
-                          isRestoring={isRestoringSnapshot}
-                          isReconnecting={
-                            isReconnectingSandbox && !isHibernatingUi
-                          }
-                          isHibernating={isHibernatingUi}
-                          isArchived={isArchived}
-                          isInitializing={
-                            reconnectionStatus === "idle" ||
-                            isAutoRestoringOnEntry
-                          }
-                          snapshotPending={isArchiveSnapshotPending}
-                          hasSnapshot={hasSnapshot}
-                          onRestore={handleRestoreSnapshot}
-                          onCreateNew={handleCreateNewSandbox}
+                          }}
+                          disabled={isArchived}
+                          className="w-full resize-none overflow-y-auto bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
+                          style={{ minHeight: "24px" }}
                         />
+                      </div>
 
-                        {/* Attachments preview */}
-                        {(images.length > 0 || textAttachments.length > 0) && (
-                          <div className="flex min-w-0 flex-wrap items-start gap-2 px-2 pb-1 pt-2">
-                            {images.length > 0 && (
-                              <ImageAttachmentsPreview
-                                images={images}
-                                onRemove={removeImage}
-                                className="p-0"
-                              />
-                            )}
-                            {textAttachments.length > 0 && (
-                              <TextAttachmentsPreview
-                                attachments={textAttachments}
-                                onRemove={removeTextAttachment}
-                                className="p-0"
-                              />
-                            )}
-                          </div>
-                        )}
-
-                        {/* Inline question UI for mobile — rendered inside prompt box */}
-                        {showInlineQuestion && inlineQuestion.questionHeaderUI}
-
-                        {/* Textarea area */}
-                        <div className="px-4 pb-2 pt-3">
-                          <textarea
-                            ref={inputRef}
-                            value={input}
-                            placeholder={
-                              showInlineQuestion
-                                ? inlineQuestion.placeholder
-                                : "Request changes or ask a question..."
-                            }
-                            rows={1}
-                            onFocus={handleTextareaFocus}
-                            onChange={(e) => {
-                              setInput(e.currentTarget.value);
-                              setCursorPosition(
-                                e.currentTarget.selectionStart ?? 0,
-                              );
-                            }}
-                            onKeyDown={(e) => {
-                              // When inline question is active, Enter advances the question
-                              if (
-                                showInlineQuestion &&
-                                e.key === "Enter" &&
-                                !e.shiftKey
-                              ) {
-                                e.preventDefault();
-                                inlineQuestion.handleNext();
-                                return;
-                              }
-                              // Let suggestions handle keyboard events first
-                              if (handleSuggestionsKeyDown(e)) {
-                                return;
-                              }
-                              if (handleSlashKeyDown(e)) {
-                                return;
-                              }
-                              // On iOS, Return should insert a newline (send via submit button)
-                              if (
-                                e.key === "Enter" &&
-                                !e.shiftKey &&
-                                !isIosDevice &&
-                                !isChatInFlight &&
-                                !hasPendingResponse
-                              ) {
-                                e.preventDefault();
-                                if (!isArchived && isSandboxActive) {
-                                  e.currentTarget.form?.requestSubmit();
-                                }
-                              }
-                            }}
-                            onKeyUp={(e) => {
-                              setCursorPosition(
-                                e.currentTarget.selectionStart ?? 0,
-                              );
-                            }}
-                            onClick={(e) => {
-                              setCursorPosition(
-                                e.currentTarget.selectionStart ?? 0,
-                              );
-                            }}
-                            onPaste={(e) => {
-                              const items = e.clipboardData?.items;
-                              if (items) {
-                                for (const item of items) {
-                                  if (isValidImageType(item.type)) {
-                                    const file = item.getAsFile();
-                                    if (file) {
-                                      e.preventDefault();
-                                      addImage(file).catch(() => {
-                                        // Silently ignore paste errors - rare edge case
-                                      });
-                                      return;
-                                    }
-                                  }
-                                }
-                              }
-
-                              // Handle large text pastes – convert to file attachment
-                              const pastedText =
-                                e.clipboardData?.getData("text/plain");
-                              if (pastedText && isLargeText(pastedText)) {
-                                e.preventDefault();
-                                addTextAttachment(pastedText);
-                              }
-                            }}
+                      {/* Bottom toolbar */}
+                      <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={openFilePicker}
                             disabled={isArchived}
-                            className="w-full resize-none overflow-y-auto bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
-                            style={{ minHeight: "24px" }}
-                          />
-                        </div>
-
-                        {/* Bottom toolbar */}
-                        <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={openFilePicker}
-                              disabled={isArchived}
-                              className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                            className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                          >
+                            <Paperclip className="h-4 w-4" />
+                          </Button>
+                          {chatInfo.modelId && (
+                            <div
+                              className={
+                                isChatInFlight ||
+                                isUpdatingModel ||
+                                modelOptionsLoading
+                                  ? "pointer-events-none opacity-60"
+                                  : undefined
+                              }
                             >
-                              <Paperclip className="h-4 w-4" />
-                            </Button>
-                            {chatInfo.modelId && (
-                              <div
-                                className={
+                              <ModelSelectorCompact
+                                value={chatInfo.modelId}
+                                modelOptions={modelOptions}
+                                disabled={
                                   isChatInFlight ||
                                   isUpdatingModel ||
                                   modelOptionsLoading
-                                    ? "pointer-events-none opacity-60"
-                                    : undefined
                                 }
-                              >
-                                <ModelSelectorCompact
-                                  value={chatInfo.modelId}
-                                  modelOptions={modelOptions}
-                                  disabled={
-                                    isChatInFlight ||
-                                    isUpdatingModel ||
-                                    modelOptionsLoading
-                                  }
-                                  onCloseAutoFocus={() => {
-                                    window.requestAnimationFrame(() => {
-                                      const textarea = inputRef.current;
-                                      if (!textarea) {
-                                        return;
-                                      }
+                                onCloseAutoFocus={() => {
+                                  window.requestAnimationFrame(() => {
+                                    const textarea = inputRef.current;
+                                    if (!textarea) {
+                                      return;
+                                    }
 
-                                      textarea.focus();
-                                      const nextCursorPosition = Math.min(
-                                        cursorPosition,
-                                        textarea.value.length,
-                                      );
-                                      textarea.setSelectionRange(
-                                        nextCursorPosition,
-                                        nextCursorPosition,
-                                      );
-                                    });
-                                  }}
-                                  onChange={(modelId) => {
-                                    void handleModelChange(modelId);
-                                  }}
-                                />
-                              </div>
+                                    textarea.focus();
+                                    const nextCursorPosition = Math.min(
+                                      cursorPosition,
+                                      textarea.value.length,
+                                    );
+                                    textarea.setSelectionRange(
+                                      nextCursorPosition,
+                                      nextCursorPosition,
+                                    );
+                                  });
+                                }}
+                                onChange={(modelId) => {
+                                  void handleModelChange(modelId);
+                                }}
+                              />
+                            </div>
+                          )}
+                          <ContextUsageIndicator
+                            inputTokens={tokenUsage.inputTokens}
+                            conversationInputTokens={
+                              conversationUsage.inputTokens
+                            }
+                            conversationCachedInputTokens={
+                              conversationUsage.cachedInputTokens
+                            }
+                            conversationOutputTokens={
+                              conversationUsage.outputTokens
+                            }
+                            estimatedConversationCost={
+                              conversationEstimatedCost
+                            }
+                            contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
+                          />
+                        </div>
+
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={handleMicClick}
+                            disabled={
+                              isArchived || recordingState === "processing"
+                            }
+                            className={`relative h-8 w-8 rounded-full ${
+                              recordingState === "recording"
+                                ? "text-red-500"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            {recordingState === "recording" && (
+                              <span className="absolute inset-0 animate-pulse rounded-full bg-red-500/30" />
                             )}
-                            <ContextUsageIndicator
-                              inputTokens={tokenUsage.inputTokens}
-                              conversationInputTokens={
-                                conversationUsage.inputTokens
-                              }
-                              conversationCachedInputTokens={
-                                conversationUsage.cachedInputTokens
-                              }
-                              conversationOutputTokens={
-                                conversationUsage.outputTokens
-                              }
-                              estimatedConversationCost={
-                                conversationEstimatedCost
-                              }
-                              contextLimit={
-                                contextLimit ?? DEFAULT_CONTEXT_LIMIT
-                              }
-                            />
-                          </div>
+                            {recordingState === "processing" ? (
+                              <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                              <Mic className="h-5 w-5" />
+                            )}
+                          </Button>
 
-                          <div className="flex shrink-0 items-center gap-1">
+                          {showInlineQuestion ? (
                             <Button
                               type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={handleMicClick}
-                              disabled={
-                                isArchived || recordingState === "processing"
-                              }
-                              className={`relative h-8 w-8 rounded-full ${
-                                recordingState === "recording"
-                                  ? "text-red-500"
-                                  : "text-muted-foreground hover:text-foreground"
-                              }`}
+                              size="sm"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                inlineQuestion.handleNext();
+                              }}
+                              disabled={!inlineQuestion.hasCurrentAnswer}
+                              className="h-8 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
                             >
-                              {recordingState === "recording" && (
-                                <span className="absolute inset-0 animate-pulse rounded-full bg-red-500/30" />
-                              )}
-                              {recordingState === "processing" ? (
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                              ) : (
-                                <Mic className="h-5 w-5" />
-                              )}
+                              <Check className="h-3 w-3" />
+                              <span className="sm:hidden">
+                                {inlineQuestion.compactButtonLabel}
+                              </span>
+                              <span className="hidden sm:inline">
+                                {inlineQuestion.buttonLabel}
+                              </span>
                             </Button>
-
-                            {showInlineQuestion ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  inlineQuestion.handleNext();
-                                }}
-                                disabled={!inlineQuestion.hasCurrentAnswer}
-                                className="h-8 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-                              >
-                                <Check className="h-3 w-3" />
-                                <span className="sm:hidden">
-                                  {inlineQuestion.compactButtonLabel}
+                          ) : isChatInFlight || hasPendingResponse ? (
+                            <Button
+                              type="button"
+                              size="icon"
+                              onClick={() => {
+                                stopChatStream();
+                                setHasPendingResponse(false);
+                                setUserStopped(true);
+                                void setChatStreaming(chatInfo.id, false);
+                              }}
+                              className="h-8 w-8 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              style={{ touchAction: "manipulation" }}
+                            >
+                              <Square className="h-3 w-3 fill-current" />
+                            </Button>
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span>
+                                  <Button
+                                    type="submit"
+                                    size="icon"
+                                    onTouchEnd={() => {
+                                      // On iOS, tapping submit while the textarea is focused
+                                      // causes the keyboard to briefly flash open then closed.
+                                      // Blur the textarea immediately to prevent this.
+                                      inputRef.current?.blur();
+                                    }}
+                                    disabled={
+                                      isArchived ||
+                                      isChatInFlight ||
+                                      (!input.trim() &&
+                                        images.length === 0 &&
+                                        textAttachments.length === 0) ||
+                                      isUpdatingModel ||
+                                      !isSandboxActive
+                                    }
+                                    className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                                  >
+                                    <ArrowUp className="h-4 w-4" />
+                                  </Button>
                                 </span>
-                                <span className="hidden sm:inline">
-                                  {inlineQuestion.buttonLabel}
-                                </span>
-                              </Button>
-                            ) : isChatInFlight || hasPendingResponse ? (
-                              <Button
-                                type="button"
-                                size="icon"
-                                onClick={() => {
-                                  stopChatStream();
-                                  setHasPendingResponse(false);
-                                  setUserStopped(true);
-                                  void setChatStreaming(chatInfo.id, false);
-                                }}
-                                className="h-8 w-8 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                style={{ touchAction: "manipulation" }}
-                              >
-                                <Square className="h-3 w-3 fill-current" />
-                              </Button>
-                            ) : (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span>
-                                    <Button
-                                      type="submit"
-                                      size="icon"
-                                      onTouchEnd={() => {
-                                        // On iOS, tapping submit while the textarea is focused
-                                        // causes the keyboard to briefly flash open then closed.
-                                        // Blur the textarea immediately to prevent this.
-                                        inputRef.current?.blur();
-                                      }}
-                                      disabled={
-                                        isArchived ||
-                                        isChatInFlight ||
-                                        (!input.trim() &&
-                                          images.length === 0 &&
-                                          textAttachments.length === 0) ||
-                                        isUpdatingModel ||
-                                        !isSandboxActive
-                                      }
-                                      className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-                                    >
-                                      <ArrowUp className="h-4 w-4" />
-                                    </Button>
-                                  </span>
-                                </TooltipTrigger>
-                                {!isSandboxActive && !isArchived && (
-                                  <TooltipContent side="top" sideOffset={8}>
-                                    Waiting for sandbox...
-                                  </TooltipContent>
-                                )}
-                              </Tooltip>
-                            )}
-                          </div>
+                              </TooltipTrigger>
+                              {!isSandboxActive && !isArchived && (
+                                <TooltipContent side="top" sideOffset={8}>
+                                  Waiting for sandbox...
+                                </TooltipContent>
+                              )}
+                            </Tooltip>
+                          )}
                         </div>
-                      </form>
-                    </div>
-
-                    {/* Recording error message */}
-                    {recordingError && (
-                      <p className="mt-2 text-sm text-destructive">
-                        {recordingError}
-                      </p>
-                    )}
+                      </div>
+                    </form>
                   </div>
+
+                  {/* Recording error message */}
+                  {recordingError && (
+                    <p className="mt-2 text-sm text-destructive">
+                      {recordingError}
+                    </p>
+                  )}
                 </div>
               </div>
-            </>
-          )}
+            </div>
+          </>
         </div>
       </div>
 
-      {/* Merge PR Dialog */}
-      {session && (
-        <MergePrDialog
-          open={mergeDialogOpen}
-          onOpenChange={setMergeDialogOpen}
-          session={session}
-          onMerged={handleMerged}
-          onViewDiff={() => setShowDiffPanel(true)}
-          canViewDiff={supportsDiff && Boolean(diff || session.cachedDiff)}
-          isAgentWorking={hasPendingResponse || isChatInFlight}
-          onFixChecks={async (failedRuns) => {
-            setMergeDialogOpen(false);
-            await handleFixChecks(failedRuns);
-          }}
-          onFixConflicts={(baseBranchRef) =>
-            handleFixConflicts(baseBranchRef, true)
-          }
-        />
-      )}
-
-      {/* Close PR Dialog */}
-      {session && (
-        <ClosePrDialog
-          open={closeDialogOpen}
-          onOpenChange={setCloseDialogOpen}
-          session={session}
-          onClosed={handleClosed}
-        />
-      )}
-
-      {/* Create Repo Dialog */}
-      {session && (
-        <CreateRepoDialog
-          open={repoDialogOpen}
-          onOpenChange={setRepoDialogOpen}
-          session={session}
-          hasSandbox={sandboxInfo !== null}
-          onRepoCreated={(result) => {
-            updateSessionRepo({
-              cloneUrl: result.cloneUrl,
-              repoOwner: result.owner,
-              repoName: result.repoName,
-              branch: result.branch,
-            });
-          }}
-        />
-      )}
-
-      {/* Diff Viewer Modal */}
-      <DiffViewer open={showDiffPanel} onOpenChange={setShowDiffPanel} />
       <WorkspaceFileViewer
         sessionId={session.id}
         filePath={selectedWorkspaceFile}

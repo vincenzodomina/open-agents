@@ -4,7 +4,6 @@ import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
 import type { SandboxType } from "@/components/sandbox-selector-compact";
 import type { ModelVariant } from "@/lib/model-variants";
-import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 
 export type DiffMode = "unified" | "split";
 
@@ -13,12 +12,8 @@ export interface UserPreferences {
   defaultSubagentModelId: string | null;
   defaultSandboxType: SandboxType;
   defaultDiffMode: DiffMode;
-  autoCommitPush: boolean;
-  autoCreatePr: boolean;
   alertsEnabled: boolean;
   alertSoundEnabled: boolean;
-  publicUsageEnabled: boolean;
-  globalSkillRefs: GlobalSkillRef[];
   modelVariants: ModelVariant[];
   enabledModelIds: string[];
 }

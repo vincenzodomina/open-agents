@@ -22,7 +22,6 @@ import {
 import { useBackgroundChatNotifications } from "@/hooks/use-background-chat-notifications";
 import { useSessions, type SessionWithUnread } from "@/hooks/use-sessions";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
-import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { SessionsShellProvider } from "./sessions-shell-context";
 
@@ -33,7 +32,6 @@ type SessionsRouteShellProps = {
     sessions: SessionWithUnread[];
     archivedCount: number;
   };
-  lastRepo: { owner: string; repo: string } | null;
 };
 
 const RouteContentShell = memo(function RouteContentShell({
@@ -52,7 +50,6 @@ export function SessionsRouteShell({
   children,
   currentUser,
   initialSessionsData,
-  lastRepo,
 }: SessionsRouteShellProps) {
   const router = useRouter();
   const params = useParams<{ sessionId?: string }>();
@@ -178,51 +175,6 @@ export function SessionsRouteShell({
     [routeSessionId, unarchiveSession],
   );
 
-  const handleCreateSessionForRepo = useCallback(
-    async (repoOwner: string, repoName: string) => {
-      try {
-        const { session: created, chat } = await createSession({
-          repoOwner,
-          repoName,
-          cloneUrl: `https://github.com/${repoOwner}/${repoName}`,
-          isNewBranch: true,
-          sandboxType: preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE,
-          autoCommitPush: preferences?.autoCommitPush ?? false,
-          autoCreatePr: preferences?.autoCreatePr ?? false,
-        });
-        router.push(`/sessions/${created.id}/chats/${chat.id}`, {
-          scroll: false,
-        });
-      } catch (error) {
-        console.error("Failed to create session for repo:", error);
-      }
-    },
-    [createSession, preferences, router],
-  );
-
-  const handleCreateSessionFromBranch = useCallback(
-    async (repoOwner: string, repoName: string, branch: string) => {
-      try {
-        const { session: created, chat } = await createSession({
-          repoOwner,
-          repoName,
-          branch,
-          cloneUrl: `https://github.com/${repoOwner}/${repoName}`,
-          isNewBranch: false,
-          sandboxType: preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE,
-          autoCommitPush: preferences?.autoCommitPush ?? false,
-          autoCreatePr: preferences?.autoCreatePr ?? false,
-        });
-        router.push(`/sessions/${created.id}/chats/${chat.id}`, {
-          scroll: false,
-        });
-      } catch (error) {
-        console.error("Failed to create session from branch:", error);
-      }
-    },
-    [createSession, preferences, router],
-  );
-
   useEffect(() => {
     if (
       optimisticActiveSessionId &&
@@ -271,8 +223,6 @@ export function SessionsRouteShell({
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
               onOpenNewSession={openNewSessionDialog}
-              onCreateSessionForRepo={handleCreateSessionForRepo}
-              onCreateSessionFromBranch={handleCreateSessionFromBranch}
               initialUser={currentUser}
             />
           </SidebarContent>
@@ -283,7 +233,6 @@ export function SessionsRouteShell({
       <NewSessionDialog
         open={newSessionOpen}
         onOpenChange={setNewSessionOpen}
-        lastRepo={lastRepo}
         createSession={createSession}
       />
     </SessionsShellProvider>
