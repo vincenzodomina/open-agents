@@ -1,0 +1,27 @@
+{
+  "name": "@open-harness/runtime-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./connection-mode": "./lib/connection-mode.ts",
+    "./bearer-auth": "./lib/bearer-auth.ts",
+    "./proxy": "./lib/proxy.ts",
+    "./runtime-client": "./lib/runtime-client.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.103.3"
+  },
+  "devDependencies": {
+    "@open-harness/tsconfig": "workspace:*",
+    "@types/bun": "1.3.12"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
