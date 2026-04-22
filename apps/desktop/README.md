@@ -24,6 +24,10 @@ Set via `SERVER_CONNECTION_MODE`:
 
 The frontend always receives `SERVER_CONNECTION_MODE=http` plus the resolved `SERVER_CONNECTION_URL` so it treats every runtime target uniformly — consistent with FR-17.
 
+## Supabase env propagation
+
+The embedded runtime validates incoming bearer tokens via Supabase, so it needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in its environment. Today the desktop shell inherits these from Electron's own env — so when you launch in development they come from your shell. For packaged builds we need to pass them explicitly (either baked at build time or read from a user-editable settings file); that's out of scope for Phase 1. Don't assume packaged desktop users will have these exported.
+
 ## Security posture
 
 The `BrowserWindow` is created with `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Renderer has no direct Node access. Production packaging (signing, notarization, auto-update, preload bridge for OS integration) is deferred to the packaging phase.

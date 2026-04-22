@@ -9,6 +9,7 @@ type ServerInfo = {
     method: string;
     path: string;
     body: string;
+    headers: Record<string, string>;
   } | null;
 };
 
@@ -21,11 +22,16 @@ beforeAll(() => {
     async fetch(req) {
       const url = new URL(req.url);
       const body = req.body ? await req.text() : "";
+      const headers: Record<string, string> = {};
+      for (const [name, value] of req.headers) {
+        headers[name.toLowerCase()] = value;
+      }
       captured = {
         authorization: req.headers.get("authorization"),
         method: req.method,
         path: url.pathname + url.search,
         body,
+        headers,
       };
       if (url.pathname === "/stream") {
         const encoder = new TextEncoder();
@@ -104,13 +110,12 @@ describe("proxyToRuntime", () => {
     expect(collected).toBe("one\ntwo\n");
   });
 
-  test("strips hop-by-hop headers and does not send host from inbound", async () => {
+  test("strips hop-by-hop headers and keeps end-to-end ones", async () => {
     const req = new Request("http://frontend/api/runtime/v1/thing", {
       method: "GET",
       headers: {
-        host: "frontend.example.com",
-        "transfer-encoding": "chunked",
         "x-keep": "yes",
+        "proxy-authorization": "should-not-forward",
       },
     });
     await proxyToRuntime({
@@ -119,9 +124,10 @@ describe("proxyToRuntime", () => {
       request: req,
       targetPath: "/v1/thing",
     });
-    // The upstream server captured the raw inbound host header of the fetch call,
-    // which should now be the upstream host rather than "frontend.example.com".
     const seen = server.lastRequest();
-    expect(seen?.path).toBe("/v1/thing");
+    expect(seen?.headers["x-keep"]).toBe("yes");
+    expect(seen?.headers["proxy-authorization"]).toBeUndefined();
+    // Upstream host should be the test server's host, not the inbound "frontend" value.
+    expect(seen?.headers.host).toMatch(/^127\.0\.0\.1(:\d+)?$/);
   });
 });

@@ -17,7 +17,7 @@ export async function startFrontend(
   const process = new ManagedProcess({
     label: "web",
     command: "bun",
-    args: ["run", "start", "--", "--port", String(config.frontendPort)],
+    args: ["run", "start"],
     cwd: webCwd,
     env: {
       SERVER_CONNECTION_MODE: "http",

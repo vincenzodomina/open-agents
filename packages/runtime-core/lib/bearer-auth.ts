@@ -7,7 +7,7 @@ export type AuthenticatedUser = {
 
 export type BearerAuthResult =
   | { ok: true; user: AuthenticatedUser; token: string }
-  | { ok: false; status: 401 | 403; reason: string };
+  | { ok: false; status: 401; reason: string };
 
 type VerifierDeps = {
   supabaseUrl: string;
