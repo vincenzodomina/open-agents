@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/elevenlabs": "^2.0.29",
     "@open-harness/agent": "workspace:*",
     "@open-harness/runtime-core": "workspace:*",
     "@open-harness/sandbox": "workspace:*",

@@ -30,6 +30,7 @@
       "name": "runtime",
       "version": "0.0.0",
       "dependencies": {
+        "@ai-sdk/elevenlabs": "^2.0.29",
         "@open-harness/agent": "workspace:*",
         "@open-harness/runtime-core": "workspace:*",
         "@open-harness/sandbox": "workspace:*",

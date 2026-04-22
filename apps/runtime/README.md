@@ -33,6 +33,8 @@ Implications for route authors:
 - `GET /v1/whoami` — returns the authenticated user id (auth required)
 - `POST /v1/echo-stream` — streams back each whitespace-delimited token from the request body (auth required, exercises streaming boundary)
 - `POST /v1/generate-title` — generates a 5-word coding-session title from a first user message (auth required, calls OpenAI via `@open-harness/agent`)
+- `POST /v1/generate-commit-message` — generates a conventional-format commit message from a sandbox diff (auth required, takes `{ sandboxState, sessionTitle }`)
+- `POST /v1/transcribe` — transcribes base64 audio via ElevenLabs (auth required, takes `{ audio, mimeType? }`)
 
 ## Extending
 

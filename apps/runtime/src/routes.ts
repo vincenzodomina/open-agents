@@ -3,6 +3,7 @@ import { authenticate } from "./auth.ts";
 import type { RuntimeConfig } from "./config.ts";
 import { handleGenerateCommitMessage } from "./handlers/generate-commit-message.ts";
 import { handleGenerateTitle } from "./handlers/generate-title.ts";
+import { handleTranscribe } from "./handlers/transcribe.ts";
 
 export type RouteHandler = (
   request: Request,
@@ -76,6 +77,12 @@ const routes: Route[] = [
     path: "/v1/generate-commit-message",
     requiresAuth: true,
     handler: (request) => handleGenerateCommitMessage(request),
+  },
+  {
+    method: "POST",
+    path: "/v1/transcribe",
+    requiresAuth: true,
+    handler: (request) => handleTranscribe(request),
   },
 ];
 
