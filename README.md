@@ -76,14 +76,6 @@ The coding agent stack expects direct OpenAI API access:
 OPENAI_API_KEY=
 ```
 
-### Stored secrets (GitHub tokens, etc.)
-
-Anything that encrypts persisted credentials needs:
-
-```env
-ENCRYPTION_KEY=
-```
-
 ### Supabase Auth (sign-in)
 
 Configure **Authentication → URL configuration** in the Supabase dashboard: set the site URL to your deployment origin and add redirect URLs `https://YOUR_DOMAIN/auth/callback` and `http://localhost:3000/auth/callback` for local development. The three Supabase env vars above must match your project.
@@ -109,26 +101,19 @@ Recommended path: deploy this repo at the repo root, then configure Supabase.
 
 1. Fork this repo.
 2. Create a Supabase project. Apply the SQL in `supabase/migrations/` to your database (Supabase SQL editor or `supabase db push` against your linked project).
-3. Generate an encryption secret for stored tokens:
-
-   ```bash
-   openssl rand -hex 32   # ENCRYPTION_KEY (32-byte hex)
-   ```
-
-4. Import the repo.
-5. Add at least these env vars in Vercel project settings:
+3. Import the repo.
+4. Add at least these env vars in Vercel project settings:
 
    ```env
    NEXT_PUBLIC_SUPABASE_URL=
    NEXT_PUBLIC_SUPABASE_ANON_KEY=
    SUPABASE_SERVICE_ROLE_KEY=
-   ENCRYPTION_KEY=
    OPENAI_API_KEY=
    ```
 
-6. Deploy once to get a stable production URL.
-7. In the Supabase dashboard, set Authentication URL configuration (site URL + redirect URLs including `https://YOUR_DOMAIN/auth/callback`).
-8. Optionally add Redis/KV and the canonical production URL vars.
+5. Deploy once to get a stable production URL.
+6. In the Supabase dashboard, set Authentication URL configuration (site URL + redirect URLs including `https://YOUR_DOMAIN/auth/callback`).
+7. Optionally add Redis/KV and the canonical production URL vars.
 
 ## Local setup
 
@@ -151,38 +136,11 @@ Recommended path: deploy this repo at the repo root, then configure Supabase.
    bun run web
    ```
 
-## Auth and integration setup
+## Auth setup
 
 ### Supabase Auth
 
 Match the Supabase **Site URL** and **Redirect URLs** to where the app runs (`https://YOUR_DOMAIN` and `https://YOUR_DOMAIN/auth/callback`, plus `http://localhost:3000` / `http://localhost:3000/auth/callback` for local dev). Keys come from **Project Settings → API**.
-
-### GitHub App
-
-You do not need a separate GitHub OAuth app. Open Agents uses the GitHub App's user authorization flow.
-
-Create a GitHub App for installation-based repo access and configure:
-
-- Homepage URL: `https://YOUR_DOMAIN`
-- Callback URL: `https://YOUR_DOMAIN/api/github/app/callback`
-- Setup URL: `https://YOUR_DOMAIN/api/github/app/callback`
-- enable "Request user authorization (OAuth) during installation"
-- make the app public if you want org installs to work cleanly
-
-For local development, use `http://localhost:3000/api/github/app/callback` for the callback/setup URL and `http://localhost:3000` as the homepage URL.
-
-Then set:
-
-```env
-NEXT_PUBLIC_GITHUB_CLIENT_ID=...   # GitHub App Client ID
-GITHUB_CLIENT_SECRET=...           # GitHub App Client Secret
-GITHUB_APP_ID=...
-GITHUB_APP_PRIVATE_KEY=...
-NEXT_PUBLIC_GITHUB_APP_SLUG=...
-GITHUB_WEBHOOK_SECRET=...
-```
-
-`GITHUB_APP_PRIVATE_KEY` can be stored as the PEM contents with escaped newlines or as a base64-encoded PEM.
 
 ## Useful commands
 

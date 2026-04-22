@@ -1,8 +1,8 @@
 export function AppMockup() {
   return (
-    <div className="overflow-hidden rounded-xl border border-black/[0.08] bg-white shadow-2xl shadow-black/8 dark:border-white/[0.06] dark:bg-[#111111] dark:shadow-black/30">
+    <div className="overflow-hidden rounded-xl border border-black/8 bg-white shadow-2xl shadow-black/8 dark:border-white/6 dark:bg-[#111111] dark:shadow-black/30">
       {/* Title bar */}
-      <div className="flex items-center justify-between border-b border-black/[0.06] px-4 py-2.5 dark:border-white/[0.06]">
+      <div className="flex items-center justify-between border-b border-black/6 px-4 py-2.5 dark:border-white/6">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5">
             <div className="h-2.5 w-2.5 rounded-full bg-black/10 dark:bg-white/10" />
@@ -10,7 +10,7 @@ export function AppMockup() {
             <div className="h-2.5 w-2.5 rounded-full bg-black/10 dark:bg-white/10" />
           </div>
           <span className="ml-2 text-[11px] text-black/30 dark:text-white/25">
-            open-agents / feat/auth-flow
+            Auth flow session
           </span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -23,19 +23,19 @@ export function AppMockup() {
 
       <div className="flex">
         {/* Sidebar */}
-        <div className="hidden w-44 shrink-0 border-r border-black/[0.06] p-3 sm:block dark:border-white/[0.06]">
+        <div className="hidden w-44 shrink-0 border-r border-black/6 p-3 sm:block dark:border-white/6">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[10px] font-medium uppercase tracking-wider text-black/30 dark:text-white/25">
               Sessions
             </span>
-            <div className="flex h-4 w-4 items-center justify-center rounded bg-black/[0.04] dark:bg-white/[0.06]">
+            <div className="flex h-4 w-4 items-center justify-center rounded bg-black/4 dark:bg-white/6">
               <span className="text-[10px] text-black/40 dark:text-white/30">
                 +
               </span>
             </div>
           </div>
           <div className="space-y-1">
-            <div className="rounded-md bg-black/[0.04] px-2.5 py-2 dark:bg-white/[0.06]">
+            <div className="rounded-md bg-black/4 px-2.5 py-2 dark:bg-white/6">
               <div className="text-[11px] font-medium text-black/70 dark:text-white/70">
                 Auth flow
               </div>
@@ -67,7 +67,7 @@ export function AppMockup() {
           <div className="flex-1 space-y-4 p-4 sm:p-5">
             {/* User message */}
             <div className="flex justify-end">
-              <div className="max-w-[80%] rounded-2xl rounded-br-md bg-black/[0.04] px-3.5 py-2.5 dark:bg-white/[0.06]">
+              <div className="max-w-[80%] rounded-2xl rounded-br-md bg-black/4 px-3.5 py-2.5 dark:bg-white/6">
                 <p className="text-[12px] leading-relaxed text-black/70 dark:text-white/60">
                   Build the email login flow
                 </p>
@@ -77,7 +77,7 @@ export function AppMockup() {
             {/* Agent response */}
             <div className="space-y-2.5">
               {/* Tool call summary bar */}
-              <div className="flex items-center gap-2 rounded-lg bg-black/[0.03] px-3 py-2 dark:bg-white/[0.04]">
+              <div className="flex items-center gap-2 rounded-lg bg-black/3 px-3 py-2 dark:bg-white/4">
                 <div className="flex items-center gap-1.5">
                   <svg
                     viewBox="0 0 16 16"
@@ -91,7 +91,7 @@ export function AppMockup() {
                     12 tool calls
                   </span>
                 </div>
-                <div className="mx-1 h-3 w-px bg-black/[0.06] dark:bg-white/[0.08]" />
+                <div className="mx-1 h-3 w-px bg-black/6 dark:bg-white/8" />
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-black/35 dark:text-white/30">
                     3/4 todos
@@ -103,7 +103,7 @@ export function AppMockup() {
                     <div className="h-1 w-1 rounded-full bg-black/10 dark:bg-white/10" />
                   </div>
                 </div>
-                <div className="mx-1 h-3 w-px bg-black/[0.06] dark:bg-white/[0.08]" />
+                <div className="mx-1 h-3 w-px bg-black/6 dark:bg-white/8" />
                 <span className="text-[10px] text-black/25 dark:text-white/20">
                   42s
                 </span>
@@ -124,8 +124,8 @@ export function AppMockup() {
           </div>
 
           {/* Input bar */}
-          <div className="border-t border-black/[0.06] p-3 dark:border-white/[0.06]">
-            <div className="flex items-center gap-2 rounded-xl bg-black/[0.03] px-3 py-2.5 dark:bg-white/[0.04]">
+          <div className="border-t border-black/6 p-3 dark:border-white/6">
+            <div className="flex items-center gap-2 rounded-xl bg-black/3 px-3 py-2.5 dark:bg-white/4">
               <span className="flex-1 text-[11px] text-black/25 dark:text-white/20">
                 Request changes or ask a question…
               </span>
@@ -151,7 +151,11 @@ export function AppMockup() {
 const FILE_ICON_PATH =
   "M2 1.5A1.5 1.5 0 013.5 0h6.879a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0114 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 14.5v-13z";
 
-const FILE_NAMES = ["app/api/auth/route.ts", "lib/session.ts", "middleware.ts"];
+const FILE_NAMES = [
+  "app/auth/login/page.tsx",
+  "app/auth/callback/route.ts",
+  "lib/session/resolve-app-session.ts",
+];
 
 function FileBadges() {
   return (
@@ -159,7 +163,7 @@ function FileBadges() {
       {FILE_NAMES.map((name) => (
         <span
           key={name}
-          className="inline-flex items-center gap-1 rounded-md bg-black/[0.04] px-2 py-1 font-mono text-[10px] text-black/40 dark:bg-white/[0.05] dark:text-white/30"
+          className="inline-flex items-center gap-1 rounded-md bg-black/4 px-2 py-1 font-mono text-[10px] text-black/40 dark:bg-white/5 dark:text-white/30"
         >
           <svg viewBox="0 0 16 16" fill="currentColor" className="h-2.5 w-2.5">
             <path d={FILE_ICON_PATH} />

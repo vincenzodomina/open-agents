@@ -159,7 +159,7 @@ High-contrast white button on dark background:
 
 ```tsx
 <button className="h-10 w-full border-0 bg-white text-sm font-medium text-black transition-all hover:bg-white/90">
-  Sign in with GitHub
+  Sign in
 </button>
 ```
 

@@ -5,12 +5,9 @@ import type {
   Chat,
   ChatMessage,
   ChatRead,
-  Json,
-  LinkedAccount,
   NewSession,
   Session,
   Share,
-  UsageEvent,
   UserPreferences,
   WorkflowRun,
   WorkflowRunStep,
@@ -41,21 +38,6 @@ export function mapSessionRow(row: Record<string, unknown>): Session {
     userId: String(row.user_id),
     title: String(row.title),
     status: row.status as Session["status"],
-    repoOwner: row.repo_owner != null ? String(row.repo_owner) : null,
-    repoName: row.repo_name != null ? String(row.repo_name) : null,
-    branch: row.branch != null ? String(row.branch) : null,
-    cloneUrl: row.clone_url != null ? String(row.clone_url) : null,
-    isNewBranch: Boolean(row.is_new_branch ?? false),
-    autoCommitPushOverride:
-      row.auto_commit_push_override === null ||
-      row.auto_commit_push_override === undefined
-        ? null
-        : Boolean(row.auto_commit_push_override),
-    autoCreatePrOverride:
-      row.auto_create_pr_override === null ||
-      row.auto_create_pr_override === undefined
-        ? null
-        : Boolean(row.auto_create_pr_override),
     globalSkillRefs: (row.global_skill_refs ?? []) as GlobalSkillRef[],
     sandboxState: row.sandbox_state as SandboxState | null | undefined,
     lifecycleState: row.lifecycle_state as Session["lifecycleState"],
@@ -67,16 +49,10 @@ export function mapSessionRow(row: Record<string, unknown>): Session {
       row.lifecycle_run_id != null ? String(row.lifecycle_run_id) : null,
     lifecycleError:
       row.lifecycle_error != null ? String(row.lifecycle_error) : null,
-    linesAdded: row.lines_added != null ? Number(row.lines_added) : 0,
-    linesRemoved: row.lines_removed != null ? Number(row.lines_removed) : 0,
-    prNumber: row.pr_number != null ? Number(row.pr_number) : null,
-    prStatus: row.pr_status as Session["prStatus"],
     snapshotUrl: row.snapshot_url != null ? String(row.snapshot_url) : null,
     snapshotCreatedAt: parseTimestamp(row.snapshot_created_at),
     snapshotSizeBytes:
       row.snapshot_size_bytes != null ? Number(row.snapshot_size_bytes) : null,
-    cachedDiff: row.cached_diff as Session["cachedDiff"],
-    cachedDiffUpdatedAt: parseTimestamp(row.cached_diff_updated_at),
     createdAt: parseTimestampRequired(row.created_at),
     updatedAt: parseTimestampRequired(row.updated_at),
   };
@@ -154,21 +130,6 @@ export function mapUserRow(row: Record<string, unknown>): {
   };
 }
 
-export function mapLinkedAccountRow(
-  row: Record<string, unknown>,
-): LinkedAccount {
-  return {
-    id: String(row.id),
-    userId: String(row.user_id),
-    provider: row.provider as LinkedAccount["provider"],
-    externalId: String(row.external_id),
-    workspaceId: row.workspace_id != null ? String(row.workspace_id) : null,
-    metadata: row.metadata as Json | null,
-    createdAt: parseTimestampRequired(row.created_at),
-    updatedAt: parseTimestampRequired(row.updated_at),
-  };
-}
-
 export function mapUserPreferencesRow(
   row: Record<string, unknown>,
 ): UserPreferences {
@@ -193,22 +154,6 @@ export function mapUserPreferencesRow(
     enabledModelIds: (row.enabled_model_ids ?? []) as string[],
     createdAt: parseTimestampRequired(row.created_at),
     updatedAt: parseTimestampRequired(row.updated_at),
-  };
-}
-
-export function mapUsageEventRow(row: Record<string, unknown>): UsageEvent {
-  return {
-    id: String(row.id),
-    userId: String(row.user_id),
-    source: row.source as UsageEvent["source"],
-    agentType: row.agent_type as UsageEvent["agentType"],
-    provider: row.provider != null ? String(row.provider) : null,
-    modelId: row.model_id != null ? String(row.model_id) : null,
-    inputTokens: Number(row.input_tokens ?? 0),
-    cachedInputTokens: Number(row.cached_input_tokens ?? 0),
-    outputTokens: Number(row.output_tokens ?? 0),
-    toolCallCount: Number(row.tool_call_count ?? 0),
-    createdAt: parseTimestampRequired(row.created_at),
   };
 }
 
@@ -248,15 +193,8 @@ export function newSessionToRpcJson(
     ...(s.id !== undefined ? { id: s.id } : {}),
     user_id: s.userId,
     title: s.title,
-    status: s.status,
-    repo_owner: s.repoOwner,
-    repo_name: s.repoName,
-    branch: s.branch,
-    clone_url: s.cloneUrl,
-    is_new_branch: s.isNewBranch,
-    auto_commit_push_override: s.autoCommitPushOverride,
-    auto_create_pr_override: s.autoCreatePrOverride,
-    global_skill_refs: s.globalSkillRefs,
+    status: s.status ?? "running",
+    global_skill_refs: s.globalSkillRefs ?? [],
     sandbox_state: s.sandboxState ?? null,
     lifecycle_state: s.lifecycleState ?? null,
     lifecycle_version: s.lifecycleVersion ?? 0,
@@ -265,15 +203,9 @@ export function newSessionToRpcJson(
     hibernate_after: ts(s.hibernateAfter),
     lifecycle_run_id: s.lifecycleRunId,
     lifecycle_error: s.lifecycleError,
-    lines_added: s.linesAdded,
-    lines_removed: s.linesRemoved,
-    pr_number: s.prNumber,
-    pr_status: s.prStatus,
     snapshot_url: s.snapshotUrl,
     snapshot_created_at: ts(s.snapshotCreatedAt),
     snapshot_size_bytes: s.snapshotSizeBytes,
-    cached_diff: s.cachedDiff ?? null,
-    cached_diff_updated_at: ts(s.cachedDiffUpdatedAt),
     // `create_session_with_initial_chat` uses jsonb_populate_record; omitted keys
     // become NULL, so NOT NULL columns must always be set for new sessions.
     created_at:
@@ -296,27 +228,6 @@ export function partialSessionToSnakeUpdate(
   }
   if (data.status !== undefined) {
     o.status = data.status;
-  }
-  if (data.repoOwner !== undefined) {
-    o.repo_owner = data.repoOwner;
-  }
-  if (data.repoName !== undefined) {
-    o.repo_name = data.repoName;
-  }
-  if (data.branch !== undefined) {
-    o.branch = data.branch;
-  }
-  if (data.cloneUrl !== undefined) {
-    o.clone_url = data.cloneUrl;
-  }
-  if (data.isNewBranch !== undefined) {
-    o.is_new_branch = data.isNewBranch;
-  }
-  if (data.autoCommitPushOverride !== undefined) {
-    o.auto_commit_push_override = data.autoCommitPushOverride;
-  }
-  if (data.autoCreatePrOverride !== undefined) {
-    o.auto_create_pr_override = data.autoCreatePrOverride;
   }
   if (data.globalSkillRefs !== undefined) {
     o.global_skill_refs = data.globalSkillRefs;
@@ -345,18 +256,6 @@ export function partialSessionToSnakeUpdate(
   if (data.lifecycleError !== undefined) {
     o.lifecycle_error = data.lifecycleError;
   }
-  if (data.linesAdded !== undefined) {
-    o.lines_added = data.linesAdded;
-  }
-  if (data.linesRemoved !== undefined) {
-    o.lines_removed = data.linesRemoved;
-  }
-  if (data.prNumber !== undefined) {
-    o.pr_number = data.prNumber;
-  }
-  if (data.prStatus !== undefined) {
-    o.pr_status = data.prStatus;
-  }
   if (data.snapshotUrl !== undefined) {
     o.snapshot_url = data.snapshotUrl;
   }
@@ -365,12 +264,6 @@ export function partialSessionToSnakeUpdate(
   }
   if (data.snapshotSizeBytes !== undefined) {
     o.snapshot_size_bytes = data.snapshotSizeBytes;
-  }
-  if (data.cachedDiff !== undefined) {
-    o.cached_diff = data.cachedDiff;
-  }
-  if (data.cachedDiffUpdatedAt !== undefined) {
-    o.cached_diff_updated_at = data.cachedDiffUpdatedAt?.toISOString() ?? null;
   }
   if (data.updatedAt !== undefined) {
     o.updated_at = data.updatedAt.toISOString();

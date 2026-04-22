@@ -84,7 +84,6 @@ mock.module("@/lib/db/user-preferences", () => ({
     defaultSubagentModelId: null,
     defaultSandboxType: "vercel",
     defaultDiffMode: "unified",
-    autoCommitPush: false,
     modelVariants: userModelVariants,
   }),
 }));

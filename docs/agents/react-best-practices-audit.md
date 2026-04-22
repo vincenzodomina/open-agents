@@ -230,9 +230,9 @@ useEffect(() => {
 
 Multiple components make direct `fetch()` calls for data that SWR already caches:
 
-- `CreateRepoDialog` fetches `GET /api/github/installations` with raw `fetch()`, but `RepoSelectorCompact` fetches the same endpoint via SWR. The direct `fetch()` misses the SWR cache and deduplication.
+- `CreateRepoDialog` duplicated a cached request with raw `fetch()`, while `RepoSelectorCompact` used SWR. The direct `fetch()` missed cache reuse and deduplication.
 
-**Fix:** Replaced `CreateRepoDialog`'s raw `fetch()` + `useEffect` with `useSWR` using the same `"github-installations"` cache key as `RepoSelectorCompact`, ensuring shared cache and deduplication.
+**Fix:** Replaced `CreateRepoDialog`'s raw `fetch()` + `useEffect` with `useSWR` using the shared cache key so both consumers reuse the same request state.
 
 ---
 

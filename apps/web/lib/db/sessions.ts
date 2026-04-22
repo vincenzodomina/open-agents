@@ -237,17 +237,7 @@ export async function countUserMessagesByUserId(
 
 type SessionSidebarFields = Pick<
   Session,
-  | "id"
-  | "title"
-  | "status"
-  | "repoOwner"
-  | "repoName"
-  | "branch"
-  | "linesAdded"
-  | "linesRemoved"
-  | "prNumber"
-  | "prStatus"
-  | "createdAt"
+  "id" | "title" | "status" | "createdAt"
 >;
 
 export type SessionWithUnread = SessionSidebarFields & {
@@ -297,13 +287,6 @@ export async function getSessionsWithUnreadByUserId(
     id: String(row.id),
     title: String(row.title),
     status: row.status as Session["status"],
-    repoOwner: row.repoOwner != null ? String(row.repoOwner) : null,
-    repoName: row.repoName != null ? String(row.repoName) : null,
-    branch: row.branch != null ? String(row.branch) : null,
-    linesAdded: row.linesAdded != null ? Number(row.linesAdded) : null,
-    linesRemoved: row.linesRemoved != null ? Number(row.linesRemoved) : null,
-    prNumber: row.prNumber != null ? Number(row.prNumber) : null,
-    prStatus: row.prStatus as Session["prStatus"],
     createdAt: parseTimestampRequired(row.createdAt),
     lastActivityAt: parseTimestampRequired(row.lastActivityAt),
     hasUnread: Boolean(row.hasUnread),

@@ -23,105 +23,7 @@ interface SandboxRouteLike {
   port: number;
 }
 
-interface SandboxNetworkTransform {
-  headers?: Record<string, string>;
-}
-
-interface SandboxNetworkRule {
-  transform?: SandboxNetworkTransform[];
-}
-
-interface SandboxNetworkPolicy {
-  allow: Record<string, SandboxNetworkRule[]>;
-}
-
-const DEFAULT_NETWORK_POLICY: SandboxNetworkPolicy = {
-  allow: {
-    "*": [],
-  },
-};
-
-function buildGitHubCredentialBrokeringPolicy(
-  token?: string,
-): SandboxNetworkPolicy {
-  if (!token) {
-    return DEFAULT_NETWORK_POLICY;
-  }
-
-  const basicAuthToken = Buffer.from(
-    `x-access-token:${token}`,
-    "utf-8",
-  ).toString("base64");
-
-  return {
-    allow: {
-      "api.github.com": [
-        {
-          transform: [{ headers: { Authorization: `Bearer ${token}` } }],
-        },
-      ],
-      "uploads.github.com": [
-        {
-          transform: [{ headers: { Authorization: `Bearer ${token}` } }],
-        },
-      ],
-      "codeload.github.com": [
-        {
-          transform: [{ headers: { Authorization: `Bearer ${token}` } }],
-        },
-      ],
-      "github.com": [
-        {
-          transform: [
-            { headers: { Authorization: `Basic ${basicAuthToken}` } },
-          ],
-        },
-      ],
-      "*": [],
-    },
-  };
-}
-
-async function syncGitHubCredentialBrokering(
-  sdk: VercelSandboxSDK,
-  token?: string,
-): Promise<void> {
-  const updateNetworkPolicy = (
-    sdk as VercelSandboxSDK & {
-      updateNetworkPolicy?: (policy: SandboxNetworkPolicy) => Promise<void>;
-    }
-  ).updateNetworkPolicy;
-
-  if (typeof updateNetworkPolicy !== "function") {
-    if (token) {
-      throw new Error(
-        "Current @vercel/sandbox SDK does not support network policy updates required for GitHub credential brokering",
-      );
-    }
-    return;
-  }
-
-  await updateNetworkPolicy.call(
-    sdk,
-    buildGitHubCredentialBrokeringPolicy(token),
-  );
-}
-
-function buildAuthenticatedGitHubUrl(
-  repoUrl: string,
-  token: string,
-): string | null {
-  const githubUrlMatch = repoUrl.match(
-    /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/,
-  );
-
-  if (!githubUrlMatch) {
-    return null;
-  }
-
-  const [, owner, repo] = githubUrlMatch;
-  return `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
-}
+const DEFAULT_NETWORK_POLICY = { allow: { "*": [] } };
 
 type VercelSandboxSession = ReturnType<
   InstanceType<typeof VercelSandboxSDK>["currentSession"]
@@ -413,10 +315,6 @@ export class VercelSandbox implements Sandbox {
 - All bash commands already run in the working directory by default — never prepend \`cd <working-directory> &&\`; just run the command directly
 - Do NOT prefix any bash command with a \`cd\` to the working directory — commands like \`cd <working-directory> && npm test\` are WRONG; just use \`npm test\`
 - Use workspace-relative paths for read/write/search/edit operations
-- Git is already configured (user, email, remote auth) - no setup or verification needed
-- GitHub CLI (gh) is NOT available - use curl with the GitHub API directly
-  GitHub API and git HTTPS requests are authenticated automatically via credential brokering; do not pass tokens into commands.
-  Example: curl -X POST -H "Accept: application/vnd.github+json" https://api.github.com/repos/OWNER/REPO/pulls -d '{"title":"...","head":"branch","base":"main","body":"..."}'
 - Node.js runtime with npm/pnpm available
 - Bun and jq are preinstalled
 - Dependencies may not be installed. Before running project scripts (build, typecheck, lint, test), check if \`node_modules\` exists and run the package manager install command if needed (e.g. \`bun install\`, \`npm install\`)
@@ -479,20 +377,14 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
   /**
    * Create a new Vercel Sandbox instance.
    * If `baseSnapshotId` is provided, sandbox bootstraps from that snapshot first.
-   * If a source is provided with `baseSnapshotId`, the repo is cloned after bootstrap.
-   * Use `skipGitWorkspaceBootstrap` when preparing a new base snapshot so the workspace
-   * stays free of `.git` for subsequent clones.
    */
   static async create(
     config: VercelSandboxConfig = {},
   ): Promise<VercelSandbox> {
     const {
       name,
-      source,
       restoreSnapshotId,
-      gitUser,
       env,
-      githubToken,
       vcpus = 4,
       timeout = 300_000,
       runtime = "node22",
@@ -501,7 +393,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       persistent = true,
       snapshotExpiration,
       hooks,
-      skipGitWorkspaceBootstrap = false,
     } = config;
 
     // Clamp proactive timeout to stay under the SDK's hard max when buffer is applied.
@@ -521,7 +412,7 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       timeout: sdkTimeout,
       runtime,
       persistent,
-      networkPolicy: buildGitHubCredentialBrokeringPolicy(githubToken),
+      networkPolicy: DEFAULT_NETWORK_POLICY,
       ...(ports && { ports }),
       ...(snapshotExpiration !== undefined && { snapshotExpiration }),
     };
@@ -537,128 +428,11 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
         ...createBaseConfig,
         source: { type: "snapshot", snapshotId: baseSnapshotId },
       });
-    } else if (source) {
-      sdk = await VercelSandboxSDK.create({
-        ...createBaseConfig,
-        source: source.token
-          ? {
-              type: "git",
-              url: source.url,
-              username: "x-access-token",
-              password: source.token,
-              ...(source.branch && { revision: source.branch }),
-            }
-          : {
-              type: "git",
-              url: source.url,
-              ...(source.branch && { revision: source.branch }),
-            },
-      });
     } else {
       sdk = await VercelSandboxSDK.create(createBaseConfig);
     }
 
     const workingDirectory = DEFAULT_WORKING_DIRECTORY;
-
-    // TODO: `git clone ... .` requires the directory to be empty. If the base
-    // snapshot has files in /vercel/sandbox (dotfiles, tool configs, etc.), the
-    // clone will fail. Consider using git init + remote add + fetch + checkout
-    // instead, which works regardless of existing directory contents.
-    if (source && baseSnapshotId) {
-      const cloneUrl = source.token
-        ? (buildAuthenticatedGitHubUrl(source.url, source.token) ?? source.url)
-        : source.url;
-      const cloneArgs = ["clone"];
-      if (source.branch) {
-        cloneArgs.push("--branch", source.branch);
-      }
-      cloneArgs.push(cloneUrl, ".");
-
-      const cloneResult = await sdk.runCommand({
-        cmd: "git",
-        args: cloneArgs,
-        cwd: workingDirectory,
-      });
-
-      if (cloneResult.exitCode !== 0) {
-        throw new Error(
-          `Failed to clone repository '${source.url}' (exit code ${cloneResult.exitCode})`,
-        );
-      }
-    }
-
-    // Initialize git repo for empty sandboxes (no source provided)
-    // This ensures git commands work consistently (e.g., for diff viewing)
-    if (!source && !restoreSnapshotId && !skipGitWorkspaceBootstrap) {
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["init"],
-        cwd: workingDirectory,
-      });
-    }
-
-    // Configure git to use the token for push operations if provided
-    // We modify the remote URL to embed credentials directly (standard CI/CD approach)
-    // TODO: When baseSnapshotId is set, the token is already embedded in the
-    // clone URL above, making this set-url call redundant for that path.
-    if (source?.token) {
-      const authenticatedUrl = buildAuthenticatedGitHubUrl(
-        source.url,
-        source.token,
-      );
-      if (authenticatedUrl) {
-        await sdk.runCommand({
-          cmd: "git",
-          args: ["remote", "set-url", "origin", authenticatedUrl],
-          cwd: workingDirectory,
-        });
-      }
-    }
-
-    // Configure git user for commits if provided (skip when no repo was created)
-    if (gitUser && (source || !skipGitWorkspaceBootstrap)) {
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["config", "user.name", gitUser.name],
-        cwd: workingDirectory,
-      });
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["config", "user.email", gitUser.email],
-        cwd: workingDirectory,
-      });
-    }
-
-    // Create initial empty commit for empty sandboxes so HEAD exists
-    // This is required for git diff HEAD to work (e.g., diff viewer)
-    // Must be done after gitUser config since git commit requires user info
-    if (
-      !source &&
-      !restoreSnapshotId &&
-      gitUser &&
-      !skipGitWorkspaceBootstrap
-    ) {
-      await sdk.runCommand({
-        cmd: "git",
-        args: ["commit", "--allow-empty", "-m", "Initial commit"],
-        cwd: workingDirectory,
-      });
-    }
-
-    // Create and checkout a new branch if specified
-    if (source?.newBranch) {
-      const checkoutResult = await sdk.runCommand({
-        cmd: "git",
-        args: ["checkout", "-b", source.newBranch],
-        cwd: workingDirectory,
-      });
-
-      if (checkoutResult.exitCode !== 0) {
-        throw new Error(
-          `Failed to create branch '${source.newBranch}': ${await checkoutResult.stderr()}`,
-        );
-      }
-    }
 
     // Capture startTime AFTER all setup operations so users get their full timeout duration.
     const startTime = Date.now();
@@ -691,7 +465,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     sandboxName: string,
     options: {
       env?: Record<string, string>;
-      githubToken?: string;
       hooks?: SandboxHooks;
       /**
        * Remaining timeout in ms for this sandbox session.
@@ -708,7 +481,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       name: sandboxName,
       resume: options.resume ?? false,
     });
-    await syncGitHubCredentialBrokering(sdk, options.githubToken);
     const session = sdk.currentSession();
 
     // Use provided remainingTimeout when available; otherwise derive it from the
@@ -1093,16 +865,6 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
  *   sandboxName: "session_123",
  *   resume: false,
  * });
- *
- * @example
- * // Clone a repo into a new sandbox
- * const sandbox = await connectVercelSandbox({
- *   name: "session_123",
- *   source: {
- *     url: "https://github.com/owner/repo",
- *     branch: "develop",
- *   },
- * });
  */
 export async function connectVercelSandbox(
   config: VercelSandboxConfig | VercelSandboxConnectConfig = {},
@@ -1115,7 +877,6 @@ export async function connectVercelSandbox(
   if (sandboxName) {
     return VercelSandbox.connect(sandboxName, {
       env: connectConfig.env,
-      githubToken: connectConfig.githubToken,
       hooks: connectConfig.hooks,
       remainingTimeout: connectConfig.remainingTimeout,
       ports: connectConfig.ports,

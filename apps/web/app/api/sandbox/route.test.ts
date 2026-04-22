@@ -231,7 +231,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     expect(payload.mode).toBe("just-bash");
   });
 
-  test("rejects repo-backed sandbox requests", async () => {
+  test("rejects unsupported sandbox request payloads", async () => {
     const { POST } = await routeModulePromise;
 
     const response = await POST(
@@ -239,8 +239,7 @@ describe("/api/sandbox lifecycle kicks", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          repoUrl: "https://github.com/acme/private-repo",
-          branch: "main",
+          repoUrl: "https://example.com/source",
           sandboxType: "vercel",
         }),
       }),
@@ -249,7 +248,7 @@ describe("/api/sandbox lifecycle kicks", () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toBe(
-      "Repository-backed sandboxes are no longer supported",
+      "Preconfigured sandbox sources are no longer supported",
     );
     expect(connectConfigs).toHaveLength(0);
   });

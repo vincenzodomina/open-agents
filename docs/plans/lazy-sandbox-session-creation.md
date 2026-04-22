@@ -130,7 +130,7 @@ Specifically:
 ## Verification
 
 - Create an empty session and immediately send a first message; sandbox should provision and the turn should run.
-- Create a repo-backed session and immediately send a first message; clone/branch setup should happen exactly once.
+- Create a session with an explicit sandbox preference and immediately send a first message; provisioning should happen exactly once.
 - Send the first message from two tabs concurrently; only one sandbox should be created.
 - Create a session programmatically through `POST /api/sessions`; later chat execution should still work.
 - Manual sandbox create/resume flows should continue to work.

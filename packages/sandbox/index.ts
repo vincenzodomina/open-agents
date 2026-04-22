@@ -10,7 +10,7 @@ export type {
 } from "./interface";
 
 // shared types
-export type { Source, FileEntry, SandboxStatus } from "./types";
+export type { FileEntry, SandboxStatus } from "./types";
 
 // factory
 export {

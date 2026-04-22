@@ -37,12 +37,6 @@ function buildJustBashCreateConfig(
 ) {
   const sandboxName = getSandboxName(state);
 
-  if (state.source) {
-    throw new Error(
-      "Repository-backed just-bash sandboxes are no longer supported",
-    );
-  }
-
   return {
     ...(sandboxName ? { name: sandboxName } : {}),
     env: options?.env,

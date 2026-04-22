@@ -63,7 +63,7 @@ const scenes: readonly Scene[] = [
       { tone: "plain", text: "found 6 unused exports:" },
       { tone: "dim", text: "  lib/utils.ts:12      formatDate" },
       { tone: "dim", text: "  lib/utils.ts:45      parseConfig" },
-      { tone: "dim", text: "  lib/crypto.ts:8      hashToken" },
+      { tone: "dim", text: "  lib/session/types.ts:3 authProvider" },
       { tone: "dim", text: "  lib/sandbox/utils.ts:22  normalizePath" },
       { tone: "dim", text: "  hooks/use-theme.ts:5     useTheme" },
       { tone: "dim", text: "  components/badge.tsx:3    Badge" },

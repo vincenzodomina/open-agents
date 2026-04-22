@@ -9,17 +9,7 @@ import { fetcher } from "@/lib/swr";
 
 export type SessionWithUnread = Pick<
   Session,
-  | "id"
-  | "title"
-  | "status"
-  | "repoOwner"
-  | "repoName"
-  | "branch"
-  | "linesAdded"
-  | "linesRemoved"
-  | "prNumber"
-  | "prStatus"
-  | "createdAt"
+  "id" | "title" | "status" | "createdAt"
 > & {
   hasUnread: boolean;
   hasStreaming: boolean;
@@ -63,13 +53,6 @@ function mergeSessionWithSummary(
     id: updatedSession.id,
     title: updatedSession.title,
     status: updatedSession.status,
-    repoOwner: updatedSession.repoOwner,
-    repoName: updatedSession.repoName,
-    branch: updatedSession.branch,
-    linesAdded: updatedSession.linesAdded,
-    linesRemoved: updatedSession.linesRemoved,
-    prNumber: updatedSession.prNumber,
-    prStatus: updatedSession.prStatus,
     createdAt: updatedSession.createdAt,
     hasUnread: session.hasUnread,
     hasStreaming: session.hasStreaming,

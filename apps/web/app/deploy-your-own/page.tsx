@@ -4,15 +4,8 @@ import { Button } from "@/components/ui/button";
 
 const DEPLOY_ENV_VARS = [
   "POSTGRES_URL",
-  "ENCRYPTION_KEY",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "NEXT_PUBLIC_GITHUB_CLIENT_ID",
-  "GITHUB_CLIENT_SECRET",
-  "GITHUB_APP_ID",
-  "GITHUB_APP_PRIVATE_KEY",
-  "NEXT_PUBLIC_GITHUB_APP_SLUG",
-  "GITHUB_WEBHOOK_SECRET",
 ] as const;
 
 const DEPLOY_PRODUCTS = [
@@ -44,7 +37,7 @@ const DEPLOY_TEMPLATE_URL = (() => {
     ["env", DEPLOY_ENV_VARS.join(",")],
     [
       "envDescription",
-      "Neon can provide POSTGRES_URL automatically. Add Supabase Auth and ENCRYPTION_KEY, then add GitHub App credentials for a full deployment.",
+      "Neon can provide POSTGRES_URL automatically. Add Supabase Auth keys for a full deployment.",
     ],
     ["products", encodeURIComponent(JSON.stringify(DEPLOY_PRODUCTS))],
     ["skippable-integrations", "1"],

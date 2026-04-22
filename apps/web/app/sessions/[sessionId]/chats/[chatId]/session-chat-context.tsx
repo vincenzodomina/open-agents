@@ -611,7 +611,7 @@ export function SessionChatProvider({
       hasPausedSandboxState(sessionRecord.sandboxState) ||
       !!sessionRecord.snapshotUrl);
 
-  // Use SWR hooks for diff and files
+  // Use SWR hooks for sandbox-backed files and skills
   const sandboxConnected = sandboxInfo !== null;
 
   const {

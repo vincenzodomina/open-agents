@@ -7,8 +7,8 @@ const steps = [
   { label: "run agent loop", ms: 1800 },
   { label: "persist messages", ms: 500 },
   { label: "record usage", ms: 400 },
-  { label: "refresh diff cache", ms: 600 },
-  { label: "auto-commit + push", ms: 800 },
+  { label: "refresh files", ms: 600 },
+  { label: "sync session state", ms: 800 },
 ] as const;
 
 export function FeatureWorkflow() {

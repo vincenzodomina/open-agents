@@ -11,10 +11,6 @@ import { getServerSession } from "@/lib/session/get-server-session";
 interface UpdateSessionRequest {
   title?: string;
   status?: "running" | "completed" | "failed" | "archived";
-  linesAdded?: number;
-  linesRemoved?: number;
-  prNumber?: number;
-  prStatus?: "open" | "merged" | "closed";
 }
 
 export async function GET(

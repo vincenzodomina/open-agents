@@ -1,18 +1,4 @@
 /**
- * Source configuration for cloning a git repository into a sandbox.
- */
-export interface Source {
-  /** GitHub repository URL (e.g., "https://github.com/owner/repo") */
-  repo: string;
-  /** Branch to clone (defaults to "main") */
-  branch?: string;
-  /** Token for authenticated git access (e.g., GitHub PAT). Enables push operations. */
-  token?: string;
-  /** If set, create and checkout a new branch with this name after cloning */
-  newBranch?: string;
-}
-
-/**
  * File entry representing a file, directory, or symlink in the sandbox filesystem.
  * Used for serialization/deserialization of sandbox state.
  */

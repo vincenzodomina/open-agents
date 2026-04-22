@@ -7,12 +7,6 @@ interface TestSessionRecord {
   id: string;
   userId: string;
   title: string;
-  cloneUrl: string | null;
-  repoOwner: string | null;
-  repoName: string | null;
-  prNumber?: number | null;
-  autoCommitPushOverride?: boolean | null;
-  autoCreatePrOverride?: boolean | null;
   sandboxState: {
     type: "vercel";
   };
@@ -42,8 +36,6 @@ let compareAndSetDefaultResult = true;
 let compareAndSetResults: boolean[] = [];
 let startCalls: unknown[][] = [];
 let preferencesState: {
-  autoCommitPush: boolean;
-  autoCreatePr: boolean;
   modelVariants: Array<{
     id: string;
     name: string;
@@ -51,8 +43,6 @@ let preferencesState: {
     providerOptions: Record<string, unknown>;
   }>;
 } = {
-  autoCommitPush: true,
-  autoCreatePr: false,
   modelVariants: [],
 };
 let cachedSkillsState: unknown = null;
@@ -254,8 +244,6 @@ describe("/api/chat route", () => {
     existingUserMessageCount = 0;
     existingChatMessage = null;
     preferencesState = {
-      autoCommitPush: true,
-      autoCreatePr: false,
       modelVariants: [],
     };
     compareAndSetChatActiveStreamIdSpy.mockClear();
@@ -270,12 +258,6 @@ describe("/api/chat route", () => {
       id: "session-1",
       userId: "user-1",
       title: "Session title",
-      cloneUrl: null,
-      repoOwner: null,
-      repoName: null,
-      prNumber: null,
-      autoCommitPushOverride: null,
-      autoCreatePrOverride: null,
       sandboxState: {
         type: "vercel",
       },
@@ -389,21 +371,6 @@ describe("/api/chat route", () => {
         "/vercel/sandbox/.agents/skills",
         "/root/.agents/skills",
       ],
-    ]);
-  });
-
-  test("does not pass repo automation flags to the workflow", async () => {
-    const { POST } = await routeModulePromise;
-
-    const response = await POST(createValidRequest());
-
-    expect(response.ok).toBe(true);
-    expect(startCalls).toHaveLength(1);
-    expect(startCalls[0]?.[1]).toEqual([
-      expect.not.objectContaining({
-        autoCommitEnabled: true,
-        autoCreatePrEnabled: true,
-      }),
     ]);
   });
 

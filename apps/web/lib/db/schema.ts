@@ -25,10 +25,7 @@ export type ChatMessageRow = TableRow<"chat_messages">;
 export type ChatReadRow = TableRow<"chat_reads">;
 export type ShareRow = TableRow<"shares">;
 export type UserRow = TableRow<"users">;
-export type AccountRow = TableRow<"accounts">;
-export type LinkedAccountRow = TableRow<"linked_accounts">;
 export type UserPreferencesRow = TableRow<"user_preferences">;
-export type UsageEventRow = TableRow<"usage_events">;
 export type WorkflowRunRow = TableRow<"workflow_runs">;
 export type WorkflowRunStepRow = TableRow<"workflow_run_steps">;
 
@@ -40,13 +37,6 @@ export type Session = {
   userId: SR["user_id"];
   title: SR["title"];
   status: SR["status"];
-  repoOwner: SR["repo_owner"];
-  repoName: SR["repo_name"];
-  branch: SR["branch"];
-  cloneUrl: SR["clone_url"];
-  isNewBranch: SR["is_new_branch"];
-  autoCommitPushOverride: SR["auto_commit_push_override"];
-  autoCreatePrOverride: SR["auto_create_pr_override"];
   globalSkillRefs: GlobalSkillRef[];
   sandboxState: SandboxState | null | undefined;
   lifecycleState: SR["lifecycle_state"];
@@ -56,16 +46,9 @@ export type Session = {
   hibernateAfter: Date | null;
   lifecycleRunId: SR["lifecycle_run_id"];
   lifecycleError: SR["lifecycle_error"];
-  linesAdded: SR["lines_added"];
-  linesRemoved: SR["lines_removed"];
-  prNumber: SR["pr_number"];
-  /** DB column is `text`; narrowed for UI. */
-  prStatus: "open" | "merged" | "closed" | null;
   snapshotUrl: SR["snapshot_url"];
   snapshotCreatedAt: Date | null;
   snapshotSizeBytes: SR["snapshot_size_bytes"];
-  cachedDiff: SR["cached_diff"];
-  cachedDiffUpdatedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -171,28 +154,6 @@ export type NewWorkflowRunStep = Omit<WorkflowRunStep, "createdAt"> & {
   createdAt?: Date;
 };
 
-type LaR = LinkedAccountRow;
-
-export type LinkedAccount = {
-  id: LaR["id"];
-  userId: LaR["user_id"];
-  provider: LaR["provider"];
-  externalId: LaR["external_id"];
-  workspaceId: LaR["workspace_id"];
-  metadata: LaR["metadata"];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type NewLinkedAccount = Omit<
-  LinkedAccount,
-  "id" | "createdAt" | "updatedAt"
-> & {
-  id?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-};
-
 type UpR = UserPreferencesRow;
 
 export type UserPreferences = {
@@ -219,43 +180,16 @@ export type NewUserPreferences = Omit<
   updatedAt?: Date;
 };
 
-type UeR = UsageEventRow;
-
-export type UsageEvent = {
-  id: UeR["id"];
-  userId: UeR["user_id"];
-  source: UeR["source"];
-  agentType: UeR["agent_type"];
-  provider: UeR["provider"];
-  modelId: UeR["model_id"];
-  inputTokens: UeR["input_tokens"];
-  cachedInputTokens: UeR["cached_input_tokens"];
-  outputTokens: UeR["output_tokens"];
-  toolCallCount: UeR["tool_call_count"];
-  createdAt: Date;
-};
-
-export type NewUsageEvent = Omit<UsageEvent, "id" | "createdAt"> & {
-  id?: string;
-  createdAt?: Date;
-};
-
 /** Full `users` row in app shape (camelCase + Date). Rarely used; most reads select subsets. */
 type Ur = UserRow;
 
 export type User = {
   id: Ur["id"];
-  provider: Ur["provider"];
-  externalId: Ur["external_id"];
-  accessToken: Ur["access_token"];
-  refreshToken: Ur["refresh_token"];
-  scope: Ur["scope"];
   username: Ur["username"];
   email: Ur["email"];
   name: Ur["name"];
   avatarUrl: Ur["avatar_url"];
   createdAt: Date;
-  tokenExpiresAt: Date | null;
   updatedAt: Date;
   lastLoginAt: Date;
 };
@@ -265,26 +199,4 @@ export type NewUser = Omit<User, "createdAt" | "updatedAt" | "lastLoginAt"> & {
   createdAt?: Date;
   updatedAt?: Date;
   lastLoginAt?: Date;
-};
-
-type Ar = AccountRow;
-
-export type Account = {
-  id: Ar["id"];
-  userId: Ar["user_id"];
-  provider: Ar["provider"];
-  externalUserId: Ar["external_user_id"];
-  accessToken: Ar["access_token"];
-  refreshToken: Ar["refresh_token"];
-  expiresAt: Date | null;
-  scope: Ar["scope"];
-  username: Ar["username"];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type NewAccount = Omit<Account, "id" | "createdAt" | "updatedAt"> & {
-  id?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
 };

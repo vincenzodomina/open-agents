@@ -5,8 +5,6 @@ import type { VercelState } from "./state";
 
 interface ConnectOptions {
   env?: Record<string, string>;
-  githubToken?: string;
-  gitUser?: { name: string; email: string };
   hooks?: SandboxHooks;
   timeout?: number;
   ports?: number[];
@@ -15,7 +13,6 @@ interface ConnectOptions {
   createIfMissing?: boolean;
   persistent?: boolean;
   snapshotExpiration?: number;
-  skipGitWorkspaceBootstrap?: boolean;
 }
 
 function getRemainingTimeout(
@@ -62,20 +59,8 @@ function buildCreateConfig(
 
   return {
     ...(sandboxName ? { name: sandboxName } : {}),
-    ...(state.source
-      ? {
-          source: {
-            url: state.source.repo,
-            branch: state.source.branch,
-            token: state.source.token,
-            newBranch: state.source.newBranch,
-          },
-        }
-      : {}),
     ...(state.snapshotId ? { restoreSnapshotId: state.snapshotId } : {}),
     env: options?.env,
-    githubToken: options?.githubToken,
-    gitUser: options?.gitUser,
     hooks: options?.hooks,
     ...(options?.timeout !== undefined && { timeout: options.timeout }),
     ...(options?.ports && { ports: options.ports }),
@@ -87,9 +72,6 @@ function buildCreateConfig(
     }),
     ...(options?.snapshotExpiration !== undefined && {
       snapshotExpiration: options.snapshotExpiration,
-    }),
-    ...(options?.skipGitWorkspaceBootstrap && {
-      skipGitWorkspaceBootstrap: true,
     }),
   };
 }
@@ -108,7 +90,6 @@ async function connectNamedSandbox(
   try {
     return await VercelSandbox.connect(sandboxName, {
       env: options?.env,
-      githubToken: options?.githubToken,
       hooks: options?.hooks,
       remainingTimeout,
       ports: options?.ports,
@@ -128,7 +109,6 @@ async function connectNamedSandbox(
  *
  * - If `sandboxName` is present, reconnects to the named persistent sandbox
  * - If `snapshotId` is present without `sandboxName`, restores from a legacy snapshot
- * - If `source` is present, creates a new sandbox and prepares the repo
  * - Otherwise, creates an empty sandbox
  */
 export async function connectVercel(

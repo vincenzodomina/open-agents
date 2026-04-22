@@ -24,9 +24,9 @@ const sessions: readonly FakeSession[] = [
     todoDone: 3,
     elapsed: "42s",
     files: [
-      "app/api/auth/route.ts",
-      "app/api/auth/callback/route.ts",
-      "middleware.ts",
+      "app/auth/login/page.tsx",
+      "app/auth/callback/route.ts",
+      "lib/session/resolve-app-session.ts",
     ],
   },
   {
@@ -49,11 +49,7 @@ const sessions: readonly FakeSession[] = [
     todoTotal: 4,
     todoDone: 4,
     elapsed: "56s",
-    files: [
-      "lib/chat-streaming-state.test.ts",
-      "lib/swr.test.ts",
-      "lib/db/sessions.test.ts",
-    ],
+    files: ["lib/chat-streaming-state.ts", "lib/swr.ts", "lib/db/sessions.ts"],
   },
 ];
 

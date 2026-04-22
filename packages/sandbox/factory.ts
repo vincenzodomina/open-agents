@@ -21,10 +21,6 @@ export type SandboxState =
 export interface ConnectOptions {
   /** Environment variables available to sandbox commands */
   env?: Record<string, string>;
-  /** GitHub token used for credential brokering; never exposed inside the sandbox */
-  githubToken?: string;
-  /** Git user for commits */
-  gitUser?: { name: string; email: string };
   /** Lifecycle hooks */
   hooks?: SandboxHooks;
   /** Timeout in milliseconds for sandboxes (default: 300,000 = 5 minutes) */
@@ -41,10 +37,6 @@ export interface ConnectOptions {
   persistent?: boolean;
   /** Default expiration for automatic persistent-sandbox snapshots */
   snapshotExpiration?: number;
-  /**
-   * Skip git init in an empty workspace (e.g. when refreshing a Vercel base snapshot).
-   */
-  skipGitWorkspaceBootstrap?: boolean;
 }
 
 /**

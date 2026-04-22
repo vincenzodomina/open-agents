@@ -1,5 +1,4 @@
 import type { Session } from "@supabase/supabase-js";
-import { encrypt } from "@/lib/crypto";
 import { upsertUser } from "@/lib/db/users";
 import type { Session as AppSession } from "@/lib/session/types";
 
@@ -29,25 +28,13 @@ export async function syncAppUserFromSupabase(
     readMetaString(meta, "avatar_url") ?? readMetaString(meta, "picture") ?? "";
   const avatarUrl = avatarRaw || undefined;
 
-  const userId = await upsertUser(
-    {
-      provider: "supabase",
-      externalId: user.id,
-      accessToken: encrypt(session.access_token),
-      refreshToken: session.refresh_token
-        ? encrypt(session.refresh_token)
-        : undefined,
-      scope: undefined,
-      username,
-      email: user.email ?? undefined,
-      name,
-      avatarUrl,
-      tokenExpiresAt: session.expires_at
-        ? new Date(session.expires_at * 1000)
-        : undefined,
-    },
-    { fixedUserId: user.id },
-  );
+  const userId = await upsertUser({
+    supabaseUserId: user.id,
+    username,
+    email: user.email ?? undefined,
+    name,
+    avatarUrl,
+  });
 
   return {
     created: Date.now(),

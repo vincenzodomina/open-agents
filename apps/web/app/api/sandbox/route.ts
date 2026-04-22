@@ -32,8 +32,6 @@ import { getServerSession } from "@/lib/session/get-server-session";
 
 interface CreateSandboxRequest {
   repoUrl?: string;
-  branch?: string;
-  isNewBranch?: boolean;
   sessionId?: string;
   sandboxType?: SandboxType;
 }
@@ -100,7 +98,7 @@ export async function POST(req: Request) {
 
   if (repoUrl) {
     return Response.json(
-      { error: "Repository-backed sandboxes are no longer supported" },
+      { error: "Preconfigured sandbox sources are no longer supported" },
       { status: 400 },
     );
   }

@@ -92,17 +92,6 @@ alter table "public"."linked_accounts" enable row level security;
     "user_id" text not null,
     "title" text not null,
     "status" text not null default 'running'::text,
-    "repo_owner" text,
-    "repo_name" text,
-    "branch" text,
-    "clone_url" text,
-    "vercel_project_id" text,
-    "vercel_project_name" text,
-    "vercel_team_id" text,
-    "vercel_team_slug" text,
-    "is_new_branch" boolean not null default false,
-    "auto_commit_push_override" boolean,
-    "auto_create_pr_override" boolean,
     "global_skill_refs" jsonb not null default '[]'::jsonb,
     "sandbox_state" jsonb,
     "lifecycle_state" text,
@@ -112,15 +101,9 @@ alter table "public"."linked_accounts" enable row level security;
     "hibernate_after" timestamp without time zone,
     "lifecycle_run_id" text,
     "lifecycle_error" text,
-    "lines_added" integer default 0,
-    "lines_removed" integer default 0,
-    "pr_number" integer,
-    "pr_status" text,
     "snapshot_url" text,
     "snapshot_created_at" timestamp without time zone,
     "snapshot_size_bytes" integer,
-    "cached_diff" jsonb,
-    "cached_diff_updated_at" timestamp without time zone,
     "created_at" timestamp without time zone not null default now(),
     "updated_at" timestamp without time zone not null default now()
       );
@@ -139,25 +122,6 @@ alter table "public"."sessions" enable row level security;
 
 alter table "public"."shares" enable row level security;
 
-
-  create table "public"."usage_events" (
-    "id" text not null,
-    "user_id" text not null,
-    "source" text not null default 'web'::text,
-    "agent_type" text not null default 'main'::text,
-    "provider" text,
-    "model_id" text,
-    "input_tokens" integer not null default 0,
-    "cached_input_tokens" integer not null default 0,
-    "output_tokens" integer not null default 0,
-    "tool_call_count" integer not null default 0,
-    "created_at" timestamp without time zone not null default now()
-      );
-
-
-alter table "public"."usage_events" enable row level security;
-
-
   create table "public"."user_preferences" (
     "id" text not null,
     "user_id" text not null,
@@ -165,12 +129,8 @@ alter table "public"."usage_events" enable row level security;
     "default_subagent_model_id" text,
     "default_sandbox_type" text default 'just-bash'::text,
     "default_diff_mode" text default 'unified'::text,
-    "auto_commit_push" boolean not null default false,
-    "auto_create_pr" boolean not null default false,
     "alerts_enabled" boolean not null default true,
     "alert_sound_enabled" boolean not null default true,
-    "public_usage_enabled" boolean not null default false,
-    "global_skill_refs" jsonb not null default '[]'::jsonb,
     "model_variants" jsonb not null default '[]'::jsonb,
     "enabled_model_ids" jsonb not null default '[]'::jsonb,
     "created_at" timestamp without time zone not null default now(),
@@ -200,23 +160,6 @@ alter table "public"."user_preferences" enable row level security;
 
 
 alter table "public"."users" enable row level security;
-
-
-  create table "public"."vercel_project_links" (
-    "user_id" text not null,
-    "repo_owner" text not null,
-    "repo_name" text not null,
-    "project_id" text not null,
-    "project_name" text not null,
-    "team_id" text,
-    "team_slug" text,
-    "created_at" timestamp without time zone not null default now(),
-    "updated_at" timestamp without time zone not null default now()
-      );
-
-
-alter table "public"."vercel_project_links" enable row level security;
-
 
   create table "public"."workflow_run_steps" (
     "id" text not null,
@@ -282,8 +225,6 @@ CREATE UNIQUE INDEX shares_chat_id_idx ON public.shares USING btree (chat_id);
 
 CREATE UNIQUE INDEX shares_pkey ON public.shares USING btree (id);
 
-CREATE UNIQUE INDEX usage_events_pkey ON public.usage_events USING btree (id);
-
 CREATE UNIQUE INDEX user_preferences_pkey ON public.user_preferences USING btree (id);
 
 CREATE UNIQUE INDEX user_preferences_user_id_key ON public.user_preferences USING btree (user_id);
@@ -291,8 +232,6 @@ CREATE UNIQUE INDEX user_preferences_user_id_key ON public.user_preferences USIN
 CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id);
 
 CREATE UNIQUE INDEX users_provider_external_id_idx ON public.users USING btree (provider, external_id);
-
-CREATE UNIQUE INDEX vercel_project_links_pkey ON public.vercel_project_links USING btree (user_id, repo_owner, repo_name);
 
 CREATE UNIQUE INDEX workflow_run_steps_pkey ON public.workflow_run_steps USING btree (id);
 
@@ -324,13 +263,9 @@ alter table "public"."sessions" add constraint "sessions_pkey" PRIMARY KEY using
 
 alter table "public"."shares" add constraint "shares_pkey" PRIMARY KEY using index "shares_pkey";
 
-alter table "public"."usage_events" add constraint "usage_events_pkey" PRIMARY KEY using index "usage_events_pkey";
-
 alter table "public"."user_preferences" add constraint "user_preferences_pkey" PRIMARY KEY using index "user_preferences_pkey";
 
 alter table "public"."users" add constraint "users_pkey" PRIMARY KEY using index "users_pkey";
-
-alter table "public"."vercel_project_links" add constraint "vercel_project_links_pkey" PRIMARY KEY using index "vercel_project_links_pkey";
 
 alter table "public"."workflow_run_steps" add constraint "workflow_run_steps_pkey" PRIMARY KEY using index "workflow_run_steps_pkey";
 
@@ -372,19 +307,11 @@ alter table "public"."shares" add constraint "shares_chat_id_fkey" FOREIGN KEY (
 
 alter table "public"."shares" validate constraint "shares_chat_id_fkey";
 
-alter table "public"."usage_events" add constraint "usage_events_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
-
-alter table "public"."usage_events" validate constraint "usage_events_user_id_fkey";
-
 alter table "public"."user_preferences" add constraint "user_preferences_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
 
 alter table "public"."user_preferences" validate constraint "user_preferences_user_id_fkey";
 
 alter table "public"."user_preferences" add constraint "user_preferences_user_id_key" UNIQUE using index "user_preferences_user_id_key";
-
-alter table "public"."vercel_project_links" add constraint "vercel_project_links_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
-
-alter table "public"."vercel_project_links" validate constraint "vercel_project_links_user_id_fkey";
 
 alter table "public"."workflow_run_steps" add constraint "workflow_run_steps_workflow_run_id_fkey" FOREIGN KEY (workflow_run_id) REFERENCES public.workflow_runs(id) ON DELETE CASCADE not valid;
 
@@ -524,53 +451,6 @@ END;
 $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.find_public_usage_user_candidates(p_username_normalized text)
- RETURNS jsonb
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  SELECT COALESCE(
-    jsonb_agg(
-      jsonb_build_object(
-        'id', sub.id,
-        'username', sub.username,
-        'name', sub.name,
-        'avatarUrl', sub.avatar_url,
-        'lastLoginAt', sub.last_login_at,
-        'publicUsageEnabled', sub.public_usage_enabled
-      )
-    ),
-    '[]'::jsonb
-  )
-  FROM (
-    SELECT u.id, u.username, u.name, u.avatar_url, u.last_login_at, up.public_usage_enabled
-    FROM users u
-    LEFT JOIN user_preferences up ON up.user_id = u.id
-    WHERE lower(u.username) = p_username_normalized
-    ORDER BY u.last_login_at DESC NULLS LAST, u.id
-    LIMIT 10
-  ) sub;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.find_sessions_by_repo_pr(p_repo_owner text, p_repo_name text, p_pr_number integer)
- RETURNS jsonb
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  SELECT COALESCE(
-    jsonb_agg(to_jsonb(s)),
-    '[]'::jsonb
-  )
-  FROM sessions s
-  WHERE lower(s.repo_owner) = lower(p_repo_owner)
-    AND lower(s.repo_name) = lower(p_repo_name)
-    AND s.pr_number = p_pr_number;
-$function$
-;
-
 CREATE OR REPLACE FUNCTION public.fork_chat_apply(p_user_id text, p_forked_chat jsonb, p_messages jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -674,13 +554,6 @@ AS $function$
       s.id,
       s.title,
       s.status,
-      s.repo_owner AS "repoOwner",
-      s.repo_name AS "repoName",
-      s.branch,
-      s.lines_added AS "linesAdded",
-      s.lines_removed AS "linesRemoved",
-      s.pr_number AS "prNumber",
-      s.pr_status AS "prStatus",
       s.created_at AS "createdAt",
       COALESCE(MAX(c.updated_at), s.created_at) AS "lastActivityAt",
       COALESCE(BOOL_OR(
@@ -718,232 +591,6 @@ AS $function$
     LIMIT COALESCE(p_limit, 2147483647)
     OFFSET COALESCE(p_offset, 0)
   ) AS base;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.get_usage_history_rows(p_user_id text, p_range_from date, p_range_to date, p_all_time boolean, p_days integer)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_since timestamptz;
-  v_rows jsonb;
-BEGIN
-  IF p_all_time THEN
-    SELECT COALESCE(jsonb_agg(row_to_json(t)::jsonb ORDER BY t.date), '[]'::jsonb)
-    INTO v_rows
-    FROM (
-      SELECT
-        date(ue.created_at)::text AS date,
-        ue.source,
-        ue.agent_type AS "agentType",
-        ue.provider,
-        ue.model_id AS "modelId",
-        COALESCE(SUM(ue.input_tokens), 0)::double precision AS "inputTokens",
-        COALESCE(SUM(ue.cached_input_tokens), 0)::double precision AS "cachedInputTokens",
-        COALESCE(SUM(ue.output_tokens), 0)::double precision AS "outputTokens",
-        COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN 1 ELSE 0 END), 0)::double precision AS "messageCount",
-        COALESCE(SUM(ue.tool_call_count), 0)::double precision AS "toolCallCount"
-      FROM usage_events ue
-      WHERE ue.user_id = p_user_id
-      GROUP BY date(ue.created_at), ue.source, ue.agent_type, ue.provider, ue.model_id
-    ) t;
-    RETURN v_rows;
-  END IF;
-
-  IF p_range_from IS NOT NULL AND p_range_to IS NOT NULL THEN
-    SELECT COALESCE(jsonb_agg(row_to_json(t)::jsonb ORDER BY t.date), '[]'::jsonb)
-    INTO v_rows
-    FROM (
-      SELECT
-        date(ue.created_at)::text AS date,
-        ue.source,
-        ue.agent_type AS "agentType",
-        ue.provider,
-        ue.model_id AS "modelId",
-        COALESCE(SUM(ue.input_tokens), 0)::double precision AS "inputTokens",
-        COALESCE(SUM(ue.cached_input_tokens), 0)::double precision AS "cachedInputTokens",
-        COALESCE(SUM(ue.output_tokens), 0)::double precision AS "outputTokens",
-        COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN 1 ELSE 0 END), 0)::double precision AS "messageCount",
-        COALESCE(SUM(ue.tool_call_count), 0)::double precision AS "toolCallCount"
-      FROM usage_events ue
-      WHERE ue.user_id = p_user_id
-        AND date(ue.created_at) >= p_range_from
-        AND date(ue.created_at) <= p_range_to
-      GROUP BY date(ue.created_at), ue.source, ue.agent_type, ue.provider, ue.model_id
-    ) t;
-    RETURN v_rows;
-  END IF;
-
-  v_since := now() - make_interval(days => COALESCE(p_days, 280));
-
-  SELECT COALESCE(jsonb_agg(row_to_json(t)::jsonb ORDER BY t.date), '[]'::jsonb)
-  INTO v_rows
-  FROM (
-    SELECT
-      date(ue.created_at)::text AS date,
-      ue.source,
-      ue.agent_type AS "agentType",
-      ue.provider,
-      ue.model_id AS "modelId",
-      COALESCE(SUM(ue.input_tokens), 0)::double precision AS "inputTokens",
-      COALESCE(SUM(ue.cached_input_tokens), 0)::double precision AS "cachedInputTokens",
-      COALESCE(SUM(ue.output_tokens), 0)::double precision AS "outputTokens",
-      COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN 1 ELSE 0 END), 0)::double precision AS "messageCount",
-      COALESCE(SUM(ue.tool_call_count), 0)::double precision AS "toolCallCount"
-    FROM usage_events ue
-    WHERE ue.user_id = p_user_id
-      AND ue.created_at >= v_since
-    GROUP BY date(ue.created_at), ue.source, ue.agent_type, ue.provider, ue.model_id
-  ) t;
-
-  RETURN v_rows;
-END;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.get_usage_insights_bundle(p_user_id text, p_range_from date, p_range_to date, p_all_time boolean, p_days integer)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_since timestamptz;
-  v_agg jsonb;
-  v_sessions jsonb;
-BEGIN
-  IF p_all_time THEN
-    SELECT jsonb_build_object(
-      'totalInputTokens', COALESCE(SUM(ue.input_tokens), 0),
-      'totalCachedInputTokens', COALESCE(SUM(ue.cached_input_tokens), 0),
-      'totalOutputTokens', COALESCE(SUM(ue.output_tokens), 0),
-      'totalToolCallCount', COALESCE(SUM(ue.tool_call_count), 0),
-      'mainInputTokens', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN ue.input_tokens ELSE 0 END), 0),
-      'mainOutputTokens', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN ue.output_tokens ELSE 0 END), 0),
-      'mainAssistantTurnCount', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN 1 ELSE 0 END), 0),
-      'largestMainTurnTokens', COALESCE(MAX(
-        CASE WHEN ue.agent_type = 'main'
-          THEN ue.input_tokens::bigint + ue.output_tokens::bigint
-          ELSE NULL
-        END
-      ), 0)
-    )
-    INTO v_agg
-    FROM usage_events ue
-    WHERE ue.user_id = p_user_id;
-
-    SELECT COALESCE(
-      jsonb_agg(
-        jsonb_build_object(
-          'repoOwner', s.repo_owner,
-          'repoName', s.repo_name,
-          'prNumber', s.pr_number,
-          'prStatus', s.pr_status,
-          'linesAdded', s.lines_added,
-          'linesRemoved', s.lines_removed,
-          'updatedAt', s.updated_at
-        )
-      ),
-      '[]'::jsonb
-    )
-    INTO v_sessions
-    FROM sessions s
-    WHERE s.user_id = p_user_id;
-
-    RETURN jsonb_build_object('aggregate', v_agg, 'sessions', v_sessions);
-  END IF;
-
-  IF p_range_from IS NOT NULL AND p_range_to IS NOT NULL THEN
-    SELECT jsonb_build_object(
-      'totalInputTokens', COALESCE(SUM(ue.input_tokens), 0),
-      'totalCachedInputTokens', COALESCE(SUM(ue.cached_input_tokens), 0),
-      'totalOutputTokens', COALESCE(SUM(ue.output_tokens), 0),
-      'totalToolCallCount', COALESCE(SUM(ue.tool_call_count), 0),
-      'mainInputTokens', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN ue.input_tokens ELSE 0 END), 0),
-      'mainOutputTokens', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN ue.output_tokens ELSE 0 END), 0),
-      'mainAssistantTurnCount', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN 1 ELSE 0 END), 0),
-      'largestMainTurnTokens', COALESCE(MAX(
-        CASE WHEN ue.agent_type = 'main'
-          THEN ue.input_tokens::bigint + ue.output_tokens::bigint
-          ELSE NULL
-        END
-      ), 0)
-    )
-    INTO v_agg
-    FROM usage_events ue
-    WHERE ue.user_id = p_user_id
-      AND date(ue.created_at) >= p_range_from
-      AND date(ue.created_at) <= p_range_to;
-
-    SELECT COALESCE(
-      jsonb_agg(
-        jsonb_build_object(
-          'repoOwner', s.repo_owner,
-          'repoName', s.repo_name,
-          'prNumber', s.pr_number,
-          'prStatus', s.pr_status,
-          'linesAdded', s.lines_added,
-          'linesRemoved', s.lines_removed,
-          'updatedAt', s.updated_at
-        )
-      ),
-      '[]'::jsonb
-    )
-    INTO v_sessions
-    FROM sessions s
-    WHERE s.user_id = p_user_id
-      AND date(s.updated_at) >= p_range_from
-      AND date(s.updated_at) <= p_range_to;
-
-    RETURN jsonb_build_object('aggregate', v_agg, 'sessions', v_sessions);
-  END IF;
-
-  v_since := now() - make_interval(days => COALESCE(p_days, 280));
-
-  SELECT jsonb_build_object(
-    'totalInputTokens', COALESCE(SUM(ue.input_tokens), 0),
-    'totalCachedInputTokens', COALESCE(SUM(ue.cached_input_tokens), 0),
-    'totalOutputTokens', COALESCE(SUM(ue.output_tokens), 0),
-    'totalToolCallCount', COALESCE(SUM(ue.tool_call_count), 0),
-    'mainInputTokens', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN ue.input_tokens ELSE 0 END), 0),
-    'mainOutputTokens', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN ue.output_tokens ELSE 0 END), 0),
-    'mainAssistantTurnCount', COALESCE(SUM(CASE WHEN ue.agent_type = 'main' THEN 1 ELSE 0 END), 0),
-    'largestMainTurnTokens', COALESCE(MAX(
-      CASE WHEN ue.agent_type = 'main'
-        THEN ue.input_tokens::bigint + ue.output_tokens::bigint
-        ELSE NULL
-      END
-    ), 0)
-  )
-  INTO v_agg
-  FROM usage_events ue
-  WHERE ue.user_id = p_user_id
-    AND ue.created_at >= v_since;
-
-  SELECT COALESCE(
-    jsonb_agg(
-      jsonb_build_object(
-        'repoOwner', s.repo_owner,
-        'repoName', s.repo_name,
-        'prNumber', s.pr_number,
-        'prStatus', s.pr_status,
-        'linesAdded', s.lines_added,
-        'linesRemoved', s.lines_removed,
-        'updatedAt', s.updated_at
-      )
-    ),
-    '[]'::jsonb
-  )
-  INTO v_sessions
-  FROM sessions s
-  WHERE s.user_id = p_user_id
-    AND s.updated_at >= v_since;
-
-  RETURN jsonb_build_object('aggregate', v_agg, 'sessions', v_sessions);
-END;
 $function$
 ;
 
@@ -1397,48 +1044,6 @@ grant truncate on table "public"."shares" to "service_role";
 
 grant update on table "public"."shares" to "service_role";
 
-grant delete on table "public"."usage_events" to "anon";
-
-grant insert on table "public"."usage_events" to "anon";
-
-grant references on table "public"."usage_events" to "anon";
-
-grant select on table "public"."usage_events" to "anon";
-
-grant trigger on table "public"."usage_events" to "anon";
-
-grant truncate on table "public"."usage_events" to "anon";
-
-grant update on table "public"."usage_events" to "anon";
-
-grant delete on table "public"."usage_events" to "authenticated";
-
-grant insert on table "public"."usage_events" to "authenticated";
-
-grant references on table "public"."usage_events" to "authenticated";
-
-grant select on table "public"."usage_events" to "authenticated";
-
-grant trigger on table "public"."usage_events" to "authenticated";
-
-grant truncate on table "public"."usage_events" to "authenticated";
-
-grant update on table "public"."usage_events" to "authenticated";
-
-grant delete on table "public"."usage_events" to "service_role";
-
-grant insert on table "public"."usage_events" to "service_role";
-
-grant references on table "public"."usage_events" to "service_role";
-
-grant select on table "public"."usage_events" to "service_role";
-
-grant trigger on table "public"."usage_events" to "service_role";
-
-grant truncate on table "public"."usage_events" to "service_role";
-
-grant update on table "public"."usage_events" to "service_role";
-
 grant delete on table "public"."user_preferences" to "anon";
 
 grant insert on table "public"."user_preferences" to "anon";
@@ -1522,48 +1127,6 @@ grant trigger on table "public"."users" to "service_role";
 grant truncate on table "public"."users" to "service_role";
 
 grant update on table "public"."users" to "service_role";
-
-grant delete on table "public"."vercel_project_links" to "anon";
-
-grant insert on table "public"."vercel_project_links" to "anon";
-
-grant references on table "public"."vercel_project_links" to "anon";
-
-grant select on table "public"."vercel_project_links" to "anon";
-
-grant trigger on table "public"."vercel_project_links" to "anon";
-
-grant truncate on table "public"."vercel_project_links" to "anon";
-
-grant update on table "public"."vercel_project_links" to "anon";
-
-grant delete on table "public"."vercel_project_links" to "authenticated";
-
-grant insert on table "public"."vercel_project_links" to "authenticated";
-
-grant references on table "public"."vercel_project_links" to "authenticated";
-
-grant select on table "public"."vercel_project_links" to "authenticated";
-
-grant trigger on table "public"."vercel_project_links" to "authenticated";
-
-grant truncate on table "public"."vercel_project_links" to "authenticated";
-
-grant update on table "public"."vercel_project_links" to "authenticated";
-
-grant delete on table "public"."vercel_project_links" to "service_role";
-
-grant insert on table "public"."vercel_project_links" to "service_role";
-
-grant references on table "public"."vercel_project_links" to "service_role";
-
-grant select on table "public"."vercel_project_links" to "service_role";
-
-grant trigger on table "public"."vercel_project_links" to "service_role";
-
-grant truncate on table "public"."vercel_project_links" to "service_role";
-
-grant update on table "public"."vercel_project_links" to "service_role";
 
 grant delete on table "public"."workflow_run_steps" to "anon";
 
