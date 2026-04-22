@@ -26,8 +26,9 @@ Self-hosted deployments in all three PRD connection modes (embedded, HTTP, SSH) 
 - ✅ `workflow` + `workflow/nitro` compiles `"use workflow"` and `"use step"` directives outside Next.js
 - ✅ Nitro v3 auto-discovers routes, webhooks, workflow manifest
 - ✅ HTTP layer, `start()`, `getRun()` API functional
-- ⚠️ Step execution in prod builds has a registration gap — one session of debugging needed
-- ⏳ PostgresWorld not yet wired (blocked on above)
+- ✅ Step execution in prod builds works (rollup tree-shake fix in `nitro.config.ts`: `moduleSideEffects` preserves `.nitro/workflow/**` and `workflow/**`)
+- ✅ PostgresWorld against local Supabase — schema migration via `workflow-postgres-setup`, runs complete correctly
+- ✅ Durability across server crash — SIGKILL mid-run, restart, new process re-enqueues and completes the run
 
 ## Open architectural decision: one runtime or two?
 
@@ -62,30 +63,21 @@ Self-hosted deployments in all three PRD connection modes (embedded, HTTP, SSH) 
 
 ## Migration phases
 
-### 3a: Fix POC step-registration (next session, ~2–4h)
+### 3a: Fix POC step-registration ✅ DONE
 
-Diagnose the prod-build `StepNotRegisteredError`. Likely one of:
-- `nitro@3.0.0-beta.x` + `h3@2.0.1-rc.2` compat issue with `@workflow/nitro`
-- Missing `nitro.options.handlers` wiring in the workflow module under Nitro v3
-- Needs a specific `experimental` flag
+Root cause: neither `workflow` nor `@workflow/core` declare `sideEffects`, so rollup tree-shook the `registerStepFunction(...)` calls out of the generated `steps.mjs`. Result: step registry was empty at request time even though the build artifacts were correct.
 
-Mitigation if Nitro proves unstable: switch to **Hono + Rollup** (the workflow SDK's Hono integration uses Rollup directly, with a smaller surface).
+Fix: `rollupConfig.treeshake.moduleSideEffects` override in `nitro.config.ts` preserves `.nitro/workflow/**` and `workflow/**` modules' side effects. Bundle goes from 0 → 6 `registerStepFunction` calls.
 
-**Deliverable:** POC runs a multi-step durable workflow under prod build, steps execute, run completes successfully.
+### 3b: PostgresWorld against Supabase ✅ DONE
 
-### 3b: PostgresWorld against Supabase (1 session, ~3–6h)
+Applied migrations with `workflow-postgres-setup` against `postgres://postgres:postgres@127.0.0.1:54322/postgres`. Booted server with `WORKFLOW_TARGET_WORLD=@workflow/world-postgres`. Workflow completes end-to-end.
 
-1. Run `npx workflow-postgres-setup` pointed at local Supabase:
-   ```bash
-   WORKFLOW_POSTGRES_URL="postgres://postgres:postgres@127.0.0.1:54322/postgres" \
-   WORKFLOW_TARGET_WORLD="@workflow/world-postgres" \
-   bun run --cwd apps/workflow-poc setup-pg
-   ```
-2. Verify the `graphile_worker` schema lands isolated from our app schema.
-3. Restart server mid-workflow — confirm state persists and run resumes.
-4. Document the migration script in our `supabase/migrations/` or as a CI step.
+Durability confirmed: SIGKILL mid-run, restart — new process logs `[world-postgres] Re-enqueued 1 active run(s) on startup` and completes the run. This is the guarantee we needed; the chat workflow body can now move into the runtime without losing runs on crash or redeploy.
 
-**Deliverable:** POC's `countToN` workflow survives server kill/restart mid-execution.
+Follow-up for productionization (not a blocker for 3c):
+- Fold the workflow schema migration into `supabase/migrations/` so it's applied alongside app migrations, or make `workflow-postgres-setup` a post-deploy hook.
+- Decide on a `WORKFLOW_POSTGRES_JOB_PREFIX` to namespace queues if we want multiple independent workflow services later.
 
 ### 3c: Chat workflow migration (2–3 sessions, ~1–2 weeks)
 

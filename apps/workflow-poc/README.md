@@ -1,6 +1,6 @@
 # Workflow POC
 
-**Status: validates the architecture; step execution needs one more iteration.** Delete or evolve into the real workflow runtime once Phase 3c is ready.
+**Status: architecture validated end-to-end under LocalWorld AND PostgresWorld, including durability across server crash.** Delete or evolve into the real workflow runtime once Phase 3c is ready.
 
 Proof-of-concept for Phase 3 of the desktop runtime deployment. Validates that Vercel's `workflow` SDK can be self-hosted with Nitro + `@workflow/world-postgres` pointed at Supabase Postgres — the prerequisite for migrating `apps/web/app/workflows/chat.ts` to a detached runtime.
 
@@ -21,11 +21,11 @@ export default defineNitroConfig({
 });
 ```
 
-## What's NOT yet proven
+✅ **End-to-end workflow execution in production builds.** A `countToN` workflow starts, runs multiple `addOne` steps with 2s sleeps between them, and transitions `running` → `completed` correctly. The earlier `StepNotRegisteredError` was a rollup tree-shaking bug: neither `workflow` nor `@workflow/core` declare `sideEffects: true`, so rollup dead-code-eliminated every `registerStepFunction(...)` call in the generated `steps.mjs`. Fixed in `nitro.config.ts` via a `rollupConfig.treeshake.moduleSideEffects` override that preserves `.nitro/workflow/**` and `workflow/**` modules' side effects.
 
-⚠️ **Step execution in production builds.** `npm run build && node .output/server/index.mjs` starts the server and accepts workflow starts, but step dispatch fails with `StepNotRegisteredError: Step "step//./server/workflows/counter//addOne" is not registered in the current deployment`. The step manifest is built correctly (`.nitro/workflow/steps.mjs` contains `registerStepFunction(...)` calls), but the steps aren't loaded in the running server process. The LocalWorld's `directHandlers` map appears to be empty. Likely fix: either a missing nitro-workflow compatibility piece with `nitro@3.0.0`/`h3@2.0.1-rc.2`, or the `workflow/nitro` module expects a specific handler registration we're missing. Dev mode (`nitro dev`) does NOT surface the error, so the gap is specifically in the prod bundling. Needs one more iteration session.
+✅ **PostgresWorld against local Supabase.** Ran `workflow-postgres-setup` against `postgres://postgres:postgres@127.0.0.1:54322/postgres` — migrations applied cleanly into isolated schemas. Booting the server with `WORKFLOW_TARGET_WORLD=@workflow/world-postgres` gives durable runs backed by `graphile-worker`.
 
-⚠️ **Postgres World against Supabase.** Deferred — point of failure above is unrelated to world choice (same code path runs in LocalWorld). Once step dispatch works in LocalWorld, swapping in `@workflow/world-postgres` via `WORKFLOW_TARGET_WORLD` and running `npx workflow-postgres-setup` against the Supabase `postgres://postgres:postgres@127.0.0.1:54322/postgres` URL should be mechanical.
+✅ **Restart durability.** SIGKILL the server mid-workflow (at t+3s of a ~12s run), start a fresh process — new server logs `[world-postgres] Re-enqueued 1 active run(s) on startup` and completes the run from where it left off. This is the whole point: Supabase (or any user-managed Postgres) is enough to survive crashes, no Vercel-specific infra.
 
 ## Running (dev mode, mostly works)
 
@@ -34,11 +34,16 @@ bun run --cwd apps/workflow-poc dev
 curl -X POST --json '{"target":2}' http://127.0.0.1:3000/api/count
 ```
 
-## Running (prod build, step dispatch currently broken)
+## Running (prod build — works)
 
 ```bash
 bun run --cwd apps/workflow-poc build
 node apps/workflow-poc/.output/server/index.mjs
+# in another shell:
+curl -X POST --json '{"target":3}' http://127.0.0.1:3000/api/count
+# response: {"runId":"wrun_...","target":3}
+curl http://127.0.0.1:3000/api/runs/<runId>
+# eventually: {"runId":"...","status":"completed"}
 ```
 
 ## Architectural takeaways for Phase 3
