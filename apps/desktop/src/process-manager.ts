@@ -1,4 +1,5 @@
 import { type ChildProcess, spawn } from "node:child_process";
+import { logger } from "./logger.js";
 
 export type ManagedProcessOptions = {
   label: string;
@@ -22,7 +23,7 @@ export class ManagedProcess {
       return;
     }
     const { label, command, args, cwd, env } = this.options;
-    console.log(`[${label}] spawning: ${command} ${args.join(" ")}`);
+    logger.info(`[${label}] spawning: ${command} ${args.join(" ")}`);
     this.child = spawn(command, args, {
       cwd,
       env: { ...process.env, ...env },
@@ -36,7 +37,7 @@ export class ManagedProcess {
     });
     this.exitPromise = new Promise((resolve) => {
       this.child?.on("exit", (code) => {
-        console.log(`[${label}] exited with code ${code}`);
+        logger.info(`[${label}] exited with code ${code}`);
         resolve(code);
       });
     });

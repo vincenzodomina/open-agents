@@ -30,4 +30,12 @@ The embedded runtime validates incoming bearer tokens via Supabase, so it needs 
 
 ## Security posture
 
-The `BrowserWindow` is created with `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Renderer has no direct Node access. Production packaging (signing, notarization, auto-update, preload bridge for OS integration) is deferred to the packaging phase.
+The `BrowserWindow` is created with `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Renderer has no direct Node access. `setWindowOpenHandler` denies all renderer-initiated `window.open()` calls. Production packaging (signing, notarization, auto-update, preload bridge for OS integration) is deferred to the packaging phase.
+
+## Single-instance lock
+
+The shell calls `app.requestSingleInstanceLock()` on startup. A second launch exits immediately, and the first instance's `second-instance` handler focuses the existing window. This prevents two shells from fighting over ports 3000/3001.
+
+## Logging
+
+Lifecycle events (bootstrap, spawn, shutdown) go through `electron-log` with a 5 MB per-file rotation cap. Subprocess stdout/stderr is forwarded directly to the parent process's `stdout`/`stderr` so streaming logs aren't buffered or reformatted.
