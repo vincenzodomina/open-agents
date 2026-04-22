@@ -28,6 +28,10 @@ The frontend always receives `SERVER_CONNECTION_MODE=http` plus the resolved `SE
 
 The embedded runtime validates incoming bearer tokens via Supabase, so it needs `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in its environment. Today the desktop shell inherits these from Electron's own env — so when you launch in development they come from your shell. For packaged builds we need to pass them explicitly (either baked at build time or read from a user-editable settings file); that's out of scope for Phase 1. Don't assume packaged desktop users will have these exported.
 
+## Token freshness across modes (FR-15)
+
+The detached runtime only needs the anon key to validate bearers — it is never given refresh capability, regardless of connection mode. Long-running sessions stay authenticated because the **web proxy** (inside the local frontend server the desktop shell spawns) transparently refreshes the Supabase access token on 401 and retries once. That keeps embedded, HTTP, and SSH modes symmetrical: no per-mode branching in the handshake.
+
 ## Security posture
 
 The `BrowserWindow` is created with `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`. Renderer has no direct Node access. `setWindowOpenHandler` denies all renderer-initiated `window.open()` calls. Production packaging (signing, notarization, auto-update, preload bridge for OS integration) is deferred to the packaging phase.

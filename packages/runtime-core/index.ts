@@ -12,6 +12,11 @@ export {
 } from "./lib/bearer-auth.ts";
 export { proxyToRuntime } from "./lib/proxy.ts";
 export {
+  type ProxyWithTokenRefreshOptions,
+  type RefreshableTokenProvider,
+  proxyWithTokenRefresh,
+} from "./lib/token-refresh.ts";
+export {
   type RuntimeClient,
   createRuntimeClient,
 } from "./lib/runtime-client.ts";
