@@ -14,6 +14,19 @@ Requires the same `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 
 Every non-health route requires `Authorization: Bearer <supabase access token>`. Tokens are validated via `supabase.auth.getUser(token)` — no separate identity provider.
 
+### Token freshness (FR-15)
+
+Supabase access tokens default to a 1h TTL. To support long-running interactions without breaking auth mid-run, the **web proxy** (not the runtime) owns token refresh:
+
+1. The proxy sends the current access token on every forwarded request.
+2. If the runtime returns `401` (expired or just-rotated token), the proxy asks Supabase for a fresh access token via `supabase.auth.refreshSession()` and retries the request **once** with the new token.
+3. The runtime itself is stateless with respect to refresh — it never sees refresh tokens and never mints tokens. It only validates the bearer it's given.
+
+Implications for route authors:
+- Route handlers do not need to re-validate the bearer mid-stream. The one-shot validation at request entry is the contract.
+- If a future route needs to call Supabase with user scope mid-stream, either (a) route it back through the web proxy so the proxy owns the refresh, or (b) use the service-role admin client (pattern used by the existing web chat handlers).
+- Streaming is preserved: because refresh happens only in response to a 401 *before* any response body has been consumed, successful streams are never interrupted by a retry.
+
 ## Endpoints
 
 - `GET /v1/health` — liveness, no auth

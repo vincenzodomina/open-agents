@@ -1,6 +1,6 @@
 import "server-only";
-import { proxyToRuntime } from "@open-harness/runtime-core/proxy";
-import { getSupabaseAccessToken } from "./access-token";
+import { proxyWithTokenRefresh } from "@open-harness/runtime-core/token-refresh";
+import { createSupabaseTokenProvider } from "./access-token";
 import { getRuntimeConnectionConfig } from "./config";
 
 export async function forwardToRuntime(
@@ -8,12 +8,12 @@ export async function forwardToRuntime(
   targetPath: string,
 ): Promise<Response> {
   const config = getRuntimeConnectionConfig();
-  const token = await getSupabaseAccessToken();
+  const tokenProvider = createSupabaseTokenProvider();
 
   try {
-    return await proxyToRuntime({
+    return await proxyWithTokenRefresh({
       runtimeBaseUrl: config.url,
-      bearerToken: token,
+      tokenProvider,
       request,
       targetPath,
       signal: request.signal,
