@@ -1,6 +1,7 @@
 import type { AuthContext } from "./auth.ts";
 import { authenticate } from "./auth.ts";
 import type { RuntimeConfig } from "./config.ts";
+import { handleGenerateCommitMessage } from "./handlers/generate-commit-message.ts";
 import { handleGenerateTitle } from "./handlers/generate-title.ts";
 
 export type RouteHandler = (
@@ -69,6 +70,12 @@ const routes: Route[] = [
     path: "/v1/generate-title",
     requiresAuth: true,
     handler: (request) => handleGenerateTitle(request),
+  },
+  {
+    method: "POST",
+    path: "/v1/generate-commit-message",
+    requiresAuth: true,
+    handler: (request) => handleGenerateCommitMessage(request),
   },
 ];
 
