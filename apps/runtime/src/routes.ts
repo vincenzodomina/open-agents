@@ -1,6 +1,7 @@
 import type { AuthContext } from "./auth.ts";
 import { authenticate } from "./auth.ts";
 import type { RuntimeConfig } from "./config.ts";
+import { handleGenerateTitle } from "./handlers/generate-title.ts";
 
 export type RouteHandler = (
   request: Request,
@@ -62,6 +63,12 @@ const routes: Route[] = [
         },
       });
     },
+  },
+  {
+    method: "POST",
+    path: "/v1/generate-title",
+    requiresAuth: true,
+    handler: (request) => handleGenerateTitle(request),
   },
 ];
 

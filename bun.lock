@@ -30,8 +30,11 @@
       "name": "runtime",
       "version": "0.0.0",
       "dependencies": {
+        "@open-harness/agent": "workspace:*",
         "@open-harness/runtime-core": "workspace:*",
         "@supabase/supabase-js": "^2.103.3",
+        "ai": "catalog:",
+        "zod": "catalog:",
       },
       "devDependencies": {
         "@open-harness/tsconfig": "workspace:*",

@@ -10,8 +10,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@open-harness/agent": "workspace:*",
     "@open-harness/runtime-core": "workspace:*",
-    "@supabase/supabase-js": "^2.103.3"
+    "@supabase/supabase-js": "^2.103.3",
+    "ai": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@open-harness/tsconfig": "workspace:*",

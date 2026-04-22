@@ -8,7 +8,7 @@ Detached HTTP service that owns runtime-dependent behavior (agent execution, str
 bun run --cwd apps/runtime dev
 ```
 
-Requires the same `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` that the web app uses — the runtime validates incoming bearer tokens against that Supabase instance.
+Requires the same `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` that the web app uses — the runtime validates incoming bearer tokens against that Supabase instance. Runtime-dependent routes that call LLMs also need `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`) in the runtime's env, not the web app's.
 
 ## Auth contract
 
@@ -19,6 +19,7 @@ Every non-health route requires `Authorization: Bearer <supabase access token>`.
 - `GET /v1/health` — liveness, no auth
 - `GET /v1/whoami` — returns the authenticated user id (auth required)
 - `POST /v1/echo-stream` — streams back each whitespace-delimited token from the request body (auth required, exercises streaming boundary)
+- `POST /v1/generate-title` — generates a 5-word coding-session title from a first user message (auth required, calls OpenAI via `@open-harness/agent`)
 
 ## Extending
 
