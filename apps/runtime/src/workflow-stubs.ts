@@ -15,7 +15,7 @@ const manifestPath = resolve(
 const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as Manifest;
 
 function workflowStub<T>(filePath: string, exportName: string): T {
-  const entry = manifest.workflows?.[filePath]?.[exportName];
+  const entry = manifest.workflows[filePath]?.[exportName];
   if (!entry) {
     throw new Error(
       `workflow not found in manifest: ${filePath}#${exportName}. Run \`bun run build:workflow\`.`,

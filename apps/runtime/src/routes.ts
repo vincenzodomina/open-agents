@@ -100,45 +100,42 @@ const routes: Route[] = [
   authed({
     method: "POST",
     pattern: "/v1/generate-title",
-    handler: (request) => handleGenerateTitle(request),
+    handler: handleGenerateTitle,
   }),
   authed({
     method: "POST",
     pattern: "/v1/generate-commit-message",
-    handler: (request) => handleGenerateCommitMessage(request),
+    handler: handleGenerateCommitMessage,
   }),
   authed({
     method: "POST",
     pattern: "/v1/transcribe",
-    handler: (request) => handleTranscribe(request),
+    handler: handleTranscribe,
   }),
   authed({
     method: "POST",
     pattern: "/v1/chat/start",
-    handler: (request, context) => handleChatStart(request, context),
+    handler: handleChatStart,
   }),
   authed({
     method: "GET",
     pattern: "/v1/chat/runs/:id/stream",
-    handler: (request, context, params) =>
-      handleChatRunStream(request, context, params),
+    handler: handleChatRunStream,
   }),
   authed({
     method: "POST",
     pattern: "/v1/chat/runs/:id/stop",
-    handler: (request, context, params) =>
-      handleChatRunStop(request, context, params),
+    handler: handleChatRunStop,
   }),
   authed({
     method: "GET",
     pattern: "/v1/runs/:id",
-    handler: (request, context, params) =>
-      handleRunStatus(request, context, params),
+    handler: handleRunStatus,
   }),
   authed({
     method: "POST",
     pattern: "/v1/sandbox/lifecycle/kick",
-    handler: (request, context) => handleSandboxLifecycleKick(request, context),
+    handler: handleSandboxLifecycleKick,
   }),
 ];
 

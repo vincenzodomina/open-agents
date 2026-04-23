@@ -730,8 +730,6 @@ export async function runAgentWorkflow(options: Options) {
     caughtError = error;
   } finally {
     try {
-      // On unexpected errors, still clear the active stream and close
-      // so the chat is never permanently marked as streaming.
       if (!streamClosed) {
         await Promise.all([
           clearActiveStream(options.chatId, workflowRunId),

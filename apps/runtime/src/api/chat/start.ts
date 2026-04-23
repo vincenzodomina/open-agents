@@ -1,14 +1,13 @@
-import type { WebAgentUIMessage } from "@open-harness/shared/lib/chat-types";
 import { createCancelableReadableStream } from "@open-harness/shared/lib/cancelable-readable-stream";
+import type { WebAgentUIMessage } from "@open-harness/shared/lib/chat-types";
 import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
 import { start } from "workflow/api";
 import type { AuthContext } from "../../auth.ts";
 import { runAgentWorkflow } from "../../workflow-stubs.ts";
-import type { runAgentWorkflow as RunAgentWorkflow } from "../../workflows/chat.ts";
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
 
-type ChatStartBody = Parameters<typeof RunAgentWorkflow>[0];
+type ChatStartBody = Parameters<typeof runAgentWorkflow>[0];
 
 export async function handleChatStart(
   request: Request,
