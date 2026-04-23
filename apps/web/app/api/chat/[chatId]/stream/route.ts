@@ -1,18 +1,13 @@
-import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
-import { getRun } from "workflow/api";
 import {
   requireAuthenticatedUser,
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
-import type { WebAgentUIMessage } from "@/app/types";
 import { updateChatActiveStreamId } from "@/lib/db/sessions";
-import { createCancelableReadableStream } from "@open-harness/shared/lib/cancelable-readable-stream";
+import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
 };
-
-type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
 
 export async function GET(_request: Request, context: RouteContext) {
   const authResult = await requireAuthenticatedUser("text");
@@ -38,28 +33,24 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const runId = chat.activeStreamId;
+  const workflow = getWorkflowClient();
 
   try {
-    const run = getRun(runId);
-    const status = await run.status;
+    const response = await workflow.fetch(
+      `/api/chat/runs/${encodeURIComponent(runId)}/stream`,
+      { method: "GET" },
+    );
 
-    if (
-      status === "completed" ||
-      status === "cancelled" ||
-      status === "failed"
-    ) {
-      // Workflow is done — clear the stale activeStreamId.
+    if (response.status === 204) {
       await updateChatActiveStreamId(chatId, null);
       return new Response(null, { status: 204 });
     }
 
-    const stream = createCancelableReadableStream(
-      run.getReadable<WebAgentUIMessageChunk>(),
-    );
-
-    return createUIMessageStreamResponse({ stream });
+    return new Response(response.body, {
+      status: response.status,
+      headers: response.headers,
+    });
   } catch {
-    // Workflow run not found or inaccessible — clear stale ID.
     await updateChatActiveStreamId(chatId, null);
     return new Response(null, { status: 204 });
   }

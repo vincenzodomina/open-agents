@@ -37,7 +37,10 @@ export default defineEventHandler(async (event) => {
       run.getReadable<WebAgentUIMessageChunk>(),
     );
 
-    return createUIMessageStreamResponse({ stream });
+    return createUIMessageStreamResponse({
+      stream,
+      headers: { "x-workflow-run-id": id },
+    });
   } catch {
     return new Response(null, { status: 204 });
   }

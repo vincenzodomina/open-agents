@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
 
 mock.module("server-only", () => ({}));
@@ -36,11 +36,11 @@ let currentAuthSession: {
 let existingUserMessageCount = 0;
 let existingChatMessage: { id: string } | null = null;
 let isSandboxOperational = true;
-let existingRunStatus: string = "completed";
-let getRunShouldThrow = false;
+let existingRunStatus: "running" | "completed" | "cancelled" | "failed" =
+  "running";
+let streamFetchShouldThrow = false;
 let compareAndSetDefaultResult = true;
 let compareAndSetResults: boolean[] = [];
-let startCalls: unknown[][] = [];
 let preferencesState: {
   autoCommitPush: boolean;
   autoCreatePr: boolean;
@@ -58,75 +58,71 @@ let preferencesState: {
 let cachedSkillsState: unknown = null;
 let discoverSkillDirsCalls: string[][] = [];
 
+type FetchCall = { path: string; init?: RequestInit };
+let fetchCalls: FetchCall[] = [];
+
 const compareAndSetChatActiveStreamIdSpy = mock(async () => {
   const nextResult = compareAndSetResults.shift();
   return nextResult ?? compareAndSetDefaultResult;
 });
 
-const originalFetch = globalThis.fetch;
-
-globalThis.fetch = (async (_input: RequestInfo | URL) => {
-  return new Response("{}", {
+function makeStartResponse(runId: string): Response {
+  return new Response(new ReadableStream({ start: (c) => c.close() }), {
     status: 200,
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "x-workflow-run-id": runId },
   });
-}) as typeof fetch;
+}
+
+function makeStreamResumeResponse(runId: string): Response {
+  return new Response(new ReadableStream({ start: (c) => c.close() }), {
+    status: 200,
+    headers: { "x-workflow-run-id": runId },
+  });
+}
+
+function workflowFetchImpl(path: string, init?: RequestInit): Response {
+  fetchCalls.push({ path, init });
+
+  if (path === "/api/chat/start") {
+    return makeStartResponse("wrun_test-123");
+  }
+
+  const streamMatch = path.match(/^\/api\/chat\/runs\/([^/]+)\/stream$/);
+  if (streamMatch) {
+    const runId = decodeURIComponent(streamMatch[1] ?? "");
+    if (streamFetchShouldThrow) {
+      throw new Error("workflow-runtime unreachable");
+    }
+    if (existingRunStatus === "running") {
+      return makeStreamResumeResponse(runId);
+    }
+    return new Response(null, { status: 204 });
+  }
+
+  const stopMatch = path.match(/^\/api\/chat\/runs\/([^/]+)\/stop$/);
+  if (stopMatch) {
+    return new Response(JSON.stringify({ cancelled: true }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  return new Response(null, { status: 404 });
+}
+
+mock.module("@/lib/runtime-connection/workflow-client", () => ({
+  getWorkflowClient: () => ({
+    baseUrl: "http://workflow-runtime",
+    fetch: async (path: string, init?: RequestInit) =>
+      workflowFetchImpl(path, init),
+    health: async () => ({ ok: true, status: 200 }),
+  }),
+}));
 
 mock.module("next/server", () => ({
   after: (task: Promise<unknown>) => {
     void Promise.resolve(task);
   },
-}));
-
-mock.module("ai", () => ({
-  createUIMessageStreamResponse: ({
-    stream,
-    headers,
-  }: {
-    stream: ReadableStream;
-    headers?: Record<string, string>;
-  }) => new Response(stream, { status: 200, headers }),
-}));
-
-mock.module("workflow/api", () => ({
-  start: async (...args: unknown[]) => {
-    startCalls.push(args);
-    return {
-      runId: "wrun_test-123",
-      getReadable: () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close();
-          },
-        }),
-    };
-  },
-  getRun: () => {
-    if (getRunShouldThrow) {
-      throw new Error("Run not found");
-    }
-
-    return {
-      status: Promise.resolve(existingRunStatus),
-      getReadable: () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close();
-          },
-        }),
-      cancel: () => Promise.resolve(),
-    };
-  },
-}));
-
-mock.module("@/app/workflows/chat", () => ({
-  runAgentWorkflow: async () => {},
-}));
-
-mock.module("@open-harness/shared/lib/cancelable-readable-stream", () => ({
-  createCancelableReadableStream: (stream: ReadableStream) => stream,
 }));
 
 mock.module("@open-harness/agent", () => ({
@@ -214,10 +210,6 @@ mock.module("@/lib/session/get-server-session", () => ({
 
 const routeModulePromise = import("./route");
 
-afterAll(() => {
-  globalThis.fetch = originalFetch;
-});
-
 function createRequest(body: string, url = "http://localhost/api/chat") {
   return new Request(url, {
     method: "POST",
@@ -245,14 +237,22 @@ function createValidRequest() {
   );
 }
 
+function getStartBody(): Record<string, unknown> | null {
+  const call = fetchCalls.find((c) => c.path === "/api/chat/start");
+  if (!call?.init?.body || typeof call.init.body !== "string") {
+    return null;
+  }
+  return JSON.parse(call.init.body) as Record<string, unknown>;
+}
+
 describe("/api/chat route", () => {
   beforeEach(() => {
     isSandboxOperational = true;
-    existingRunStatus = "completed";
-    getRunShouldThrow = false;
+    existingRunStatus = "running";
+    streamFetchShouldThrow = false;
     compareAndSetDefaultResult = true;
     compareAndSetResults = [];
-    startCalls = [];
+    fetchCalls = [];
     cachedSkillsState = null;
     discoverSkillDirsCalls = [];
     existingUserMessageCount = 0;
@@ -333,7 +333,9 @@ describe("/api/chat route", () => {
     expect(body.error).toBe(
       "This hosted deployment has a 5 message limit. Deploy your own copy for no limit at open-agents.dev/deploy-your-own.",
     );
-    expect(startCalls).toHaveLength(0);
+    expect(
+      fetchCalls.find((c) => c.path === "/api/chat/start"),
+    ).toBeUndefined();
   });
 
   test("passes the 500 maxSteps limit to the workflow", async () => {
@@ -342,15 +344,15 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
-    expect(startCalls).toHaveLength(1);
-    expect(startCalls[0]?.[1]).toEqual([
+    const startBody = getStartBody();
+    expect(startBody).toEqual(
       expect.objectContaining({
         maxSteps: 500,
         agentOptions: expect.objectContaining({
           customInstructions: assistantFileLinkPrompt,
         }),
       }),
-    ]);
+    );
   });
 
   test("passes selected and resolved model ids to the workflow", async () => {
@@ -372,13 +374,13 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
-    expect(startCalls).toHaveLength(1);
-    expect(startCalls[0]?.[1]).toEqual([
+    const startBody = getStartBody();
+    expect(startBody).toEqual(
       expect.objectContaining({
         selectedModelId: "variant:test-model",
         modelId: "openai/gpt-5",
       }),
-    ]);
+    );
   });
 
   test("discovers global sandbox skills after repo-local skill directories", async () => {
@@ -403,13 +405,13 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
-    expect(startCalls).toHaveLength(1);
-    expect(startCalls[0]?.[1]).toEqual([
+    const startBody = getStartBody();
+    expect(startBody).toEqual(
       expect.objectContaining({
         autoCommitEnabled: true,
         autoCreatePrEnabled: true,
       }),
-    ]);
+    );
   });
 
   test("keeps auto PR enabled when the session already has PR metadata", async () => {
@@ -423,13 +425,13 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
-    expect(startCalls).toHaveLength(1);
-    expect(startCalls[0]?.[1]).toEqual([
+    const startBody = getStartBody();
+    expect(startBody).toEqual(
       expect.objectContaining({
         autoCommitEnabled: true,
         autoCreatePrEnabled: true,
       }),
-    ]);
+    );
   });
 
   test("does not enable auto PR when auto commit is disabled", async () => {
@@ -440,12 +442,12 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
-    expect(startCalls).toHaveLength(1);
-    expect(startCalls[0]?.[1]).toEqual([
+    const startBody = getStartBody();
+    expect(startBody).toEqual(
       expect.not.objectContaining({
         autoCommitEnabled: true,
       }),
-    ]);
+    );
   });
 
   test("returns 401 when not authenticated", async () => {
@@ -545,7 +547,9 @@ describe("/api/chat route", () => {
 
     expect(response.ok).toBe(true);
     expect(response.headers.get("x-workflow-run-id")).toBe("wrun_existing-456");
-    expect(startCalls).toHaveLength(0);
+    expect(
+      fetchCalls.find((c) => c.path === "/api/chat/start"),
+    ).toBeUndefined();
     expect(compareAndSetChatActiveStreamIdSpy).not.toHaveBeenCalled();
   });
 
@@ -572,7 +576,7 @@ describe("/api/chat route", () => {
   test("starts new workflow when the existing run cannot be loaded and clears the stale stream id first", async () => {
     if (!chatRecord) throw new Error("chatRecord must be set");
     chatRecord.activeStreamId = "wrun_missing-789";
-    getRunShouldThrow = true;
+    streamFetchShouldThrow = true;
 
     const { POST } = await routeModulePromise;
 

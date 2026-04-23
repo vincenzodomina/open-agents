@@ -122,20 +122,17 @@ Last two feature stubs are now real. Pure helpers (`crypto`, `repo-identifiers`)
 - `createCancelableReadableStream` extracted from `apps/web/lib/chat/` to `@open-harness/shared/lib/cancelable-readable-stream` so both runtimes use one copy.
 - Web `/api/chat/[chatId]/stop` rewritten as a thin proxy calling the runtime's `/api/chat/runs/:id/stop`. The web keeps auth, ownership, assistant-snapshot persistence, and CAS-clear of `activeStreamId` — the runtime just cancels the run. Tests swap the `workflow/api` module mock for a `getWorkflowClient` mock.
 
-### 3c-3b: Wire `/api/chat/route.ts` and `/api/chat/[chatId]/stream/route.ts` (next session)
+### 3c-3b: Wire `/api/chat/route.ts` and `/api/chat/[chatId]/stream/route.ts` ✅ DONE
 
-Both routes still do workflow-SDK work on the web side. The main chat route is the bigger lift — it orchestrates:
-- reconcile of an existing `activeStreamId` (getRun status + resume or clear)
-- fresh workflow start (`start(runAgentWorkflow, [...])`)
-- atomic `compareAndSetChatActiveStreamId` claim with cancel-on-race
-- workflow-body config assembly (preferences, model variants, sandbox state, skills, auto-commit flags)
+Main chat POST is now a thin facade:
+- Auth, bot-id, body parsing, ownership check, managed-template-trial check, user message / assistant tool-results persistence, lifecycle refresh, model variant resolution, and Options body assembly all stay on web.
+- The `reconcileExistingActiveStream` helper now calls runtime `/api/chat/runs/:id/stream` instead of `getRun().status/getReadable()`. 204 from the runtime → CAS-clear `activeStreamId`, fall through; 200 with body → forward response headers and body to the browser.
+- The fresh-start path POSTs the full Options body to runtime `/api/chat/start`. Reads `x-workflow-run-id` from response headers, runs the CAS claim, and on race loses both cancels the runtime stream (`body.cancel()`) and POSTs `/api/chat/runs/:id/stop`.
+- 20 route tests migrated — `workflow/api` + `@/app/workflows/chat` mocks replaced with a single `@/lib/runtime-connection/workflow-client` mock that captures each `fetch(path, init)` call. `startCalls[0]?.[1]` assertions became `getStartBody()` which JSON-parses the request body.
 
-Rewiring approach:
-1. **Reconcile path:** call runtime `/api/chat/runs/:id/stream` with the existing `activeStreamId`. If 204 (not running/found), CAS-clear the slot and fall through.
-2. **Fresh start:** call runtime `/api/chat/start` with the full `Options` body (keep assembling it on web). Read `x-workflow-run-id` from the response headers, CAS-claim. If the claim loses a race, POST `/api/chat/runs/:id/stop` to the runtime and return 409.
-3. **Streaming passthrough:** forward the runtime's response body as-is. SSE framing is already set up by `createUIMessageStreamResponse` on the runtime side.
+Stream resume route (`/api/chat/[chatId]/stream`) is a simpler proxy of the same runtime `/stream` endpoint with a 204-on-not-running fallback that clears `activeStreamId`.
 
-The streaming resume route (`/api/chat/[chatId]/stream`) follows the same reconcile pattern without the fresh-start branch.
+Runtime stream endpoint now returns `x-workflow-run-id` header in its `createUIMessageStreamResponse` so the web side can forward it through unchanged.
 
 ### 3c-3c: Decommission duplicated web-side chat workflow code (after 3c-3b)
 
