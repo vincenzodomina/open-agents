@@ -53,7 +53,7 @@ export async function createChatRuntime(params: {
     sessionRecord,
   }).catch((error) => {
     console.warn(
-      `Failed to prepare Vercel CLI setup for session ${sessionId}:`,
+      `Failed to prepare Vercel CLI auth for session ${sessionId}:`,
       error,
     );
     return null;

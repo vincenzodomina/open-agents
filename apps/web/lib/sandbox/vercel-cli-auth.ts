@@ -8,12 +8,6 @@ import {
 const FILE_CLEANUP_TIMEOUT_MS = 5_000;
 const VERCEL_CLI_CONFIG_DIRECTORY = ".local/share/com.vercel.cli";
 
-export interface VercelCliProjectLink {
-  orgId: string;
-  projectId: string;
-  projectName?: string;
-}
-
 export interface VercelCliAuthConfig {
   token: string;
   expiresAt: number;
@@ -21,7 +15,6 @@ export interface VercelCliAuthConfig {
 
 export interface VercelCliSandboxSetup {
   auth: VercelCliAuthConfig | null;
-  projectLink: VercelCliProjectLink | null;
 }
 
 async function removeFileIfPresent(
@@ -47,7 +40,6 @@ export async function getVercelCliSandboxSetup(_params: {
 }): Promise<VercelCliSandboxSetup> {
   return {
     auth: null,
-    projectLink: null,
   };
 }
 
@@ -58,7 +50,6 @@ export async function syncVercelCliAuthToSandbox(params: {
   const { sandbox, setup } = params;
   const homeDirectory = await resolveSandboxHomeDirectory(sandbox);
   const authConfigPath = `${homeDirectory}/${VERCEL_CLI_CONFIG_DIRECTORY}/auth.json`;
-  const projectLinkPath = `${sandbox.workingDirectory}/.vercel/project.json`;
 
   if (setup.auth) {
     await sandbox.writeFile(
@@ -68,15 +59,5 @@ export async function syncVercelCliAuthToSandbox(params: {
     );
   } else {
     await removeFileIfPresent(sandbox, authConfigPath);
-  }
-
-  if (setup.projectLink) {
-    await sandbox.writeFile(
-      projectLinkPath,
-      `${JSON.stringify(setup.projectLink, null, 2)}\n`,
-      "utf-8",
-    );
-  } else {
-    await removeFileIfPresent(sandbox, projectLinkPath);
   }
 }

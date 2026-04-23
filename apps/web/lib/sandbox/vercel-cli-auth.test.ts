@@ -64,7 +64,7 @@ function createSandbox() {
 describe("vercel-cli-auth", () => {
   beforeEach(() => {});
 
-  test("does not provision Vercel CLI auth or project link from the session", async () => {
+  test("does not provision Vercel CLI auth from the session", async () => {
     const { getVercelCliSandboxSetup } = await vercelCliAuthModulePromise;
 
     const setup = await getVercelCliSandboxSetup({
@@ -74,13 +74,10 @@ describe("vercel-cli-auth", () => {
       },
     });
 
-    expect(setup).toEqual({
-      auth: null,
-      projectLink: null,
-    });
+    expect(setup).toEqual({ auth: null });
   });
 
-  test("removes stale CLI auth and project metadata when no auth or link is available", async () => {
+  test("removes stale CLI auth when no auth is available", async () => {
     const { getVercelCliSandboxSetup, syncVercelCliAuthToSandbox } =
       await vercelCliAuthModulePromise;
     const { sandbox, writeFileCalls, execCalls } = createSandbox();
@@ -101,11 +98,6 @@ describe("vercel-cli-auth", () => {
       },
       {
         command: "rm -f '/home/tester/.local/share/com.vercel.cli/auth.json'",
-        cwd: "/workspace",
-        timeoutMs: 5000,
-      },
-      {
-        command: "rm -f '/workspace/.vercel/project.json'",
         cwd: "/workspace",
         timeoutMs: 5000,
       },

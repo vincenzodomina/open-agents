@@ -1,22 +1,4 @@
 
-  create table "public"."accounts" (
-    "id" text not null,
-    "user_id" text not null,
-    "provider" text not null default 'github'::text,
-    "external_user_id" text not null,
-    "access_token" text not null,
-    "refresh_token" text,
-    "expires_at" timestamp without time zone,
-    "scope" text,
-    "username" text not null,
-    "created_at" timestamp without time zone not null default now(),
-    "updated_at" timestamp without time zone not null default now()
-      );
-
-
-alter table "public"."accounts" enable row level security;
-
-
   create table "public"."chat_messages" (
     "id" text not null,
     "chat_id" text not null,
@@ -56,37 +38,6 @@ alter table "public"."chat_reads" enable row level security;
 alter table "public"."chats" enable row level security;
 
 
-  create table "public"."github_installations" (
-    "id" text not null,
-    "user_id" text not null,
-    "installation_id" integer not null,
-    "account_login" text not null,
-    "account_type" text not null,
-    "repository_selection" text not null,
-    "installation_url" text,
-    "created_at" timestamp without time zone not null default now(),
-    "updated_at" timestamp without time zone not null default now()
-      );
-
-
-alter table "public"."github_installations" enable row level security;
-
-
-  create table "public"."linked_accounts" (
-    "id" text not null,
-    "user_id" text not null,
-    "provider" text not null,
-    "external_id" text not null,
-    "workspace_id" text,
-    "metadata" jsonb,
-    "created_at" timestamp without time zone not null default now(),
-    "updated_at" timestamp without time zone not null default now()
-      );
-
-
-alter table "public"."linked_accounts" enable row level security;
-
-
   create table "public"."sessions" (
     "id" text not null,
     "user_id" text not null,
@@ -122,6 +73,7 @@ alter table "public"."sessions" enable row level security;
 
 alter table "public"."shares" enable row level security;
 
+
   create table "public"."user_preferences" (
     "id" text not null,
     "user_id" text not null,
@@ -143,23 +95,18 @@ alter table "public"."user_preferences" enable row level security;
 
   create table "public"."users" (
     "id" text not null,
-    "provider" text not null,
-    "external_id" text not null,
-    "access_token" text not null,
-    "refresh_token" text,
-    "scope" text,
     "username" text not null,
     "email" text,
     "name" text,
     "avatar_url" text,
     "created_at" timestamp without time zone not null default now(),
-    "token_expires_at" timestamp without time zone,
     "updated_at" timestamp without time zone not null default now(),
     "last_login_at" timestamp without time zone not null default now()
       );
 
 
 alter table "public"."users" enable row level security;
+
 
   create table "public"."workflow_run_steps" (
     "id" text not null,
@@ -193,10 +140,6 @@ alter table "public"."workflow_run_steps" enable row level security;
 
 alter table "public"."workflow_runs" enable row level security;
 
-CREATE UNIQUE INDEX accounts_pkey ON public.accounts USING btree (id);
-
-CREATE UNIQUE INDEX accounts_user_id_provider_idx ON public.accounts USING btree (user_id, provider);
-
 CREATE UNIQUE INDEX chat_messages_pkey ON public.chat_messages USING btree (id);
 
 CREATE INDEX chat_reads_chat_id_idx ON public.chat_reads USING btree (chat_id);
@@ -206,16 +149,6 @@ CREATE UNIQUE INDEX chat_reads_pkey ON public.chat_reads USING btree (user_id, c
 CREATE UNIQUE INDEX chats_pkey ON public.chats USING btree (id);
 
 CREATE INDEX chats_session_id_idx ON public.chats USING btree (session_id);
-
-CREATE UNIQUE INDEX github_installations_pkey ON public.github_installations USING btree (id);
-
-CREATE UNIQUE INDEX github_installations_user_account_idx ON public.github_installations USING btree (user_id, account_login);
-
-CREATE UNIQUE INDEX github_installations_user_installation_idx ON public.github_installations USING btree (user_id, installation_id);
-
-CREATE UNIQUE INDEX linked_accounts_pkey ON public.linked_accounts USING btree (id);
-
-CREATE UNIQUE INDEX linked_accounts_provider_external_workspace_idx ON public.linked_accounts USING btree (provider, external_id, workspace_id);
 
 CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (id);
 
@@ -231,8 +164,6 @@ CREATE UNIQUE INDEX user_preferences_user_id_key ON public.user_preferences USIN
 
 CREATE UNIQUE INDEX users_pkey ON public.users USING btree (id);
 
-CREATE UNIQUE INDEX users_provider_external_id_idx ON public.users USING btree (provider, external_id);
-
 CREATE UNIQUE INDEX workflow_run_steps_pkey ON public.workflow_run_steps USING btree (id);
 
 CREATE INDEX workflow_run_steps_run_id_idx ON public.workflow_run_steps USING btree (workflow_run_id);
@@ -247,17 +178,11 @@ CREATE INDEX workflow_runs_session_id_idx ON public.workflow_runs USING btree (s
 
 CREATE INDEX workflow_runs_user_id_idx ON public.workflow_runs USING btree (user_id);
 
-alter table "public"."accounts" add constraint "accounts_pkey" PRIMARY KEY using index "accounts_pkey";
-
 alter table "public"."chat_messages" add constraint "chat_messages_pkey" PRIMARY KEY using index "chat_messages_pkey";
 
 alter table "public"."chat_reads" add constraint "chat_reads_pkey" PRIMARY KEY using index "chat_reads_pkey";
 
 alter table "public"."chats" add constraint "chats_pkey" PRIMARY KEY using index "chats_pkey";
-
-alter table "public"."github_installations" add constraint "github_installations_pkey" PRIMARY KEY using index "github_installations_pkey";
-
-alter table "public"."linked_accounts" add constraint "linked_accounts_pkey" PRIMARY KEY using index "linked_accounts_pkey";
 
 alter table "public"."sessions" add constraint "sessions_pkey" PRIMARY KEY using index "sessions_pkey";
 
@@ -270,10 +195,6 @@ alter table "public"."users" add constraint "users_pkey" PRIMARY KEY using index
 alter table "public"."workflow_run_steps" add constraint "workflow_run_steps_pkey" PRIMARY KEY using index "workflow_run_steps_pkey";
 
 alter table "public"."workflow_runs" add constraint "workflow_runs_pkey" PRIMARY KEY using index "workflow_runs_pkey";
-
-alter table "public"."accounts" add constraint "accounts_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
-
-alter table "public"."accounts" validate constraint "accounts_user_id_fkey";
 
 alter table "public"."chat_messages" add constraint "chat_messages_chat_id_fkey" FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE CASCADE not valid;
 
@@ -290,14 +211,6 @@ alter table "public"."chat_reads" validate constraint "chat_reads_user_id_fkey";
 alter table "public"."chats" add constraint "chats_session_id_fkey" FOREIGN KEY (session_id) REFERENCES public.sessions(id) ON DELETE CASCADE not valid;
 
 alter table "public"."chats" validate constraint "chats_session_id_fkey";
-
-alter table "public"."github_installations" add constraint "github_installations_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
-
-alter table "public"."github_installations" validate constraint "github_installations_user_id_fkey";
-
-alter table "public"."linked_accounts" add constraint "linked_accounts_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
-
-alter table "public"."linked_accounts" validate constraint "linked_accounts_user_id_fkey";
 
 alter table "public"."sessions" add constraint "sessions_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
 
@@ -708,48 +621,6 @@ END;
 $function$
 ;
 
-grant delete on table "public"."accounts" to "anon";
-
-grant insert on table "public"."accounts" to "anon";
-
-grant references on table "public"."accounts" to "anon";
-
-grant select on table "public"."accounts" to "anon";
-
-grant trigger on table "public"."accounts" to "anon";
-
-grant truncate on table "public"."accounts" to "anon";
-
-grant update on table "public"."accounts" to "anon";
-
-grant delete on table "public"."accounts" to "authenticated";
-
-grant insert on table "public"."accounts" to "authenticated";
-
-grant references on table "public"."accounts" to "authenticated";
-
-grant select on table "public"."accounts" to "authenticated";
-
-grant trigger on table "public"."accounts" to "authenticated";
-
-grant truncate on table "public"."accounts" to "authenticated";
-
-grant update on table "public"."accounts" to "authenticated";
-
-grant delete on table "public"."accounts" to "service_role";
-
-grant insert on table "public"."accounts" to "service_role";
-
-grant references on table "public"."accounts" to "service_role";
-
-grant select on table "public"."accounts" to "service_role";
-
-grant trigger on table "public"."accounts" to "service_role";
-
-grant truncate on table "public"."accounts" to "service_role";
-
-grant update on table "public"."accounts" to "service_role";
-
 grant delete on table "public"."chat_messages" to "anon";
 
 grant insert on table "public"."chat_messages" to "anon";
@@ -875,90 +746,6 @@ grant trigger on table "public"."chats" to "service_role";
 grant truncate on table "public"."chats" to "service_role";
 
 grant update on table "public"."chats" to "service_role";
-
-grant delete on table "public"."github_installations" to "anon";
-
-grant insert on table "public"."github_installations" to "anon";
-
-grant references on table "public"."github_installations" to "anon";
-
-grant select on table "public"."github_installations" to "anon";
-
-grant trigger on table "public"."github_installations" to "anon";
-
-grant truncate on table "public"."github_installations" to "anon";
-
-grant update on table "public"."github_installations" to "anon";
-
-grant delete on table "public"."github_installations" to "authenticated";
-
-grant insert on table "public"."github_installations" to "authenticated";
-
-grant references on table "public"."github_installations" to "authenticated";
-
-grant select on table "public"."github_installations" to "authenticated";
-
-grant trigger on table "public"."github_installations" to "authenticated";
-
-grant truncate on table "public"."github_installations" to "authenticated";
-
-grant update on table "public"."github_installations" to "authenticated";
-
-grant delete on table "public"."github_installations" to "service_role";
-
-grant insert on table "public"."github_installations" to "service_role";
-
-grant references on table "public"."github_installations" to "service_role";
-
-grant select on table "public"."github_installations" to "service_role";
-
-grant trigger on table "public"."github_installations" to "service_role";
-
-grant truncate on table "public"."github_installations" to "service_role";
-
-grant update on table "public"."github_installations" to "service_role";
-
-grant delete on table "public"."linked_accounts" to "anon";
-
-grant insert on table "public"."linked_accounts" to "anon";
-
-grant references on table "public"."linked_accounts" to "anon";
-
-grant select on table "public"."linked_accounts" to "anon";
-
-grant trigger on table "public"."linked_accounts" to "anon";
-
-grant truncate on table "public"."linked_accounts" to "anon";
-
-grant update on table "public"."linked_accounts" to "anon";
-
-grant delete on table "public"."linked_accounts" to "authenticated";
-
-grant insert on table "public"."linked_accounts" to "authenticated";
-
-grant references on table "public"."linked_accounts" to "authenticated";
-
-grant select on table "public"."linked_accounts" to "authenticated";
-
-grant trigger on table "public"."linked_accounts" to "authenticated";
-
-grant truncate on table "public"."linked_accounts" to "authenticated";
-
-grant update on table "public"."linked_accounts" to "authenticated";
-
-grant delete on table "public"."linked_accounts" to "service_role";
-
-grant insert on table "public"."linked_accounts" to "service_role";
-
-grant references on table "public"."linked_accounts" to "service_role";
-
-grant select on table "public"."linked_accounts" to "service_role";
-
-grant trigger on table "public"."linked_accounts" to "service_role";
-
-grant truncate on table "public"."linked_accounts" to "service_role";
-
-grant update on table "public"."linked_accounts" to "service_role";
 
 grant delete on table "public"."sessions" to "anon";
 

@@ -131,11 +131,6 @@ const vercelCliCleanupExec = [
     cwd: "/vercel/sandbox",
     timeoutMs: 5000,
   },
-  {
-    command: "rm -f '/vercel/sandbox/.vercel/project.json'",
-    cwd: "/vercel/sandbox",
-    timeoutMs: 5000,
-  },
 ];
 
 describe("/api/sandbox lifecycle kicks", () => {

@@ -112,36 +112,15 @@ ON CONFLICT (id) DO NOTHING;
 --     ('eb50450e-5e8f-43cb-97b4-336f1cce420e', 'demo@example.org')
 -- ON CONFLICT (id) DO NOTHING;
 INSERT INTO
-    public.users (
-        id,
-        provider,
-        external_id,
-        access_token,
-        refresh_token,
-        scope,
-        username,
-        email,
-        name,
-        avatar_url,
-        created_at,
-        token_expires_at,
-        updated_at,
-        last_login_at
-    )
+    public.users (id, username, email, name, avatar_url, created_at, updated_at, last_login_at)
 VALUES
     (
         'eb50450e-5e8f-43cb-97b4-336f1cce420e',
-        'supabase',
-        'eb50450e-5e8f-43cb-97b4-336f1cce420e',
-        'dev-bypass-placeholder-token',
-        NULL,
-        NULL,
-        'local-dev',
+        'demo',
         'demo@example.org',
         'Local Dev',
         NULL,
         now(),
-        NULL,
         now(),
         now()
     )
