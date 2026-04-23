@@ -1,11 +1,9 @@
-import { nanoid } from "nanoid";
 import type {
   WorkflowRunStatus,
   WorkflowRunStepTiming,
 } from "@open-harness/shared/lib/workflow-run-types";
+import { nanoid } from "nanoid";
 import { getSupabaseAdmin } from "../../utils/supabase-admin";
-
-export type { WorkflowRunStatus, WorkflowRunStepTiming };
 
 export async function recordWorkflowRun(data: {
   id: string;

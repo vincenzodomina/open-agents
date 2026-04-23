@@ -34,7 +34,7 @@ const spies = {
   updateChatActiveStreamId: mock(() => Promise.resolve()),
   workflowFetch: mock((_path: string) => {
     if (workflowFetchResult.kind === "throw") {
-      throw new Error("workflow-runtime unreachable");
+      throw new Error("runtime unreachable");
     }
     return Promise.resolve(
       new Response(workflowFetchResult.body ?? null, {

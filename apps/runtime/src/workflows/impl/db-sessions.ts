@@ -253,5 +253,3 @@ export async function getChatMessages(chatId: string): Promise<ChatMessage[]> {
     mapChatMessageRow(r as Record<string, unknown>),
   );
 }
-
-export type { SandboxState };

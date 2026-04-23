@@ -14,12 +14,12 @@ import {
   buildLifecycleActivityUpdate,
 } from "./impl/sandbox-lifecycle";
 import { dedupeMessageReasoning } from "@open-harness/shared/lib/dedupe-message-reasoning";
-import {
-  recordWorkflowRun,
-  type WorkflowRunStatus,
-  type WorkflowRunStepTiming,
-} from "./impl/db-workflow-runs";
+import type {
+  WorkflowRunStatus,
+  WorkflowRunStepTiming,
+} from "@open-harness/shared/lib/workflow-run-types";
 import { recordUsage } from "./impl/db-usage";
+import { recordWorkflowRun } from "./impl/db-workflow-runs";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
