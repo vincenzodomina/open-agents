@@ -11,7 +11,7 @@ import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
 import {
   isValidGitHubRepoName,
   isValidGitHubRepoOwner,
-} from "@/lib/github/repo-identifiers";
+} from "@open-harness/shared/lib/repo-identifiers";
 import { getRandomCityName } from "@/lib/random-city";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {

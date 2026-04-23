@@ -1,6 +1,4 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
-
-// ── Mutable state ──────────────────────────────────────────────────
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 let currentAuthSession: { user: { id: string } } | null = {
   user: { id: "user-1" },
@@ -22,44 +20,36 @@ let sessionRecord: {
   userId: "user-1",
 };
 
-let workflowRunStatus: string = "running";
-let getRunShouldThrow = false;
+type WorkflowFetchResult =
+  | { kind: "response"; status: number; body?: BodyInit | null }
+  | { kind: "throw" };
+
+let workflowFetchResult: WorkflowFetchResult = {
+  kind: "response",
+  status: 200,
+  body: "streaming chunks",
+};
 
 const spies = {
   updateChatActiveStreamId: mock(() => Promise.resolve()),
+  workflowFetch: mock((_path: string) => {
+    if (workflowFetchResult.kind === "throw") {
+      throw new Error("workflow-runtime unreachable");
+    }
+    return Promise.resolve(
+      new Response(workflowFetchResult.body ?? null, {
+        status: workflowFetchResult.status,
+      }),
+    );
+  }),
 };
 
-// ── Module mocks ───────────────────────────────────────────────────
-
-const originalFetch = globalThis.fetch;
-globalThis.fetch = (async () =>
-  new Response("{}", {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  })) as unknown as typeof fetch;
-
-mock.module("ai", () => ({
-  createUIMessageStreamResponse: ({ stream }: { stream: ReadableStream }) =>
-    new Response(stream, { status: 200 }),
-}));
-
-mock.module("workflow/api", () => ({
-  getRun: () => {
-    if (getRunShouldThrow) throw new Error("Run not found");
-    return {
-      status: Promise.resolve(workflowRunStatus),
-      getReadable: () =>
-        new ReadableStream({
-          start(controller) {
-            controller.close();
-          },
-        }),
-    };
-  },
-}));
-
-mock.module("@/lib/chat/create-cancelable-readable-stream", () => ({
-  createCancelableReadableStream: (stream: ReadableStream) => stream,
+mock.module("@/lib/runtime-connection/workflow-client", () => ({
+  getWorkflowClient: () => ({
+    baseUrl: "http://workflow-runtime",
+    fetch: (path: string) => spies.workflowFetch(path),
+    health: async () => ({ ok: true, status: 200 }),
+  }),
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
@@ -74,12 +64,6 @@ mock.module("@/lib/db/sessions", () => ({
 
 const routeModulePromise = import("./route");
 
-afterAll(() => {
-  globalThis.fetch = originalFetch;
-});
-
-// ── Helpers ────────────────────────────────────────────────────────
-
 function createStreamRequest() {
   return new Request("http://localhost/api/chat/chat-1/stream", {
     method: "GET",
@@ -91,8 +75,6 @@ const routeContext = {
   params: Promise.resolve({ chatId: "chat-1" }),
 };
 
-// ── Tests ──────────────────────────────────────────────────────────
-
 beforeEach(() => {
   currentAuthSession = { user: { id: "user-1" } };
   sessionRecord = { id: "session-1", userId: "user-1" };
@@ -100,8 +82,11 @@ beforeEach(() => {
     sessionId: "session-1",
     activeStreamId: "wrun_active-123",
   };
-  workflowRunStatus = "running";
-  getRunShouldThrow = false;
+  workflowFetchResult = {
+    kind: "response",
+    status: 200,
+    body: "streaming chunks",
+  };
   Object.values(spies).forEach((s) => s.mockClear());
 });
 
@@ -136,28 +121,23 @@ describe("GET /api/chat/[chatId]/stream", () => {
 
     const response = await GET(createStreamRequest(), routeContext);
     expect(response.status).toBe(204);
+    expect(spies.workflowFetch).not.toHaveBeenCalled();
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
   });
 
-  test("returns stream response when workflow is running", async () => {
-    workflowRunStatus = "running";
+  test("forwards runtime response when workflow is running", async () => {
     const { GET } = await routeModulePromise;
 
     const response = await GET(createStreamRequest(), routeContext);
     expect(response.status).toBe(200);
+    expect(spies.workflowFetch).toHaveBeenCalledWith(
+      "/api/chat/runs/wrun_active-123/stream",
+    );
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
   });
 
-  test("returns stream response when workflow is pending", async () => {
-    workflowRunStatus = "pending";
-    const { GET } = await routeModulePromise;
-
-    const response = await GET(createStreamRequest(), routeContext);
-    expect(response.status).toBe(200);
-  });
-
-  test("clears stale ID and returns 204 when workflow is completed", async () => {
-    workflowRunStatus = "completed";
+  test("clears stale ID and returns 204 when runtime reports not running", async () => {
+    workflowFetchResult = { kind: "response", status: 204 };
     const { GET } = await routeModulePromise;
 
     const response = await GET(createStreamRequest(), routeContext);
@@ -165,26 +145,8 @@ describe("GET /api/chat/[chatId]/stream", () => {
     expect(spies.updateChatActiveStreamId).toHaveBeenCalledWith("chat-1", null);
   });
 
-  test("clears stale ID and returns 204 when workflow is cancelled", async () => {
-    workflowRunStatus = "cancelled";
-    const { GET } = await routeModulePromise;
-
-    const response = await GET(createStreamRequest(), routeContext);
-    expect(response.status).toBe(204);
-    expect(spies.updateChatActiveStreamId).toHaveBeenCalledWith("chat-1", null);
-  });
-
-  test("clears stale ID and returns 204 when workflow is failed", async () => {
-    workflowRunStatus = "failed";
-    const { GET } = await routeModulePromise;
-
-    const response = await GET(createStreamRequest(), routeContext);
-    expect(response.status).toBe(204);
-    expect(spies.updateChatActiveStreamId).toHaveBeenCalledWith("chat-1", null);
-  });
-
-  test("clears stale ID and returns 204 when workflow run not found", async () => {
-    getRunShouldThrow = true;
+  test("clears stale ID and returns 204 when runtime is unreachable", async () => {
+    workflowFetchResult = { kind: "throw" };
     const { GET } = await routeModulePromise;
 
     const response = await GET(createStreamRequest(), routeContext);

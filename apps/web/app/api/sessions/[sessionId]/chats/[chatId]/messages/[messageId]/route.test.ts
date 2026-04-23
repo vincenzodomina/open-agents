@@ -72,11 +72,15 @@ mock.module("@/lib/db/sessions", () => ({
   updateChatActiveStreamId: async () => {},
 }));
 
-mock.module("workflow/api", () => ({
-  getRun: () => ({
-    get status() {
-      return Promise.resolve(mockWorkflowStatus);
-    },
+mock.module("@/lib/runtime-connection/workflow-client", () => ({
+  getWorkflowClient: () => ({
+    baseUrl: "http://workflow-runtime",
+    fetch: async () =>
+      new Response(JSON.stringify({ status: mockWorkflowStatus }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    health: async () => ({ ok: true, status: 200 }),
   }),
 }));
 

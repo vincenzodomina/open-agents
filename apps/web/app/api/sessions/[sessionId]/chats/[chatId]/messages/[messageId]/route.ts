@@ -1,4 +1,3 @@
-import { getRun } from "workflow/api";
 import {
   requireAuthenticatedUser,
   requireOwnedSessionChat,
@@ -11,6 +10,7 @@ import {
   isManagedTemplateTrialUser,
   MANAGED_TEMPLATE_TRIAL_DELETE_MESSAGE_ERROR,
 } from "@/lib/managed-template-trial";
+import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 type RouteContext = {
@@ -49,13 +49,19 @@ export async function DELETE(req: Request, context: RouteContext) {
     // without cleaning up (e.g. due to a failure), clear the stale ID
     // and allow the delete to proceed.
     try {
-      const run = getRun(chat.activeStreamId);
-      const status = await run.status;
-      if (status === "running" || status === "pending") {
-        return Response.json(
-          { error: "Cannot delete messages while a response is streaming" },
-          { status: 409 },
-        );
+      const workflow = getWorkflowClient();
+      const response = await workflow.fetch(
+        `/api/runs/${encodeURIComponent(chat.activeStreamId)}`,
+        { method: "GET" },
+      );
+      if (response.ok) {
+        const { status } = (await response.json()) as { status?: string };
+        if (status === "running" || status === "pending") {
+          return Response.json(
+            { error: "Cannot delete messages while a response is streaming" },
+            { status: 409 },
+          );
+        }
       }
     } catch {
       // Workflow run not found — treat as stale.

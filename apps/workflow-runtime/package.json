@@ -1,0 +1,31 @@
+{
+  "name": "workflow-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nitro dev",
+    "build": "nitro build",
+    "start": "node .output/server/index.mjs",
+    "setup-pg": "workflow-postgres-setup",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@octokit/rest": "^22.0.1",
+    "@open-harness/runtime-core": "workspace:*",
+    "@open-harness/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.103.3",
+    "@workflow/world-postgres": "^4.1.1",
+    "ai": "catalog:",
+    "nanoid": "^5.1.6",
+    "workflow": "^4.2.0-beta.74",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@open-harness/tsconfig": "workspace:*",
+    "@types/node": "^20",
+    "nitro": "^3.0.0-beta.20",
+    "rollup": "^4.57.0",
+    "typescript": "^5"
+  }
+}

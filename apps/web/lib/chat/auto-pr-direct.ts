@@ -10,7 +10,7 @@ import {
   buildGitHubAuthRemoteUrl,
   isValidGitHubRepoName,
   isValidGitHubRepoOwner,
-} from "@/lib/github/repo-identifiers";
+} from "@open-harness/shared/lib/repo-identifiers";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { generatePullRequestContentFromSandbox } from "@/lib/git/pr-content";
 

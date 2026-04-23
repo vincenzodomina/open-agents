@@ -16,6 +16,9 @@
   },
   "scripts": {
     "web": "cd apps/web/ && bun run dev",
+    "runtime": "cd apps/runtime/ && bun run dev",
+    "workflow-runtime": "cd apps/workflow-runtime/ && bun run dev",
+    "desktop": "cd apps/desktop/ && bun run dev",
     "dev": "turbo dev",
     "build": "turbo build",
     "sandbox:snapshot-base": "bun run scripts/vercel-refresh-base-snapshot.ts",

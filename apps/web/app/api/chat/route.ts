@@ -1,5 +1,3 @@
-import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
-import { start } from "workflow/api";
 import type { WebAgentUIMessage } from "@/app/types";
 import { verifyBotIdRequest } from "@/lib/botid-server";
 import {
@@ -20,8 +18,8 @@ import {
   sanitizeUserPreferencesForSession,
 } from "@/lib/model-access";
 import { getAllVariants } from "@/lib/model-variants";
-import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
+import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   isManagedTemplateTrialUser,
@@ -36,12 +34,9 @@ import {
 import { resolveChatModelSelection } from "./_lib/model-selection";
 import { parseChatRequestBody, requireChatIdentifiers } from "./_lib/request";
 import { createChatRuntime } from "./_lib/runtime";
-import { runAgentWorkflow } from "@/app/workflows/chat";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
 export const maxDuration = 800;
-
-type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
 
 function getLatestUserMessage(messages: WebAgentUIMessage[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -117,6 +112,8 @@ export async function POST(req: Request) {
     }
   }
 
+  const workflow = getWorkflowClient();
+
   // Guard: if a workflow is already running for this chat, reconnect to it
   // instead of starting a duplicate. This prevents auto-submit from spawning
   // parallel workflows when the client sees completed tool calls mid-loop.
@@ -124,12 +121,13 @@ export async function POST(req: Request) {
     const existingStreamResolution = await reconcileExistingActiveStream(
       chatId,
       chat.activeStreamId,
+      workflow,
     );
 
     if (existingStreamResolution.action === "resume") {
-      return createUIMessageStreamResponse({
-        stream: existingStreamResolution.stream,
-        headers: { "x-workflow-run-id": existingStreamResolution.runId },
+      return new Response(existingStreamResolution.response.body, {
+        status: existingStreamResolution.response.status,
+        headers: existingStreamResolution.response.headers,
       });
     }
 
@@ -220,73 +218,81 @@ export async function POST(req: Request) {
     shouldAutoCommitPush &&
     (sessionRecord.autoCreatePrOverride ?? preferences?.autoCreatePr ?? false);
 
-  // Start the durable workflow
-  const run = await start(runAgentWorkflow, [
-    {
-      messages,
-      chatId,
-      sessionId,
-      userId,
-      selectedModelId: selectedModelId ?? mainModelSelection.id,
-      modelId: mainModelSelection.id,
-      maxSteps: 500,
-      agentOptions: {
-        sandbox: {
-          state: activeSandboxState,
-          workingDirectory: sandbox.workingDirectory,
-          currentBranch: sandbox.currentBranch,
-          environmentDetails: sandbox.environmentDetails,
-        },
-        model: mainModelSelection,
-        ...(subagentModelSelection
-          ? { subagentModel: subagentModelSelection }
-          : {}),
-        ...(skills.length > 0 && { skills }),
-        customInstructions: assistantFileLinkPrompt,
+  const workflowOptions = {
+    messages,
+    chatId,
+    sessionId,
+    userId,
+    selectedModelId: selectedModelId ?? mainModelSelection.id,
+    modelId: mainModelSelection.id,
+    maxSteps: 500,
+    agentOptions: {
+      sandbox: {
+        state: activeSandboxState,
+        workingDirectory: sandbox.workingDirectory,
+        currentBranch: sandbox.currentBranch,
+        environmentDetails: sandbox.environmentDetails,
       },
-      ...(shouldAutoCommitPush &&
-        sessionRecord.repoOwner &&
-        sessionRecord.repoName && {
-          autoCommitEnabled: true,
-          autoCreatePrEnabled: shouldAutoCreatePr,
-          sessionTitle: sessionRecord.title,
-          repoOwner: sessionRecord.repoOwner,
-          repoName: sessionRecord.repoName,
-        }),
+      model: mainModelSelection,
+      ...(subagentModelSelection
+        ? { subagentModel: subagentModelSelection }
+        : {}),
+      ...(skills.length > 0 && { skills }),
+      customInstructions: assistantFileLinkPrompt,
     },
-  ]);
+    ...(shouldAutoCommitPush &&
+      sessionRecord.repoOwner &&
+      sessionRecord.repoName && {
+        autoCommitEnabled: true,
+        autoCreatePrEnabled: shouldAutoCreatePr,
+        sessionTitle: sessionRecord.title,
+        repoOwner: sessionRecord.repoOwner,
+        repoName: sessionRecord.repoName,
+      }),
+  };
+
+  const startResponse = await workflow.fetch("/api/chat/start", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(workflowOptions),
+  });
+
+  if (!startResponse.ok) {
+    return new Response(startResponse.body, {
+      status: startResponse.status,
+      headers: startResponse.headers,
+    });
+  }
+
+  const runId = startResponse.headers.get("x-workflow-run-id");
+  if (!runId) {
+    return Response.json(
+      { error: "Workflow runtime did not return a run id" },
+      { status: 502 },
+    );
+  }
 
   // Atomically claim the activeStreamId slot. If another request raced us and
   // already set it, cancel the workflow we just started and reconnect instead.
-  const claimed = await compareAndSetChatActiveStreamId(
-    chatId,
-    null,
-    run.runId,
-  );
+  const claimed = await compareAndSetChatActiveStreamId(chatId, null, runId);
 
   if (!claimed) {
     // Another request won the race — cancel our duplicate workflow.
-    try {
-      const { getRun } = await import("workflow/api");
-      getRun(run.runId).cancel();
-    } catch {
-      // Best-effort cleanup.
-    }
+    await startResponse.body?.cancel().catch(() => {});
+    await workflow
+      .fetch(`/api/chat/runs/${encodeURIComponent(runId)}/stop`, {
+        method: "POST",
+      })
+      .catch(() => {});
     return Response.json(
       { error: "Another workflow is already running for this chat" },
       { status: 409 },
     );
   }
 
-  const stream = createCancelableReadableStream(
-    run.getReadable<WebAgentUIMessageChunk>(),
-  );
-
-  return createUIMessageStreamResponse({
-    stream,
-    headers: {
-      "x-workflow-run-id": run.runId,
-    },
+  return new Response(startResponse.body, {
+    status: startResponse.status,
+    headers: startResponse.headers,
   });
 }
 
@@ -294,7 +300,7 @@ type ExistingActiveStreamResolution =
   | {
       action: "resume";
       runId: string;
-      stream: ReadableStream<WebAgentUIMessageChunk>;
+      response: Response;
     }
   | {
       action: "ready";
@@ -308,8 +314,8 @@ const ACTIVE_STREAM_RECONCILIATION_MAX_ATTEMPTS = 3;
 async function reconcileExistingActiveStream(
   chatId: string,
   activeStreamId: string,
+  workflow: ReturnType<typeof getWorkflowClient>,
 ): Promise<ExistingActiveStreamResolution> {
-  const { getRun } = await import("workflow/api");
   let currentStreamId: string | null = activeStreamId;
 
   for (
@@ -318,16 +324,19 @@ async function reconcileExistingActiveStream(
     attempt++
   ) {
     try {
-      const existingRun = getRun(currentStreamId);
-      const status = await existingRun.status;
-      if (status === "running" || status === "pending") {
+      const response = await workflow.fetch(
+        `/api/chat/runs/${encodeURIComponent(currentStreamId)}/stream`,
+        { method: "GET" },
+      );
+      if (response.status !== 204 && response.ok) {
         return {
           action: "resume",
           runId: currentStreamId,
-          stream: createCancelableReadableStream(
-            existingRun.getReadable<WebAgentUIMessageChunk>(),
-          ),
+          response,
         };
+      }
+      if (response.body) {
+        await response.body.cancel().catch(() => {});
       }
     } catch {
       // Workflow not found or inaccessible — try to clear the stale stream ID.
