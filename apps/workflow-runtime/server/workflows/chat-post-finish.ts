@@ -1,8 +1,8 @@
 import type { LanguageModelUsage } from "ai";
 import type { SandboxState, Sandbox } from "@open-harness/sandbox";
 import type { WebAgentUIMessage } from "@open-harness/shared/lib/chat-types";
-import type { AutoCommitResult } from "./stubs/auto-commit-direct";
-import type { AutoCreatePrResult } from "./stubs/auto-pr-direct";
+import type { AutoCommitResult } from "./impl/auto-commit-direct";
+import type { AutoCreatePrResult } from "./impl/auto-pr-direct";
 import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
@@ -12,18 +12,18 @@ import {
   isFirstChatMessage,
   upsertChatMessageScoped,
   updateChatAssistantActivity,
-} from "./stubs/db-sessions";
+} from "./impl/db-sessions";
 import {
   buildActiveLifecycleUpdate,
   buildLifecycleActivityUpdate,
-} from "./stubs/sandbox-lifecycle";
+} from "./impl/sandbox-lifecycle";
 import { dedupeMessageReasoning } from "@open-harness/shared/lib/dedupe-message-reasoning";
 import {
   recordWorkflowRun,
   type WorkflowRunStatus,
   type WorkflowRunStepTiming,
-} from "./stubs/db-workflow-runs";
-import { recordUsage } from "./stubs/db-usage";
+} from "./impl/db-workflow-runs";
+import { recordUsage } from "./impl/db-usage";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
@@ -353,7 +353,7 @@ export async function refreshDiffCache(
   "use step";
   try {
     const { connectSandbox } = await import("@open-harness/sandbox");
-    const { computeAndCacheDiff } = await import("./stubs/compute-diff");
+    const { computeAndCacheDiff } = await import("./impl/compute-diff");
     const sandbox: Sandbox = await connectSandbox(sandboxState);
     await computeAndCacheDiff({ sandbox, sessionId });
   } catch (error) {
@@ -396,7 +396,7 @@ export async function runAutoCommitStep(params: {
   "use step";
   try {
     const { connectSandbox } = await import("@open-harness/sandbox");
-    const { performAutoCommit } = await import("./stubs/auto-commit-direct");
+    const { performAutoCommit } = await import("./impl/auto-commit-direct");
     const sandbox = await connectSandbox(params.sandboxState);
     return await performAutoCommit({
       sandbox,
@@ -427,7 +427,7 @@ export async function runAutoCreatePrStep(params: {
   "use step";
   try {
     const { connectSandbox } = await import("@open-harness/sandbox");
-    const { performAutoCreatePr } = await import("./stubs/auto-pr-direct");
+    const { performAutoCreatePr } = await import("./impl/auto-pr-direct");
     const sandbox = await connectSandbox(params.sandboxState);
     const result = await performAutoCreatePr({
       sandbox,

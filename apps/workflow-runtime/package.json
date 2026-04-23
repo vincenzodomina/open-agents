@@ -11,12 +11,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@octokit/rest": "^22.0.1",
     "@open-harness/runtime-core": "workspace:*",
     "@open-harness/shared": "workspace:*",
     "@supabase/supabase-js": "^2.103.3",
     "@workflow/world-postgres": "^4.1.1",
+    "ai": "catalog:",
     "nanoid": "^5.1.6",
-    "workflow": "^4.2.0-beta.74"
+    "workflow": "^4.2.0-beta.74",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@open-harness/tsconfig": "workspace:*",

@@ -111,6 +111,10 @@ Three stubs still no-op; they're product features, not plumbing:
 
 Also in 3c-2b: rename the `stubs/` directory (now misleading; holds real impls). Single import update in `chat-post-finish.ts`.
 
+### 3c-2c: auto-commit-direct + auto-pr-direct ✅ DONE
+
+Last two feature stubs are now real. Pure helpers (`crypto`, `repo-identifiers`) extracted to `@open-harness/shared`; DB-coupled and Octokit-coupled helpers duplicated in `apps/workflow-runtime/server/utils/` (GitHub account + token + app trailer + branches + pull requests + pr-content). `stubs/` directory renamed to `impl/` now that everything under it is real.
+
 ### 3c-3: Wire web routes to call the workflow runtime (after 3c-2, ~2–3 days)
 
 This is the payoff. The 1079-line `apps/web/app/workflows/chat.ts` moves to the new workflow service.

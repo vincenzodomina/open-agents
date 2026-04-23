@@ -193,4 +193,76 @@ function toSnakeCase(data: Record<string, unknown>): Record<string, unknown> {
   return result;
 }
 
+export type SessionSummary = {
+  id: string;
+  userId: string;
+  title: string;
+};
+
+export type ChatSummary = {
+  id: string;
+  sessionId: string;
+};
+
+export async function getSessionById(
+  sessionId: string,
+): Promise<SessionSummary | null> {
+  const { data, error } = await sb()
+    .from("sessions")
+    .select("id, user_id, title")
+    .eq("id", sessionId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    return null;
+  }
+  const row = data as Record<string, unknown>;
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    title: String(row.title ?? ""),
+  };
+}
+
+export async function getChatsBySessionId(
+  sessionId: string,
+): Promise<ChatSummary[]> {
+  const { data, error } = await sb()
+    .from("chats")
+    .select("id, session_id")
+    .eq("session_id", sessionId)
+    .order("updated_at", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) => {
+    const row = r as Record<string, unknown>;
+    return {
+      id: String(row.id),
+      sessionId: String(row.session_id),
+    };
+  });
+}
+
+export async function getChatMessages(chatId: string): Promise<ChatMessage[]> {
+  const { data, error } = await sb()
+    .from("chat_messages")
+    .select("*")
+    .eq("chat_id", chatId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+  return (data ?? []).map((r) =>
+    mapChatMessageRow(r as Record<string, unknown>),
+  );
+}
+
 export type { SandboxState };
