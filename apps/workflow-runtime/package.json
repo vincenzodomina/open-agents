@@ -12,7 +12,10 @@
   },
   "dependencies": {
     "@open-harness/runtime-core": "workspace:*",
+    "@open-harness/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.103.3",
     "@workflow/world-postgres": "^4.1.1",
+    "nanoid": "^5.1.6",
     "workflow": "^4.2.0-beta.74"
   },
   "devDependencies": {

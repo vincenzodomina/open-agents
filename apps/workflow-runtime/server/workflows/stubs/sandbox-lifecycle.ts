@@ -1,24 +1,47 @@
-// Phase 3c-1 stub. See ./README.md.
 import type { SandboxState } from "@open-harness/sandbox";
 
-type LifecycleUpdate = Record<string, unknown>;
+const SANDBOX_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+
+type LifecycleState = "active" | "restoring" | "hibernated";
+
+type LifecycleUpdate = {
+  lifecycleState: LifecycleState;
+  lifecycleError: null;
+  lastActivityAt: Date;
+  hibernateAfter: Date;
+  sandboxExpiresAt?: Date | null;
+};
+
+function getSandboxExpiresAtDate(
+  sandboxState: SandboxState | null | undefined,
+): Date | null {
+  if (!sandboxState || !("expiresAt" in sandboxState)) {
+    return null;
+  }
+  return typeof sandboxState.expiresAt === "number"
+    ? new Date(sandboxState.expiresAt)
+    : null;
+}
 
 export function buildLifecycleActivityUpdate(
   activityAt: Date = new Date(),
-  lifecycleState: "active" | "restoring" = "active",
-): LifecycleUpdate {
+  lifecycleState: Extract<LifecycleState, "active" | "restoring"> = "active",
+): Omit<LifecycleUpdate, "sandboxExpiresAt"> {
   return {
     lifecycleState,
     lifecycleError: null,
     lastActivityAt: activityAt,
+    hibernateAfter: new Date(
+      activityAt.getTime() + SANDBOX_INACTIVITY_TIMEOUT_MS,
+    ),
   };
 }
 
 export function buildActiveLifecycleUpdate(
-  _sandboxState: SandboxState | null | undefined,
+  sandboxState: SandboxState | null | undefined,
   options?: {
     activityAt?: Date;
-    lifecycleState?: "active" | "restoring";
+    lifecycleState?: Extract<LifecycleState, "active" | "restoring">;
   },
 ): LifecycleUpdate {
   const activityAt = options?.activityAt ?? new Date();
@@ -27,5 +50,6 @@ export function buildActiveLifecycleUpdate(
       activityAt,
       options?.lifecycleState ?? "active",
     ),
+    sandboxExpiresAt: getSandboxExpiresAtDate(sandboxState),
   };
 }

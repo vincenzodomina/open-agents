@@ -94,13 +94,22 @@ New endpoints wired up with bearer auth:
 
 The webAgent's dynamic `await import("@/app/config")` was replaced with `await import("@open-harness/agent/open-harness-agent")` — removes the runtime's implicit dependency on apps/web.
 
-### 3c-2: Replace stubs with real runtime-side implementations (next session, ~1 week)
+### 3c-2a: Plumbing stubs replaced ✅ DONE
 
-For each stub in `apps/workflow-runtime/server/workflows/stubs/`:
+Four of seven stubs are now real implementations:
+- **`db-sessions.ts`** — `getSupabaseAdmin()` helper in `server/utils/supabase-admin.ts` (service-role client); all 8 functions the workflow uses now issue real queries/RPCs, mirroring `apps/web/lib/db/sessions.ts`.
+- **`db-workflow-runs.ts`** — verbatim port, calls `record_workflow_run` RPC.
+- **`db-usage.ts`** — verbatim port, inserts into `usage_events`.
+- **`sandbox-lifecycle.ts`** — minimal port of the two activity/active update builders chat uses.
 
-1. **db-sessions / db-workflow-runs / db-usage** — build a runtime-side Supabase client. Easiest: add `@supabase/supabase-js` as a dep and use the service-role key (already in env as `SUPABASE_SERVICE_ROLE_KEY`) via `createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })`. Port the queries from `apps/web/lib/db/{sessions,workflow-runs,usage}.ts` 1:1 — they're all RPC calls and table reads/writes that work identically regardless of which process issues them.
-2. **sandbox-lifecycle** — candidate to move to `@open-harness/shared`; it's pure TS that constructs update objects. No runtime/web specific concerns.
-3. **auto-commit-direct / auto-pr-direct / compute-diff** — these are sandbox operations + GitHub API calls. Port them to runtime; they need the GitHub token retrieval path (`getUserGitHubToken`) which also needs DB access. Consider extracting to a shared package if the web side still calls them for non-chat flows (grep — if they're chat-only, just move).
+### 3c-2b: Remaining feature stubs (follow-up session, ~2–3 days)
+
+Three stubs still no-op; they're product features, not plumbing:
+- `auto-commit-direct.ts` — sandbox + GitHub token operations. Needs `getUserGitHubToken` (DB-backed). Port from `apps/web/lib/chat/auto-commit-direct.ts`.
+- `auto-pr-direct.ts` — GitHub REST API calls for PR creation. Port from `apps/web/lib/chat/auto-pr-direct.ts`.
+- `compute-diff.ts` — sandbox diff + blob cache. Port from `apps/web/lib/diff/compute-diff.ts`.
+
+Also in 3c-2b: rename the `stubs/` directory (now misleading; holds real impls). Single import update in `chat-post-finish.ts`.
 
 ### 3c-3: Wire web routes to call the workflow runtime (after 3c-2, ~2–3 days)
 
