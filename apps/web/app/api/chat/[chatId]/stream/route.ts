@@ -3,7 +3,7 @@ import {
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
 import { updateChatActiveStreamId } from "@/lib/db/sessions";
-import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
+import { getRuntimeClient } from "@/lib/runtime-connection/server-client";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -33,11 +33,11 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const runId = chat.activeStreamId;
-  const workflow = getWorkflowClient();
+  const runtime = getRuntimeClient();
 
   try {
-    const response = await workflow.fetch(
-      `/api/chat/runs/${encodeURIComponent(runId)}/stream`,
+    const response = await runtime.fetch(
+      `/v1/chat/runs/${encodeURIComponent(runId)}/stream`,
       { method: "GET" },
     );
 

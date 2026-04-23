@@ -1,5 +1,7 @@
 # Workflow Durability Migration (Phase 3)
 
+> **Status: historical.** Workflows now live in `apps/runtime` (a single Bun service), not a separate `apps/workflow-runtime`. Path references below refer to the intermediate two-runtime split that existed during migration. See `docs/agents/architecture.md` for the current state.
+
 ## Goal
 
 Move `apps/web/app/workflows/chat.ts` (the 1079-line durable workflow body that drives agent execution, auto-commit, auto-PR) into a detached runtime service with **Postgres-backed durability** via `@workflow/world-postgres`. After migration, the runtime is authoritative for both runtime-dependent behavior (agent loop) AND durability (workflow state), so any client — web, desktop embedded, CLI, SSH-tunneled — gets the same semantics.

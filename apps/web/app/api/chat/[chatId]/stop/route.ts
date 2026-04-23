@@ -8,7 +8,7 @@ import {
   createChatMessageIfNotExists,
   updateChatAssistantActivity,
 } from "@/lib/db/sessions";
-import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
+import { getRuntimeClient } from "@/lib/runtime-connection/server-client";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -46,13 +46,13 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    const workflow = getWorkflowClient();
-    const response = await workflow.fetch(
-      `/api/chat/runs/${encodeURIComponent(chat.activeStreamId)}/stop`,
+    const runtime = getRuntimeClient();
+    const response = await runtime.fetch(
+      `/v1/chat/runs/${encodeURIComponent(chat.activeStreamId)}/stop`,
       { method: "POST" },
     );
     if (!response.ok) {
-      throw new Error(`workflow-runtime returned ${response.status}`);
+      throw new Error(`runtime returned ${response.status}`);
     }
   } catch (error) {
     console.error(

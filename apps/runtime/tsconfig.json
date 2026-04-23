@@ -1,6 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "extends": "@open-harness/tsconfig/bun.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "workflow" }]
+  },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "src/.well-known"]
 }

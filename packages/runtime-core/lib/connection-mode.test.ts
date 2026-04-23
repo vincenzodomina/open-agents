@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   parseConnectionMode,
   resolveConnectionConfig,
-  resolveWorkflowConnectionConfig,
 } from "./connection-mode.ts";
 
 describe("parseConnectionMode", () => {
@@ -48,31 +47,6 @@ describe("resolveConnectionConfig", () => {
     expect(config).toEqual({
       mode: "http",
       url: "https://runtime.example.com",
-    });
-  });
-});
-
-describe("resolveWorkflowConnectionConfig", () => {
-  test("embedded uses a distinct default url (port 3002)", () => {
-    const config = resolveWorkflowConnectionConfig({ mode: "embedded" });
-    expect(config.mode).toBe("embedded");
-    expect(config.url).toMatch(/^http:\/\/127\.0\.0\.1:3002$/);
-  });
-
-  test("http error message references WORKFLOW_CONNECTION_URL", () => {
-    expect(() => resolveWorkflowConnectionConfig({ mode: "http" })).toThrow(
-      /WORKFLOW_CONNECTION_URL/,
-    );
-  });
-
-  test("http honors provided url", () => {
-    const config = resolveWorkflowConnectionConfig({
-      mode: "http",
-      url: "https://workflow.example.com",
-    });
-    expect(config).toEqual({
-      mode: "http",
-      url: "https://workflow.example.com",
     });
   });
 });

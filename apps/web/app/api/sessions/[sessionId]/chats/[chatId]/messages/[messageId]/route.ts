@@ -10,7 +10,7 @@ import {
   isManagedTemplateTrialUser,
   MANAGED_TEMPLATE_TRIAL_DELETE_MESSAGE_ERROR,
 } from "@/lib/managed-template-trial";
-import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
+import { getRuntimeClient } from "@/lib/runtime-connection/server-client";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 type RouteContext = {
@@ -45,13 +45,10 @@ export async function DELETE(req: Request, context: RouteContext) {
   const { chat } = chatContext;
 
   if (chat.activeStreamId) {
-    // Check if the workflow is actually still running. If it terminated
-    // without cleaning up (e.g. due to a failure), clear the stale ID
-    // and allow the delete to proceed.
     try {
-      const workflow = getWorkflowClient();
-      const response = await workflow.fetch(
-        `/api/runs/${encodeURIComponent(chat.activeStreamId)}`,
+      const runtime = getRuntimeClient();
+      const response = await runtime.fetch(
+        `/v1/runs/${encodeURIComponent(chat.activeStreamId)}`,
         { method: "GET" },
       );
       if (response.ok) {
@@ -67,7 +64,6 @@ export async function DELETE(req: Request, context: RouteContext) {
       // Workflow run not found — treat as stale.
     }
 
-    // Workflow is terminal or not found — clear the stale activeStreamId.
     await updateChatActiveStreamId(chatId, null);
   }
 

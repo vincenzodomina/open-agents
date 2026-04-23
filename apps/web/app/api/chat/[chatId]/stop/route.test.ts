@@ -46,9 +46,9 @@ const spies = {
 
 // ── Module mocks ───────────────────────────────────────────────────
 
-mock.module("@/lib/runtime-connection/workflow-client", () => ({
-  getWorkflowClient: () => ({
-    baseUrl: "http://workflow-runtime",
+mock.module("@/lib/runtime-connection/server-client", () => ({
+  getRuntimeClient: () => ({
+    baseUrl: "http://runtime",
     fetch: (path: string) => spies.cancel(path),
     health: async () => ({ ok: true, status: 200 }),
   }),

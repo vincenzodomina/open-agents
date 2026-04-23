@@ -8,7 +8,6 @@ export type ConnectionConfig = {
 };
 
 const DEFAULT_EMBEDDED_URL = "http://127.0.0.1:3001";
-const DEFAULT_WORKFLOW_EMBEDDED_URL = "http://127.0.0.1:3002";
 
 export function parseConnectionMode(raw: string | undefined): ConnectionMode {
   if (!raw) {
@@ -23,34 +22,19 @@ export function parseConnectionMode(raw: string | undefined): ConnectionMode {
   );
 }
 
-function resolve(
-  env: { mode?: string; url?: string },
-  defaultUrl: string,
-  urlEnvName: string,
-): ConnectionConfig {
-  const mode = parseConnectionMode(env.mode);
-  if (mode === "embedded") {
-    return { mode, url: env.url?.trim() || defaultUrl };
-  }
-  const url = env.url?.trim();
-  if (!url) {
-    throw new Error(
-      `${urlEnvName} is required when SERVER_CONNECTION_MODE="${mode}".`,
-    );
-  }
-  return { mode, url };
-}
-
 export function resolveConnectionConfig(env: {
   mode?: string;
   url?: string;
 }): ConnectionConfig {
-  return resolve(env, DEFAULT_EMBEDDED_URL, "SERVER_CONNECTION_URL");
-}
-
-export function resolveWorkflowConnectionConfig(env: {
-  mode?: string;
-  url?: string;
-}): ConnectionConfig {
-  return resolve(env, DEFAULT_WORKFLOW_EMBEDDED_URL, "WORKFLOW_CONNECTION_URL");
+  const mode = parseConnectionMode(env.mode);
+  if (mode === "embedded") {
+    return { mode, url: env.url?.trim() || DEFAULT_EMBEDDED_URL };
+  }
+  const url = env.url?.trim();
+  if (!url) {
+    throw new Error(
+      `SERVER_CONNECTION_URL is required when SERVER_CONNECTION_MODE="${mode}".`,
+    );
+  }
+  return { mode, url };
 }

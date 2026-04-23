@@ -5,17 +5,25 @@
   "type": "module",
   "main": "./src/server.ts",
   "scripts": {
-    "dev": "bun run --hot src/server.ts",
-    "start": "bun run src/server.ts",
-    "typecheck": "tsc --noEmit"
+    "dev": "bun run src/workflow-build.ts && bun run --hot src/server.ts",
+    "start": "bun run src/workflow-build.ts && bun run src/server.ts",
+    "build:workflow": "bun run src/workflow-build.ts",
+    "setup-pg": "workflow-postgres-setup",
+    "typecheck": "bun run src/workflow-build.ts && tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/elevenlabs": "^2.0.29",
+    "@octokit/rest": "^22.0.1",
     "@open-harness/agent": "workspace:*",
     "@open-harness/runtime-core": "workspace:*",
     "@open-harness/sandbox": "workspace:*",
+    "@open-harness/shared": "workspace:*",
     "@supabase/supabase-js": "^2.103.3",
+    "@workflow/builders": "^4.0.1-beta.65",
+    "@workflow/world-postgres": "^4.1.1",
     "ai": "catalog:",
+    "nanoid": "^5.1.6",
+    "workflow": "^4.2.0-beta.74",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -30,7 +30,7 @@ async function startEmbeddedRuntime(
   const process = new ManagedProcess({
     label: "runtime",
     command: "bun",
-    args: ["run", "src/server.ts"],
+    args: ["run", "start"],
     cwd: runtimeCwd,
     env: {
       RUNTIME_HOST: config.runtimeHost,
@@ -38,7 +38,11 @@ async function startEmbeddedRuntime(
     },
   });
   process.start();
-  await waitForHttp({ url: `${url}/v1/health`, label: "runtime" });
+  await waitForHttp({
+    url: `${url}/v1/health`,
+    label: "runtime",
+    timeoutMs: 45_000,
+  });
   return {
     url,
     stop: () => process.stop(),

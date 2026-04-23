@@ -44,9 +44,9 @@ const spies = {
   }),
 };
 
-mock.module("@/lib/runtime-connection/workflow-client", () => ({
-  getWorkflowClient: () => ({
-    baseUrl: "http://workflow-runtime",
+mock.module("@/lib/runtime-connection/server-client", () => ({
+  getRuntimeClient: () => ({
+    baseUrl: "http://runtime",
     fetch: (path: string) => spies.workflowFetch(path),
     health: async () => ({ ok: true, status: 200 }),
   }),
@@ -131,7 +131,7 @@ describe("GET /api/chat/[chatId]/stream", () => {
     const response = await GET(createStreamRequest(), routeContext);
     expect(response.status).toBe(200);
     expect(spies.workflowFetch).toHaveBeenCalledWith(
-      "/api/chat/runs/wrun_active-123/stream",
+      "/v1/chat/runs/wrun_active-123/stream",
     );
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
   });

@@ -1,9 +1,5 @@
 import type { LanguageModelUsage } from "ai";
 
-/**
- * Add two LanguageModelUsage objects together.
- * Pure function with no step overhead - safe to call in loop.
- */
 export function addLanguageModelUsage(
   usage1: LanguageModelUsage,
   usage2: LanguageModelUsage,

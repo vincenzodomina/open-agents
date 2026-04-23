@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
+import { getRuntimeClient } from "@/lib/runtime-connection/server-client";
 import type { SandboxLifecycleReason } from "./lifecycle";
 
 interface KickSandboxLifecycleInput {
@@ -12,8 +12,8 @@ interface KickSandboxLifecycleInput {
 export function kickSandboxLifecycleWorkflow(input: KickSandboxLifecycleInput) {
   const run = async () => {
     try {
-      const workflow = getWorkflowClient();
-      const response = await workflow.fetch("/api/sandbox/lifecycle/kick", {
+      const runtime = getRuntimeClient();
+      const response = await runtime.fetch("/v1/sandbox/lifecycle/kick", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
@@ -23,12 +23,12 @@ export function kickSandboxLifecycleWorkflow(input: KickSandboxLifecycleInput) {
       });
       if (!response.ok) {
         console.error(
-          `[Lifecycle] workflow-runtime returned ${response.status} for session ${input.sessionId}`,
+          `[Lifecycle] runtime returned ${response.status} for session ${input.sessionId}`,
         );
       }
     } catch (error) {
       console.error(
-        `[Lifecycle] Failed to kick workflow runtime for session ${input.sessionId}:`,
+        `[Lifecycle] Failed to kick runtime for session ${input.sessionId}:`,
         error,
       );
     }

@@ -19,7 +19,7 @@ import {
 } from "@/lib/model-access";
 import { getAllVariants } from "@/lib/model-variants";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
-import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
+import { getRuntimeClient } from "@/lib/runtime-connection/server-client";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   isManagedTemplateTrialUser,
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const workflow = getWorkflowClient();
+  const runtime = getRuntimeClient();
 
   // Guard: if a workflow is already running for this chat, reconnect to it
   // instead of starting a duplicate. This prevents auto-submit from spawning
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
     const existingStreamResolution = await reconcileExistingActiveStream(
       chatId,
       chat.activeStreamId,
-      workflow,
+      runtime,
     );
 
     if (existingStreamResolution.action === "resume") {
@@ -251,7 +251,7 @@ export async function POST(req: Request) {
       }),
   };
 
-  const startResponse = await workflow.fetch("/api/chat/start", {
+  const startResponse = await runtime.fetch("/v1/chat/start", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(workflowOptions),
@@ -279,8 +279,8 @@ export async function POST(req: Request) {
   if (!claimed) {
     // Another request won the race — cancel our duplicate workflow.
     await startResponse.body?.cancel().catch(() => {});
-    await workflow
-      .fetch(`/api/chat/runs/${encodeURIComponent(runId)}/stop`, {
+    await runtime
+      .fetch(`/v1/chat/runs/${encodeURIComponent(runId)}/stop`, {
         method: "POST",
       })
       .catch(() => {});
@@ -314,7 +314,7 @@ const ACTIVE_STREAM_RECONCILIATION_MAX_ATTEMPTS = 3;
 async function reconcileExistingActiveStream(
   chatId: string,
   activeStreamId: string,
-  workflow: ReturnType<typeof getWorkflowClient>,
+  runtime: ReturnType<typeof getRuntimeClient>,
 ): Promise<ExistingActiveStreamResolution> {
   let currentStreamId: string | null = activeStreamId;
 
@@ -324,8 +324,8 @@ async function reconcileExistingActiveStream(
     attempt++
   ) {
     try {
-      const response = await workflow.fetch(
-        `/api/chat/runs/${encodeURIComponent(currentStreamId)}/stream`,
+      const response = await runtime.fetch(
+        `/v1/chat/runs/${encodeURIComponent(currentStreamId)}/stream`,
         { method: "GET" },
       );
       if (response.status !== 204 && response.ok) {

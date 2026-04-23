@@ -10,7 +10,7 @@ let fetchResponse: Response | Error = new Response(
   { status: 200, headers: { "content-type": "application/json" } },
 );
 
-const workflowFetchSpy = mock(async (path: string, init?: RequestInit) => {
+const runtimeFetchSpy = mock(async (path: string, init?: RequestInit) => {
   fetchCalls.push({ path, init });
   if (fetchResponse instanceof Error) {
     throw fetchResponse;
@@ -18,10 +18,10 @@ const workflowFetchSpy = mock(async (path: string, init?: RequestInit) => {
   return fetchResponse;
 });
 
-mock.module("@/lib/runtime-connection/workflow-client", () => ({
-  getWorkflowClient: () => ({
-    baseUrl: "http://workflow-runtime",
-    fetch: workflowFetchSpy,
+mock.module("@/lib/runtime-connection/server-client", () => ({
+  getRuntimeClient: () => ({
+    baseUrl: "http://runtime",
+    fetch: runtimeFetchSpy,
     health: async () => ({ ok: true, status: 200 }),
   }),
 }));
@@ -45,12 +45,12 @@ describe("kickSandboxLifecycleWorkflow", () => {
       status: 200,
       headers: { "content-type": "application/json" },
     });
-    workflowFetchSpy.mockClear();
+    runtimeFetchSpy.mockClear();
     consoleErrorSpy.mockClear();
     console.error = consoleErrorSpy as typeof console.error;
   });
 
-  test("POSTs sessionId + reason to the workflow runtime's kick endpoint", async () => {
+  test("POSTs sessionId + reason to the runtime's kick endpoint", async () => {
     const { kickSandboxLifecycleWorkflow } = await lifecycleKickModulePromise;
 
     const scheduled: Array<() => Promise<void>> = [];
@@ -65,8 +65,8 @@ describe("kickSandboxLifecycleWorkflow", () => {
     expect(scheduled).toHaveLength(1);
     await scheduled[0]?.();
 
-    expect(workflowFetchSpy).toHaveBeenCalledTimes(1);
-    expect(fetchCalls[0]?.path).toBe("/api/sandbox/lifecycle/kick");
+    expect(runtimeFetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchCalls[0]?.path).toBe("/v1/sandbox/lifecycle/kick");
     expect(fetchCalls[0]?.init?.method).toBe("POST");
     expect(getLastBody()).toEqual({
       sessionId: "session-1",
@@ -84,7 +84,7 @@ describe("kickSandboxLifecycleWorkflow", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(workflowFetchSpy).toHaveBeenCalledTimes(1);
+    expect(runtimeFetchSpy).toHaveBeenCalledTimes(1);
     expect(getLastBody()).toEqual({
       sessionId: "session-2",
       reason: "reconnect",
@@ -92,7 +92,7 @@ describe("kickSandboxLifecycleWorkflow", () => {
   });
 
   test("logs and swallows runtime failures without throwing", async () => {
-    fetchResponse = new Error("workflow-runtime unreachable");
+    fetchResponse = new Error("runtime unreachable");
 
     const { kickSandboxLifecycleWorkflow } = await lifecycleKickModulePromise;
 

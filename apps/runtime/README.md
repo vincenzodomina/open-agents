@@ -1,41 +1,49 @@
 # Runtime
 
-Detached HTTP service that owns runtime-dependent behavior (agent execution, streaming, long-running workflows). Phase 1 scaffolding — exposes health, whoami, and a streaming echo endpoint as the reference contract.
+Single Bun service hosting the web app's backend runtime concerns:
+- Lightweight LLM endpoints (`/v1/generate-title`, `/v1/generate-commit-message`, `/v1/transcribe`)
+- Durable workflows (`/v1/chat/*`, `/v1/sandbox/lifecycle/kick`) via Vercel `workflow` SDK + `@workflow/world-postgres`
+- Workflow control plane (`/.well-known/workflow/v1/{step,flow,webhook}`) consumed by the world-postgres queue
 
 ## Running locally
 
 ```bash
+export WORKFLOW_TARGET_WORLD="@workflow/world-postgres"
+export WORKFLOW_POSTGRES_URL="postgres://postgres:postgres@127.0.0.1:54322/postgres"
+export NEXT_PUBLIC_SUPABASE_URL="..."
+export NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
+export SUPABASE_SERVICE_ROLE_KEY="..."
+
+bun run --cwd apps/runtime setup-pg   # one-time: create workflow tables
 bun run --cwd apps/runtime dev
 ```
 
-Requires the same `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` that the web app uses — the runtime validates incoming bearer tokens against that Supabase instance. Runtime-dependent routes that call LLMs also need `OPENAI_API_KEY` (and optionally `OPENAI_BASE_URL`) in the runtime's env, not the web app's.
-
-## Auth contract
-
-Every non-health route requires `Authorization: Bearer <supabase access token>`. Tokens are validated via `supabase.auth.getUser(token)` — no separate identity provider.
-
-### Token freshness (FR-15)
-
-Supabase access tokens default to a 1h TTL. To support long-running interactions without breaking auth mid-run, the **web proxy** (not the runtime) owns token refresh:
-
-1. The proxy sends the current access token on every forwarded request.
-2. If the runtime returns `401` (expired or just-rotated token), the proxy asks Supabase for a fresh access token via `supabase.auth.refreshSession()` and retries the request **once** with the new token.
-3. The runtime itself is stateless with respect to refresh — it never sees refresh tokens and never mints tokens. It only validates the bearer it's given.
-
-Implications for route authors:
-- Route handlers do not need to re-validate the bearer mid-stream. The one-shot validation at request entry is the contract.
-- If a future route needs to call Supabase with user scope mid-stream, either (a) route it back through the web proxy so the proxy owns the refresh, or (b) use the service-role admin client (pattern used by the existing web chat handlers).
-- Streaming is preserved: because refresh happens only in response to a 401 *before* any response body has been consumed, successful streams are never interrupted by a retry.
+`dev` runs `src/workflow-build.ts` (StandaloneBuilder compiles `src/workflows/*.ts` into `src/.well-known/workflow/v1/*.mjs`) then starts the server with `--hot`. On Vercel deploys leave `WORKFLOW_TARGET_WORLD` unset — the SDK auto-detects the hosted world.
 
 ## Endpoints
 
 - `GET /v1/health` — liveness, no auth
-- `GET /v1/whoami` — returns the authenticated user id (auth required)
-- `POST /v1/echo-stream` — streams back each whitespace-delimited token from the request body (auth required, exercises streaming boundary)
-- `POST /v1/generate-title` — generates a 5-word coding-session title from a first user message (auth required, calls OpenAI via `@open-harness/agent`)
-- `POST /v1/generate-commit-message` — generates a conventional-format commit message from a sandbox diff (auth required, takes `{ sandboxState, sessionTitle }`)
-- `POST /v1/transcribe` — transcribes base64 audio via ElevenLabs (auth required, takes `{ audio, mimeType? }`)
+- `GET /v1/whoami` — authenticated user summary
+- `POST /v1/echo-stream` — streaming smoke test
+- `POST /v1/generate-title` — session title generation
+- `POST /v1/generate-commit-message` — commit message from sandbox diff
+- `POST /v1/transcribe` — base64 audio → text via ElevenLabs
+- `POST /v1/chat/start` — starts a chat workflow run, returns SSE stream with `x-workflow-run-id` header
+- `GET /v1/chat/runs/:id/stream` — resume a chat stream via `run.getReadable()`
+- `POST /v1/chat/runs/:id/stop` — cancels a chat run
+- `GET /v1/runs/:id` — run status
+- `POST /v1/sandbox/lifecycle/kick` — enqueues a sandbox-lifecycle evaluation
 
-## Extending
+All non-health routes require `Authorization: Bearer <supabase access token>`, validated through `@open-harness/runtime-core/bearer-auth`.
 
-Real runtime-dependent routes (chat, generate-title, etc.) migrate here in later phases. Keep each route's handler behind `requiresAuth: true` and return a `ReadableStream` for anything long-running so the web proxy stays thin.
+### Token freshness
+
+Supabase access tokens are short-lived. The **web proxy** owns refresh: on 401 it asks Supabase for a fresh token and retries once. The runtime is stateless w.r.t. refresh — it only validates the bearer it's given, so long-running streams are never interrupted by mid-flight refresh.
+
+## Workflow build
+
+`StandaloneBuilder` scans `src/workflows/` for `"use workflow"` and `"use step"` directives, SWC-transforms them, and emits standalone bundles under `src/.well-known/workflow/v1/`. The server loads those bundles dynamically at request time and mounts `POST` handlers on the control-plane paths. `src/workflow-stubs.ts` reads the generated `manifest.json` to attach `workflowId` to stub functions that route handlers pass into `start()`.
+
+## Durability
+
+Confirmed: SIGKILL mid-run, restart — new process logs `[world-postgres] Re-enqueued N active run(s) on startup` and resumes.

@@ -10,7 +10,6 @@ export type FrontendHandle = {
 
 export type FrontendTargets = {
   runtimeUrl: string;
-  workflowRuntimeUrl: string;
 };
 
 export async function startFrontend(
@@ -27,7 +26,6 @@ export async function startFrontend(
     env: {
       SERVER_CONNECTION_MODE: "http",
       SERVER_CONNECTION_URL: targets.runtimeUrl,
-      WORKFLOW_CONNECTION_URL: targets.workflowRuntimeUrl,
       PORT: String(config.frontendPort),
     },
   });

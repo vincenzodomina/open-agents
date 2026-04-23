@@ -1,19 +1,27 @@
-import { defineEventHandler, readBody } from "nitro/h3";
 import { start } from "workflow/api";
-import { requireAuth } from "../../../utils/auth";
-import { canOperateOnSandbox } from "../../../utils/sandbox-utils";
+import type { AuthContext } from "../../auth.ts";
+import { canOperateOnSandbox } from "../../utils/sandbox-utils.ts";
+import { sandboxLifecycleWorkflow } from "../../workflow-stubs.ts";
 import {
   claimSessionLifecycleRunId,
   getSessionById,
   updateSession,
-} from "../../../workflows/impl/db-sessions";
+} from "../../workflows/impl/db-sessions.ts";
 import {
   getLifecycleDueAtMs,
   type SandboxLifecycleReason,
-} from "../../../workflows/impl/sandbox-lifecycle";
-import { sandboxLifecycleWorkflow } from "../../../workflows/sandbox-lifecycle";
+} from "../../workflows/impl/sandbox-lifecycle.ts";
 
 const SANDBOX_LIFECYCLE_STALE_RUN_GRACE_MS = 2 * 60 * 1000;
+
+const VALID_REASONS: ReadonlySet<SandboxLifecycleReason> = new Set([
+  "sandbox-created",
+  "timeout-extended",
+  "snapshot-restored",
+  "reconnect",
+  "manual-stop",
+  "status-check-overdue",
+]);
 
 function createLifecycleRunId(): string {
   return `lifecycle:${Date.now()}:${crypto.randomUUID()}`;
@@ -108,22 +116,11 @@ async function kick(
   }
 }
 
-const VALID_REASONS: ReadonlySet<SandboxLifecycleReason> = new Set([
-  "sandbox-created",
-  "timeout-extended",
-  "snapshot-restored",
-  "reconnect",
-  "manual-stop",
-  "status-check-overdue",
-]);
-
-export default defineEventHandler(async (event) => {
-  const auth = await requireAuth(event);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const body = (await readBody(event)) as {
+export async function handleSandboxLifecycleKick(
+  request: Request,
+  _context: AuthContext,
+): Promise<Response> {
+  const body = (await request.json().catch(() => null)) as {
     sessionId?: string;
     reason?: SandboxLifecycleReason;
   } | null;
@@ -131,21 +128,15 @@ export default defineEventHandler(async (event) => {
   const sessionId = body?.sessionId?.trim();
   const reason = body?.reason;
   if (!sessionId) {
-    return new Response(JSON.stringify({ error: "sessionId is required" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
+    return Response.json({ error: "sessionId is required" }, { status: 400 });
   }
   if (!reason || !VALID_REASONS.has(reason)) {
-    return new Response(JSON.stringify({ error: "invalid reason" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
+    return Response.json({ error: "invalid reason" }, { status: 400 });
   }
 
   void kick(sessionId, reason).catch((err) => {
     console.error(`[Lifecycle] kick failed for session ${sessionId}:`, err);
   });
 
-  return { ok: true };
-});
+  return Response.json({ ok: true });
+}

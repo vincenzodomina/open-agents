@@ -83,15 +83,15 @@ function makeStreamResumeResponse(runId: string): Response {
 function workflowFetchImpl(path: string, init?: RequestInit): Response {
   fetchCalls.push({ path, init });
 
-  if (path === "/api/chat/start") {
+  if (path === "/v1/chat/start") {
     return makeStartResponse("wrun_test-123");
   }
 
-  const streamMatch = path.match(/^\/api\/chat\/runs\/([^/]+)\/stream$/);
+  const streamMatch = path.match(/^\/v1\/chat\/runs\/([^/]+)\/stream$/);
   if (streamMatch) {
     const runId = decodeURIComponent(streamMatch[1] ?? "");
     if (streamFetchShouldThrow) {
-      throw new Error("workflow-runtime unreachable");
+      throw new Error("runtime unreachable");
     }
     if (existingRunStatus === "running") {
       return makeStreamResumeResponse(runId);
@@ -99,7 +99,7 @@ function workflowFetchImpl(path: string, init?: RequestInit): Response {
     return new Response(null, { status: 204 });
   }
 
-  const stopMatch = path.match(/^\/api\/chat\/runs\/([^/]+)\/stop$/);
+  const stopMatch = path.match(/^\/v1\/chat\/runs\/([^/]+)\/stop$/);
   if (stopMatch) {
     return new Response(JSON.stringify({ cancelled: true }), {
       status: 200,
@@ -110,9 +110,9 @@ function workflowFetchImpl(path: string, init?: RequestInit): Response {
   return new Response(null, { status: 404 });
 }
 
-mock.module("@/lib/runtime-connection/workflow-client", () => ({
-  getWorkflowClient: () => ({
-    baseUrl: "http://workflow-runtime",
+mock.module("@/lib/runtime-connection/server-client", () => ({
+  getRuntimeClient: () => ({
+    baseUrl: "http://runtime",
     fetch: async (path: string, init?: RequestInit) =>
       workflowFetchImpl(path, init),
     health: async () => ({ ok: true, status: 200 }),
@@ -238,7 +238,7 @@ function createValidRequest() {
 }
 
 function getStartBody(): Record<string, unknown> | null {
-  const call = fetchCalls.find((c) => c.path === "/api/chat/start");
+  const call = fetchCalls.find((c) => c.path === "/v1/chat/start");
   if (!call?.init?.body || typeof call.init.body !== "string") {
     return null;
   }
@@ -333,9 +333,7 @@ describe("/api/chat route", () => {
     expect(body.error).toBe(
       "This hosted deployment has a 5 message limit. Deploy your own copy for no limit at open-agents.dev/deploy-your-own.",
     );
-    expect(
-      fetchCalls.find((c) => c.path === "/api/chat/start"),
-    ).toBeUndefined();
+    expect(fetchCalls.find((c) => c.path === "/v1/chat/start")).toBeUndefined();
   });
 
   test("passes the 500 maxSteps limit to the workflow", async () => {
@@ -547,9 +545,7 @@ describe("/api/chat route", () => {
 
     expect(response.ok).toBe(true);
     expect(response.headers.get("x-workflow-run-id")).toBe("wrun_existing-456");
-    expect(
-      fetchCalls.find((c) => c.path === "/api/chat/start"),
-    ).toBeUndefined();
+    expect(fetchCalls.find((c) => c.path === "/v1/chat/start")).toBeUndefined();
     expect(compareAndSetChatActiveStreamIdSpy).not.toHaveBeenCalled();
   });
 

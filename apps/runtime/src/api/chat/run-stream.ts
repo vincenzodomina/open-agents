@@ -1,24 +1,19 @@
 import { createCancelableReadableStream } from "@open-harness/shared/lib/cancelable-readable-stream";
 import type { WebAgentUIMessage } from "@open-harness/shared/lib/chat-types";
 import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
-import { defineEventHandler, getRouterParam } from "nitro/h3";
 import { getRun } from "workflow/api";
-import { requireAuth } from "../../../../utils/auth";
+import type { AuthContext } from "../../auth.ts";
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
 
-export default defineEventHandler(async (event) => {
-  const auth = await requireAuth(event);
-  if (auth instanceof Response) {
-    return auth;
-  }
-
-  const id = getRouterParam(event, "id");
+export async function handleChatRunStream(
+  _request: Request,
+  _context: AuthContext,
+  params: Record<string, string>,
+): Promise<Response> {
+  const id = params.id;
   if (!id) {
-    return new Response(JSON.stringify({ error: "missing run id" }), {
-      status: 400,
-      headers: { "content-type": "application/json" },
-    });
+    return Response.json({ error: "missing run id" }, { status: 400 });
   }
 
   try {
@@ -44,4 +39,4 @@ export default defineEventHandler(async (event) => {
   } catch {
     return new Response(null, { status: 204 });
   }
-});
+}
