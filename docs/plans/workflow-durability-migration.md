@@ -134,12 +134,13 @@ Stream resume route (`/api/chat/[chatId]/stream`) is a simpler proxy of the same
 
 Runtime stream endpoint now returns `x-workflow-run-id` header in its `createUIMessageStreamResponse` so the web side can forward it through unchanged.
 
-### 3c-3c: Decommission duplicated web-side chat workflow code (after 3c-3b)
+### 3c-3c: Decommission duplicated web-side chat workflow code ✅ DONE
 
-Once web routes are rewired:
-- Delete `apps/web/app/workflows/chat.ts`, `chat-post-finish.ts`, `usage-utils.ts` — live copies at `apps/workflow-runtime/server/workflows/` are now the source of truth.
-- Delete or migrate the web-side tests covering the workflow body (`chat.test.ts`, `chat-post-finish.test.ts`, `chat-post-finish-usage.test.ts`) — the workflow behavior is better tested in the runtime now.
-- Decommission Vercel Workflow bindings on the web `package.json` (the `workflow` dep goes; Next's workflow TS plugin stays out).
+- Deleted `apps/web/app/workflows/chat.ts`, `chat-post-finish.ts`, `usage-utils.ts` and the three corresponding test files. The canonical copies live at `apps/workflow-runtime/server/workflows/`.
+- Pruned chat entries from `apps/web/public/.well-known/workflow/v1/manifest.json`. Remaining manifest entries are just the `sandboxLifecycleWorkflow` steps, which are untouched.
+- Rewired `apps/web/app/api/sessions/[sessionId]/chats/[chatId]/messages/[messageId]` DELETE off `workflow/api`; it now calls runtime `GET /api/runs/:id` to check workflow status before allowing a delete mid-stream. Test updated to mock `getWorkflowClient` instead of `workflow/api`.
+
+The `workflow` dep stays in web `package.json` because `lib/sandbox/lifecycle-kick.ts` still uses `start(sandboxLifecycleWorkflow)`. Migrating the sandbox lifecycle workflow to the runtime is a separate concern (Phase 4 territory) — it hibernates idle sandboxes, a different domain from chat.
 
 This is the payoff. The 1079-line `apps/web/app/workflows/chat.ts` moves to the new workflow service.
 
