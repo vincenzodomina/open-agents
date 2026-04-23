@@ -5,11 +5,7 @@ import type { AutoCommitResult } from "./impl/auto-commit-direct";
 import type { AutoCreatePrResult } from "./impl/auto-pr-direct";
 import {
   compareAndSetChatActiveStreamId,
-  createChatMessageIfNotExists,
-  touchChat,
-  updateChat,
   updateSession,
-  isFirstChatMessage,
   upsertChatMessageScoped,
   updateChatAssistantActivity,
 } from "./impl/db-sessions";
@@ -80,55 +76,6 @@ function filterNewTaskUsageEvents<T extends { toolCallId?: string }>(
   }
 
   return deltaEvents;
-}
-
-export async function persistUserMessage(
-  chatId: string,
-  message: WebAgentUIMessage,
-): Promise<void> {
-  "use step";
-
-  if (message.role !== "user") {
-    return;
-  }
-
-  try {
-    const created = await createChatMessageIfNotExists({
-      id: message.id,
-      chatId,
-      role: "user",
-      parts: message,
-    });
-
-    if (!created) {
-      return;
-    }
-
-    await touchChat(chatId);
-
-    const shouldSetTitle = await isFirstChatMessage(chatId, created.id);
-    if (!shouldSetTitle) {
-      return;
-    }
-
-    const textContent = message.parts
-      .filter(
-        (part): part is { type: "text"; text: string } => part.type === "text",
-      )
-      .map((part) => part.text)
-      .join(" ")
-      .trim();
-
-    if (textContent.length === 0) {
-      return;
-    }
-
-    const title =
-      textContent.length > 80 ? `${textContent.slice(0, 80)}...` : textContent;
-    await updateChat(chatId, { title });
-  } catch (error) {
-    console.error("[workflow] Failed to persist user message:", error);
-  }
 }
 
 export async function persistAssistantMessage(
@@ -207,8 +154,6 @@ export async function clearActiveStream(
     attempt++
   ) {
     try {
-      // Only clear if this workflow's run ID is still the active one.
-      // Prevents a late-finishing workflow from clearing a newer workflow's ID.
       await compareAndSetChatActiveStreamId(chatId, workflowRunId, null);
       return;
     } catch (error) {
@@ -270,7 +215,6 @@ export async function recordWorkflowUsage(
       }
     }
 
-    // Record main agent usage
     if (totalUsage) {
       await recordUsage(userId, {
         source: "web",
@@ -285,7 +229,6 @@ export async function recordWorkflowUsage(
       });
     }
 
-    // Record subagent usage (aggregated by model)
     const baselineSubagentUsageEvents = previousResponseMessage
       ? collectTaskToolUsageEvents(previousResponseMessage)
       : [];

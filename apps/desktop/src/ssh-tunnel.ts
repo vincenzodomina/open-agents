@@ -12,7 +12,6 @@ export type SshTunnelOptions = {
 export type SshTunnelHandle = {
   localUrl: string;
   close: () => Promise<void>;
-  healthcheck: () => Promise<boolean>;
 };
 
 export async function openSshTunnel(
@@ -40,26 +39,13 @@ export async function openSshTunnel(
     target,
   ];
 
-  let child: ChildProcess;
-  try {
-    child = spawn("ssh", args, { stdio: ["ignore", "pipe", "pipe"] });
-  } catch (err) {
-    throw new Error(
-      `Failed to spawn ssh. Is the ssh binary available on PATH? ${(err as Error).message}`,
-      { cause: err },
-    );
-  }
+  const child: ChildProcess = spawn("ssh", args, {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 
   child.stderr?.on("data", (buf: Buffer) => {
     process.stderr.write(`[ssh-tunnel] ${buf.toString()}`);
   });
-
-  const localUrl = `http://${localHost}:${localPort}`;
-
-  // NOTE(Phase 1): lifecycle is wired but tunnel readiness detection and retry
-  // logic are deliberately minimal. Phase 2 will add exponential backoff,
-  // known_hosts handling, and user-visible failure states (FR-17, FR-19).
-  await new Promise((resolve) => setTimeout(resolve, 500));
 
   const close = async (): Promise<void> => {
     if (child.exitCode !== null) {
@@ -86,17 +72,5 @@ export async function openSshTunnel(
     });
   };
 
-  const healthcheck = async (): Promise<boolean> => {
-    if (child.exitCode !== null) {
-      return false;
-    }
-    try {
-      const res = await fetch(`${localUrl}/v1/health`);
-      return res.ok;
-    } catch {
-      return false;
-    }
-  };
-
-  return { localUrl, close, healthcheck };
+  return { localUrl: `http://${localHost}:${localPort}`, close };
 }

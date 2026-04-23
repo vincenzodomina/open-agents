@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { dedupeMessageReasoning } from "./dedupe-message-reasoning";
-import type { WebAgentUIMessage } from "@/app/types";
+import type { WebAgentUIMessage } from "./chat-types";
 
 /** Helper to build a minimal assistant message with the given parts. */
 function msg(parts: WebAgentUIMessage["parts"]): WebAgentUIMessage {

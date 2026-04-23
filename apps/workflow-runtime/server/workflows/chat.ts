@@ -45,15 +45,10 @@ type Options = {
   modelId: string;
   agentOptions: OpenHarnessAgentCallOptions;
   maxSteps?: number;
-  /** Whether auto-commit+push should run after a natural finish. */
   autoCommitEnabled?: boolean;
-  /** Whether auto PR creation should run after auto-commit on a natural finish. */
   autoCreatePrEnabled?: boolean;
-  /** Session title for commit message generation. */
   sessionTitle?: string;
-  /** GitHub repo owner (required for auto-commit and diff refresh). */
   repoOwner?: string;
-  /** GitHub repo name (required for auto-commit). */
   repoName?: string;
 };
 
@@ -580,11 +575,8 @@ export async function runAgentWorkflow(options: Options) {
       };
     }
 
-    // Persist the assistant message immediately so completed model output is not
-    // lost if later post-finish work fails.
     await persistAssistantMessage(options.chatId, pendingAssistantResponse);
 
-    // Persist the sandbox state so lifecycle timers stay accurate.
     if (sandboxState) {
       await persistSandboxState(options.sessionId, sandboxState);
     }
@@ -724,7 +716,6 @@ export async function runAgentWorkflow(options: Options) {
     ]);
     streamClosed = true;
 
-    // Refresh the diff cache so the UI shows current changes.
     if (sandboxState) {
       await refreshDiffCache(options.sessionId, sandboxState);
     }

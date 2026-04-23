@@ -3,15 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./index.ts",
   "exports": {
-    ".": "./index.ts",
     "./connection-mode": "./lib/connection-mode.ts",
     "./bearer-auth": "./lib/bearer-auth.ts",
     "./proxy": "./lib/proxy.ts",
     "./token-refresh": "./lib/token-refresh.ts",
-    "./runtime-client": "./lib/runtime-client.ts",
-    "./lib/*": "./lib/*.ts"
+    "./runtime-client": "./lib/runtime-client.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

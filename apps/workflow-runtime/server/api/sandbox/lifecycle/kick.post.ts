@@ -8,7 +8,6 @@ import {
   updateSession,
 } from "../../../workflows/impl/db-sessions";
 import {
-  evaluateSandboxLifecycle,
   getLifecycleDueAtMs,
   type SandboxLifecycleReason,
 } from "../../../workflows/impl/sandbox-lifecycle";
@@ -102,17 +101,10 @@ async function kick(
     );
   } catch (error) {
     console.error(
-      `[Lifecycle] Failed to start workflow run for session ${sessionId}; using inline fallback:`,
+      `[Lifecycle] Failed to start workflow run for session ${sessionId}; releasing lease:`,
       error,
     );
-    const current = await getSessionById(sessionId);
-    if (current?.lifecycleRunId === runId) {
-      await updateSession(sessionId, { lifecycleRunId: null });
-    }
-    const fallbackResult = await evaluateSandboxLifecycle(sessionId, reason);
-    console.log(
-      `[Lifecycle] Inline fallback completed for session ${sessionId} (reason=${reason}, action=${fallbackResult.action}${fallbackResult.reason ? `, detail=${fallbackResult.reason}` : ""}).`,
-    );
+    await updateSession(sessionId, { lifecycleRunId: null });
   }
 }
 

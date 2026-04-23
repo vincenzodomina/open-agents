@@ -55,52 +55,6 @@ export async function compareAndSetChatActiveStreamId(
   return Boolean(data);
 }
 
-export async function createChatMessageIfNotExists(
-  data: NewChatMessage,
-): Promise<ChatMessage | undefined> {
-  const createdAt = data.createdAt ?? new Date();
-  const row = {
-    id: data.id,
-    chat_id: data.chatId,
-    role: data.role,
-    parts: data.parts,
-    created_at: createdAt.toISOString(),
-  };
-  const { data: inserted, error } = await sb()
-    .from("chat_messages")
-    .insert(row)
-    .select()
-    .maybeSingle();
-
-  if (!error && inserted) {
-    return mapChatMessageRow(inserted as Record<string, unknown>);
-  }
-  if (error && (error as { code?: string }).code !== "23505") {
-    throw error;
-  }
-  return undefined;
-}
-
-export async function updateChat(
-  chatId: string,
-  data: Record<string, unknown>,
-): Promise<void> {
-  const { error } = await sb()
-    .from("chats")
-    .update(toSnakeCase(data))
-    .eq("id", chatId);
-  if (error) {
-    throw error;
-  }
-}
-
-export async function touchChat(
-  chatId: string,
-  activityAt: Date = new Date(),
-): Promise<void> {
-  await updateChat(chatId, { updatedAt: activityAt.toISOString() });
-}
-
 export async function updateChatAssistantActivity(
   chatId: string,
   activityAt: Date,
@@ -128,27 +82,6 @@ export async function updateSession(
   if (error) {
     throw error;
   }
-}
-
-export async function isFirstChatMessage(
-  chatId: string,
-  messageId: string,
-): Promise<boolean> {
-  const { data, error } = await sb()
-    .from("chat_messages")
-    .select("id")
-    .eq("chat_id", chatId)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .limit(2);
-
-  if (error) {
-    throw error;
-  }
-  const rows = data ?? [];
-  return (
-    rows.length === 1 && String((rows[0] as { id: string }).id) === messageId
-  );
 }
 
 export async function upsertChatMessageScoped(
