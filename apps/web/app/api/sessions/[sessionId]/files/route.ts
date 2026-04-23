@@ -1,3 +1,5 @@
+import type { Dirent } from "node:fs";
+import { posix } from "node:path";
 import { connectSandbox } from "@open-harness/sandbox";
 import {
   requireAuthenticatedUser,
@@ -26,6 +28,12 @@ type RouteContext = {
 };
 
 const MAX_FILE_SUGGESTIONS = 5000;
+const SKIPPED_DIRECTORY_NAMES = new Set([
+  ".git",
+  ".next",
+  ".turbo",
+  "node_modules",
+]);
 
 function getPathDepth(suggestion: FileSuggestion): number {
   const normalizedPath = suggestion.isDirectory
@@ -34,49 +42,112 @@ function getPathDepth(suggestion: FileSuggestion): number {
   return normalizedPath ? normalizedPath.split("/").length : 0;
 }
 
-/**
- * Parse git ls-files output and extract files and directories
- */
-function parseGitFiles(output: string): FileSuggestion[] {
-  const results: FileSuggestion[] = [];
-  const seenDirs = new Set<string>();
+type FileListingSandbox = {
+  workingDirectory: string;
+  readdir(path: string, options: { withFileTypes: true }): Promise<Dirent[]>;
+};
 
-  const files = output.trim().split("\n").filter(Boolean);
-
-  for (const file of files) {
-    // Add parent directories
-    const parts = file.split("/");
-    let dirPath = "";
-    for (let i = 0; i < parts.length - 1; i++) {
-      const part = parts[i];
-      if (!part) continue;
-      dirPath = dirPath ? `${dirPath}/${part}` : part;
-      if (!seenDirs.has(dirPath)) {
-        seenDirs.add(dirPath);
-        results.push({
-          value: `${dirPath}/`,
-          display: `${dirPath}/`,
-          isDirectory: true,
-        });
-      }
-    }
-
-    // Add the file
-    results.push({
-      value: file,
-      display: file,
-      isDirectory: false,
-    });
-  }
-
-  // Keep top-level paths first so files like README.md are always surfaced.
-  results.sort((a, b) => {
+function sortSuggestionsByDepth(
+  suggestions: FileSuggestion[],
+): FileSuggestion[] {
+  return suggestions.sort((a, b) => {
     const depthDiff = getPathDepth(a) - getPathDepth(b);
     if (depthDiff !== 0) return depthDiff;
     return a.display.localeCompare(b.display);
   });
+}
 
-  return results;
+function isSkippableTraversalError(message: string): boolean {
+  const normalizedMessage = message.toLowerCase();
+  return (
+    normalizedMessage.includes("enoent") ||
+    normalizedMessage.includes("enotdir") ||
+    normalizedMessage.includes("no such file") ||
+    normalizedMessage.includes("not found")
+  );
+}
+
+function toSuggestion(
+  relativePath: string,
+  isDirectory: boolean,
+): FileSuggestion {
+  const display = isDirectory ? `${relativePath}/` : relativePath;
+  return {
+    value: display,
+    display,
+    isDirectory,
+  };
+}
+
+async function listWorkspaceFiles(
+  sandbox: FileListingSandbox,
+): Promise<FileSuggestion[]> {
+  const rootDir = sandbox.workingDirectory;
+  const results: FileSuggestion[] = [];
+  const queue = [rootDir];
+  const seenDirs = new Set<string>([rootDir]);
+
+  while (queue.length > 0 && results.length < MAX_FILE_SUGGESTIONS) {
+    const currentDir = queue.shift();
+    if (!currentDir) {
+      break;
+    }
+
+    let entries: Dirent[];
+    try {
+      entries = await sandbox.readdir(currentDir, { withFileTypes: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isSandboxUnavailableError(message)) {
+        throw error;
+      }
+      if (currentDir !== rootDir && isSkippableTraversalError(message)) {
+        continue;
+      }
+      throw error;
+    }
+
+    const sortedEntries = [...entries].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+
+    for (const entry of sortedEntries) {
+      if (results.length >= MAX_FILE_SUGGESTIONS) {
+        break;
+      }
+
+      const childPath = posix.join(currentDir, entry.name);
+      const relativePath = posix.relative(rootDir, childPath);
+      if (
+        !relativePath ||
+        relativePath === "." ||
+        relativePath.startsWith("../")
+      ) {
+        continue;
+      }
+
+      if (entry.isDirectory()) {
+        if (SKIPPED_DIRECTORY_NAMES.has(entry.name)) {
+          continue;
+        }
+
+        results.push(toSuggestion(relativePath, true));
+        if (!seenDirs.has(childPath)) {
+          seenDirs.add(childPath);
+          queue.push(childPath);
+        }
+        continue;
+      }
+
+      if (entry.isSymbolicLink() || !entry.isFile()) {
+        continue;
+      }
+
+      results.push(toSuggestion(relativePath, false));
+    }
+  }
+
+  return sortSuggestionsByDepth(results);
 }
 
 export async function GET(_req: Request, context: RouteContext) {
@@ -105,73 +176,10 @@ export async function GET(_req: Request, context: RouteContext) {
 
   try {
     const sandbox = await connectSandbox(sandboxState);
-    const cwd = sandbox.workingDirectory;
-
-    // Run git commands sequentially; some sandbox backends are not reliable
-    // with concurrent command streams after reconnect.
-    const trackedResult = await sandbox.exec("git ls-files", cwd, 30000);
-    const untrackedResult = await sandbox.exec(
-      "git ls-files --others --exclude-standard",
-      cwd,
-      30000,
-    );
-
-    if (!trackedResult.success) {
-      const stderr = trackedResult.stderr ?? "";
-      if (isSandboxUnavailableError(stderr)) {
-        await updateSession(sessionId, {
-          sandboxState: clearUnavailableSandboxState(
-            sessionRecord.sandboxState,
-            stderr,
-          ),
-          ...buildHibernatedLifecycleUpdate(),
-        });
-        return Response.json(
-          { error: "Sandbox is unavailable. Please resume sandbox." },
-          { status: 409 },
-        );
-      }
-      console.error("Git ls-files failed:", trackedResult.stderr);
-      return Response.json(
-        { error: "Failed to list files from the sandbox workspace." },
-        { status: 400 },
-      );
-    }
-
-    if (!untrackedResult.success) {
-      const stderr = untrackedResult.stderr ?? "";
-      if (isSandboxUnavailableError(stderr)) {
-        await updateSession(sessionId, {
-          sandboxState: clearUnavailableSandboxState(
-            sessionRecord.sandboxState,
-            stderr,
-          ),
-          ...buildHibernatedLifecycleUpdate(),
-        });
-        return Response.json(
-          { error: "Sandbox is unavailable. Please resume sandbox." },
-          { status: 409 },
-        );
-      }
-    }
-
-    // Combine tracked and untracked files
-    const trackedFiles = trackedResult.stdout.trim();
-    const untrackedFiles = untrackedResult.success
-      ? untrackedResult.stdout.trim()
-      : "";
-
-    const combinedOutput = [trackedFiles, untrackedFiles]
-      .filter(Boolean)
-      .join("\n");
-
-    const files = parseGitFiles(combinedOutput);
-
-    // Keep a high upper bound to avoid huge payloads on very large repos.
-    const limitedFiles = files.slice(0, MAX_FILE_SUGGESTIONS);
+    const files = await listWorkspaceFiles(sandbox);
 
     const response: FilesResponse = {
-      files: limitedFiles,
+      files,
     };
 
     return Response.json(response);
@@ -192,7 +200,7 @@ export async function GET(_req: Request, context: RouteContext) {
     }
     console.error("Failed to list files:", error);
     return Response.json(
-      { error: "Failed to connect to sandbox" },
+      { error: "Failed to list files from the sandbox workspace." },
       { status: 500 },
     );
   }

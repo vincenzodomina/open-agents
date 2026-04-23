@@ -15,9 +15,12 @@ import {
   useSessionChats,
 } from "@/hooks/use-session-chats";
 import type { Session } from "@/lib/db/schema";
-import { ChatLayoutProvider } from "./chats/[chatId]/chat-layout-context";
 import { SessionHeader } from "./chats/[chatId]/session-header";
 import { ChatTabs } from "./chats/[chatId]/chat-tabs";
+import {
+  WorkspacePanelProvider,
+  useWorkspacePanel,
+} from "./chats/[chatId]/workspace-panel-context";
 import { SessionLayoutContext } from "./session-layout-context";
 
 type SessionLayoutShellProps = {
@@ -36,11 +39,33 @@ function SessionLayoutInner({
   activeChatId: string;
   children: ReactNode;
 }) {
+  const { panelPortalRef, panelOpen, setPanelOpen } = useWorkspacePanel();
+
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
-      <SessionHeader />
-      {activeChatId && <ChatTabs activeChatId={activeChatId} />}
-      <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+    <div className="relative flex h-full overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <SessionHeader />
+        {activeChatId && <ChatTabs activeChatId={activeChatId} />}
+        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+      </div>
+
+      {panelOpen && (
+        <button
+          type="button"
+          aria-label="Close right sidebar"
+          className="absolute inset-0 z-20 bg-background/20 sm:hidden"
+          onClick={() => setPanelOpen(false)}
+        />
+      )}
+
+      <div
+        ref={panelPortalRef}
+        className={`absolute right-0 top-0 z-30 flex h-full w-72 flex-col overflow-hidden border-l border-border bg-background shadow-lg transition-transform duration-200 ease-in-out sm:relative sm:right-auto sm:top-auto sm:z-0 sm:shrink-0 sm:translate-x-0 sm:shadow-none sm:transition-[width] ${
+          panelOpen
+            ? "translate-x-0 sm:w-72 sm:border-l xl:w-80"
+            : "translate-x-full sm:w-0 sm:border-l-0"
+        }`}
+      />
     </div>
   );
 }
@@ -141,11 +166,11 @@ export function SessionLayoutShell({
 
   return (
     <SessionLayoutContext.Provider value={layoutContext}>
-      <ChatLayoutProvider>
+      <WorkspacePanelProvider>
         <SessionLayoutInner activeChatId={activeChatId}>
           {children}
         </SessionLayoutInner>
-      </ChatLayoutProvider>
+      </WorkspacePanelProvider>
     </SessionLayoutContext.Provider>
   );
 }

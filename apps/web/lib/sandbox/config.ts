@@ -23,27 +23,24 @@ export const SANDBOX_LIFECYCLE_MIN_SLEEP_MS = 5 * 1000;
 
 /**
  * Default ports to expose from cloud sandboxes.
- * Limited to 5 ports. Covers the most common framework defaults
- * plus the built-in code editor:
+ * Limited to 5 ports. Covers the most common framework defaults:
  * - 3000: Next.js, Express, Remix
  * - 5173: Vite, SvelteKit
  * - 4321: Astro
- * - 8000: code-server (built-in editor)
+ * - 8000: common Python app servers
  */
 export const DEFAULT_SANDBOX_PORTS = [3000, 5173, 4321, 8000];
-export const CODE_SERVER_PORT = 8000;
 
 /** Default working directory for sandboxes, used for path display */
 export const DEFAULT_WORKING_DIRECTORY = "/vercel/sandbox";
 
 /**
  * Base snapshot for fresh cloud sandboxes.
- * - Current snapshot includes: bun + jq + agent-browser + chromium + code-server
  * - Previous snapshot includes: bun + jq + agent-browser + chromium
  */
 export const DEFAULT_SANDBOX_BASE_SNAPSHOT_ID =
   process.env.VERCEL_SANDBOX_BASE_SNAPSHOT_ID ??
   // Previous snapshot (bun + jq): "snap_MQ0NqdLL5qEXiYusgWL3K0yaMmql"
   // Previous snapshot (bun + jq + agent-browser + chromium): "snap_C8tUFhwRXZky4MaFvTuwO7DH66wx"
-  // Current snapshot (bun + jq + agent-browser + chromium + code-server):
+  // Current snapshot:
   "snap_EjsphVxi07bFKrfojljJdIS41KHT";

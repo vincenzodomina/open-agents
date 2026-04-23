@@ -1,15 +1,18 @@
 "use client";
 
 import { PanelLeft } from "lucide-react";
+import { useCallback, useEffect } from "react";
+import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
+import { FolderIcon, FolderOpenIcon } from "@/components/file-type-icons";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
 import { useSidebar } from "@/components/ui/sidebar";
-import { useChatLayout } from "./chat-layout-context";
+import { cn } from "@/lib/utils";
+import { useWorkspacePanel } from "./workspace-panel-context";
 
 /**
  * Session header that uses only layout-level data (persists across chat switches).
@@ -17,13 +20,38 @@ import { useChatLayout } from "./chat-layout-context";
  */
 export function SessionHeader() {
   const { toggleSidebar } = useSidebar();
-  const { headerActionsRef } = useChatLayout();
   const { session } = useSessionLayout();
+  const { panelOpen, togglePanel } = useWorkspacePanel();
+
+  const handlePanelToggle = useCallback(() => {
+    togglePanel();
+  }, [togglePanel]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isPanelShortcut =
+        event.code === "KeyB" &&
+        (event.metaKey || event.ctrlKey) &&
+        event.shiftKey &&
+        !event.altKey;
+
+      if (!isPanelShortcut || event.repeat) {
+        return;
+      }
+
+      event.preventDefault();
+      handlePanelToggle();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handlePanelToggle]);
+
+  const FilesIcon = panelOpen ? FolderOpenIcon : FolderIcon;
 
   return (
     <header className="border-b border-border px-3 py-1.5">
       <div className="flex items-center justify-between gap-2">
-        {/* Left side: panel toggle + title */}
         <div className="flex min-w-0 items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -46,9 +74,25 @@ export function SessionHeader() {
           </div>
         </div>
 
-        {/* Right side: dev server / code editor actions */}
         <div className="flex items-center gap-1">
-          <div ref={headerActionsRef} className="flex items-center" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className={cn(
+                  "h-7 w-7 shrink-0",
+                  panelOpen && "bg-accent text-accent-foreground",
+                )}
+                onClick={handlePanelToggle}
+              >
+                <FilesIcon className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Files · ⌘⇧B / Ctrl+Shift+B
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </header>

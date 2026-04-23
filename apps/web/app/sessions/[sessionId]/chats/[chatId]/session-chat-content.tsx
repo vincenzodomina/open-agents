@@ -13,14 +13,11 @@ import {
   ArrowDown,
   ArrowUp,
   Check,
-  Code2,
   Copy,
-  Globe,
   Link2,
   Loader2,
   Mic,
   Paperclip,
-  Play,
   RefreshCw,
   RotateCcw,
   Square,
@@ -84,6 +81,7 @@ import {
 import { useAudioRecording } from "@/hooks/use-audio-recording";
 import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useTextAttachments } from "@/hooks/use-text-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useSessionChats } from "@/hooks/use-session-chats";
@@ -109,16 +107,15 @@ import {
   useSessionChatRuntimeContext,
   useSessionChatWorkspaceContext,
 } from "./session-chat-context";
-import { useChatLayout } from "./chat-layout-context";
+import { useWorkspacePanel } from "./workspace-panel-context";
 import { useStreamRecovery } from "./hooks/use-stream-recovery";
-import { useCodeEditor } from "./hooks/use-code-editor";
-import { useDevServer } from "./hooks/use-dev-server";
 import {
   createSandbox,
   getSandboxCreateErrorDetails,
   type SandboxCreateErrorDetails,
 } from "./sandbox-create";
 import { SandboxCreateErrorBanner } from "./sandbox-create-error-banner";
+import { WorkspaceFilesSidebar } from "./workspace-files-sidebar";
 import { WorkspaceFileViewer } from "./workspace-file-viewer";
 import "streamdown/styles.css";
 
@@ -601,7 +598,6 @@ export function SessionChatContent({
   messageDurationMap,
   messageStartedAtMap,
   lastUserMessageSentAt,
-  codeEditorDisabledReason,
 }: {
   initialIsOnlyChatInSession: boolean;
   /** Pre-computed generation duration (ms) per assistant message ID */
@@ -610,7 +606,6 @@ export function SessionChatContent({
   messageStartedAtMap: Record<string, string>;
   /** Fallback: last user message's createdAt, for refresh-during-stream */
   lastUserMessageSentAt: string | null;
-  codeEditorDisabledReason: string | null;
 }) {
   const router = useRouter();
   const [input, setInput] = useState("");
@@ -630,7 +625,6 @@ export function SessionChatContent({
     string | null
   >(null);
   const hasMounted = useHasMounted();
-  const { headerActionsRef } = useChatLayout();
   const isIosDevice = useMemo(() => {
     if (typeof navigator === "undefined") {
       return false;
@@ -785,6 +779,8 @@ export function SessionChatContent({
     skillsLoading,
     refreshSkills,
   } = useSessionChatWorkspaceContext();
+  const { panelOpen, panelPortalRef, setPanelOpen } = useWorkspacePanel();
+  const isMobile = useIsMobile();
 
   // Ping the server to refresh the inactivity timer when the user focuses
   // the textarea. Throttled to at most once every 5 minutes so we don't
@@ -2149,138 +2145,8 @@ export function SessionChatContent({
     isSandboxActive,
     reconnectionStatus,
   ]);
-  const canRunDevServer =
-    !isArchived &&
-    isSandboxActive &&
-    !isCreatingSandbox &&
-    !isRestoringSnapshot &&
-    !isReconnectingSandbox &&
-    !isHibernatingUi;
-  const canUseCodeEditor = codeEditorDisabledReason === null;
-  const devServer = useDevServer({
-    sessionId: session.id,
-    canRun: canRunDevServer,
-  });
-  const codeEditor = useCodeEditor({
-    sessionId: session.id,
-    canRun: canRunDevServer && canUseCodeEditor,
-  });
-  const isCodeEditorActionDisabled =
-    !canUseCodeEditor ||
-    codeEditor.state.status === "starting" ||
-    codeEditor.state.status === "stopping";
-  const showHeaderActions = canRunDevServer;
-
   return (
     <>
-      {/* Header actions portaled from chat-level state */}
-      {headerActionsRef.current &&
-        showHeaderActions &&
-        createPortal(
-          <div className="flex items-center gap-1">
-            {canRunDevServer && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="hidden sm:inline-flex">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => void codeEditor.handleOpen()}
-                        disabled={isCodeEditorActionDisabled}
-                      >
-                        {codeEditor.state.status === "starting" ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Code2 className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    className="max-w-72 text-pretty"
-                  >
-                    {codeEditorDisabledReason ?? codeEditor.menuLabel}
-                  </TooltipContent>
-                </Tooltip>
-                <div className="hidden h-7 items-center sm:flex">
-                  {devServer.state.status === "ready" ? (
-                    <div className="flex items-center rounded-md border border-border px-0.5">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 rounded-sm"
-                            onClick={() => void devServer.handlePrimaryAction()}
-                          >
-                            <Globe className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          Open dev server
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 rounded-sm"
-                            onClick={() => void devServer.handleStopAction()}
-                          >
-                            <Square className="h-2.5 w-2.5 fill-current" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          Stop dev server
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  ) : devServer.state.status === "starting" ||
-                    devServer.state.status === "stopping" ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled
-                        >
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {devServer.state.status === "starting"
-                          ? "Starting dev server..."
-                          : "Stopping dev server..."}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => void devServer.handlePrimaryAction()}
-                        >
-                          <Play className="h-3.5 w-3.5 fill-current" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        Start dev server
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </>
-            )}
-          </div>,
-          headerActionsRef.current,
-        )}
       <div className="flex h-full flex-col overflow-hidden">
         {/* Archive confirmation dialog */}
         <Dialog
@@ -2316,8 +2182,8 @@ export function SessionChatContent({
         </Dialog>
 
         {/* Main content */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <>
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
             {/* Transient error banner (e.g. iOS "Load failed" after sleep) */}
             {error && (
               <div className="flex items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
@@ -3368,9 +3234,26 @@ export function SessionChatContent({
                 </div>
               </div>
             </div>
-          </>
+          </div>
         </div>
       </div>
+
+      {panelPortalRef.current &&
+        panelOpen &&
+        createPortal(
+          <WorkspaceFilesSidebar
+            files={files}
+            filesLoading={filesLoading}
+            hasSandbox={sandboxInfo !== null}
+            onFileClick={(filePath) => {
+              setSelectedWorkspaceFile(filePath);
+              if (isMobile) {
+                setPanelOpen(false);
+              }
+            }}
+          />,
+          panelPortalRef.current,
+        )}
 
       <WorkspaceFileViewer
         sessionId={session.id}
@@ -3380,14 +3263,6 @@ export function SessionChatContent({
           if (!open) {
             setSelectedWorkspaceFile(null);
           }
-        }}
-        editorBusy={
-          codeEditor.state.status === "starting" ||
-          codeEditor.state.status === "stopping"
-        }
-        editorDisabledReason={codeEditorDisabledReason}
-        onOpenInEditor={(filePath) => {
-          void codeEditor.handleOpenFile(filePath);
         }}
         onAddToPrompt={(filePath, selectedText, comment) => {
           // Build a single snippet with file ref, selected text, and the user's comment

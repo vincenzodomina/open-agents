@@ -1,7 +1,7 @@
 "use client";
 
 import { File as DiffsFile } from "@pierre/diffs/react";
-import { Check, CodeXml, Copy, Loader2, RefreshCw } from "lucide-react";
+import { Check, Copy, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import useSWR from "swr";
@@ -27,12 +27,9 @@ import { fetcherNoStore } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
 type WorkspaceFileViewerProps = {
-  editorBusy?: boolean;
-  editorDisabledReason?: string | null;
   filePath: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onOpenInEditor?: (filePath: string) => void;
   onAddToPrompt?: (
     filePath: string,
     selectedText: string,
@@ -152,7 +149,7 @@ function PrettyMarkdown({ content }: { content: string }) {
 
 function PrettyText({ content }: { content: string }) {
   return (
-    <pre className="overflow-x-auto whitespace-pre-wrap break-words p-6 text-sm leading-6 text-foreground">
+    <pre className="overflow-x-auto whitespace-pre-wrap wrap-break-word p-6 text-sm leading-6 text-foreground">
       {content}
     </pre>
   );
@@ -212,24 +209,18 @@ function ViewModeToggle({
 }
 
 function ViewerBody({
-  editorBusy,
-  editorDisabledReason,
   errorMessage,
   filePath,
   isLoading,
   isRefreshing,
-  onOpenInEditor,
   onRefresh,
   onAddToPrompt,
   response,
 }: {
-  editorBusy?: boolean;
-  editorDisabledReason?: string | null;
   errorMessage: string | null;
   filePath: string;
   isLoading: boolean;
   isRefreshing: boolean;
-  onOpenInEditor?: () => void;
   onRefresh: () => void;
   onAddToPrompt?: (selectedText: string, comment: string) => void;
   response: WorkspaceFileContentResponse | undefined;
@@ -244,9 +235,6 @@ function ViewerBody({
     ? { ...defaultFileOptions, overflow: "wrap" as const }
     : defaultFileOptions;
   const contentRef = useRef<HTMLDivElement>(null);
-  const openInEditorTitle = editorBusy
-    ? "Starting editor…"
-    : (editorDisabledReason ?? "Open in code editor");
 
   return (
     <>
@@ -260,26 +248,6 @@ function ViewerBody({
         <div className="flex items-center gap-1">
           {supportsPrettyView && (
             <ViewModeToggle mode={viewerMode} onModeChange={setViewerMode} />
-          )}
-          {onOpenInEditor && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={editorBusy || editorDisabledReason != null}
-              onClick={onOpenInEditor}
-              className="h-7 shrink-0 gap-1.5 px-2 text-xs"
-              title={openInEditorTitle}
-            >
-              {editorBusy ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <CodeXml className="h-3.5 w-3.5" />
-              )}
-              <span className="hidden sm:inline">
-                {editorBusy ? "Starting Editor…" : "Open in Editor"}
-              </span>
-            </Button>
           )}
           <Button
             type="button"
@@ -347,12 +315,9 @@ function ViewerBody({
 }
 
 export function WorkspaceFileViewer({
-  editorBusy,
-  editorDisabledReason,
   filePath,
   open,
   onOpenChange,
-  onOpenInEditor,
   onAddToPrompt,
   sessionId,
 }: WorkspaceFileViewerProps) {
@@ -388,15 +353,10 @@ export function WorkspaceFileViewer({
   const body = (
     <ViewerBody
       key={filePath}
-      editorBusy={editorBusy}
-      editorDisabledReason={editorDisabledReason}
       errorMessage={errorMessage}
       filePath={filePath}
       isLoading={isLoading}
       isRefreshing={isRefreshing}
-      onOpenInEditor={
-        onOpenInEditor ? () => onOpenInEditor(filePath) : undefined
-      }
       onRefresh={() => {
         void mutate();
       }}
