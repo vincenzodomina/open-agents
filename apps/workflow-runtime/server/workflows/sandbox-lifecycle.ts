@@ -1,13 +1,14 @@
 import { sleep } from "workflow";
-import { getSessionById, updateSession } from "@/lib/db/sessions";
-import { SANDBOX_LIFECYCLE_MIN_SLEEP_MS } from "@/lib/sandbox/config";
+import { canOperateOnSandbox } from "../utils/sandbox-utils";
+import { getSessionById, updateSession } from "./impl/db-sessions";
 import {
   evaluateSandboxLifecycle,
   getLifecycleDueAtMs,
   type SandboxLifecycleEvaluationResult,
   type SandboxLifecycleReason,
-} from "@/lib/sandbox/lifecycle";
-import { canOperateOnSandbox } from "@/lib/sandbox/utils";
+} from "./impl/sandbox-lifecycle";
+
+const SANDBOX_LIFECYCLE_MIN_SLEEP_MS = 5 * 1000;
 
 interface LifecycleWakeDecision {
   shouldContinue: boolean;
@@ -23,15 +24,12 @@ async function claimLifecycleLease(
   if (!current) {
     return false;
   }
-
   if (current.lifecycleRunId && current.lifecycleRunId !== runId) {
     return false;
   }
-
   if (current.lifecycleRunId !== runId) {
     await updateSession(sessionId, { lifecycleRunId: runId });
   }
-
   const verified = await getSessionById(sessionId);
   return verified?.lifecycleRunId === runId;
 }
@@ -88,7 +86,6 @@ async function clearLifecycleRunIdIfOwned(
   if (!session || session.lifecycleRunId !== runId) {
     return;
   }
-
   await updateSession(sessionId, { lifecycleRunId: null });
 }
 

@@ -197,19 +197,43 @@ export type SessionSummary = {
   id: string;
   userId: string;
   title: string;
+  status: string;
+  lifecycleState: string | null;
+  lifecycleRunId: string | null;
+  sandboxState: SandboxState | null;
+  lastActivityAt: Date | null;
+  hibernateAfter: Date | null;
+  sandboxExpiresAt: Date | null;
 };
 
 export type ChatSummary = {
   id: string;
   sessionId: string;
+  activeStreamId: string | null;
 };
+
+function parseDate(value: unknown): Date | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value;
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+}
 
 export async function getSessionById(
   sessionId: string,
 ): Promise<SessionSummary | null> {
   const { data, error } = await sb()
     .from("sessions")
-    .select("id, user_id, title")
+    .select(
+      "id, user_id, title, status, lifecycle_state, lifecycle_run_id, sandbox_state, last_activity_at, hibernate_after, sandbox_expires_at",
+    )
     .eq("id", sessionId)
     .maybeSingle();
 
@@ -224,7 +248,37 @@ export async function getSessionById(
     id: String(row.id),
     userId: String(row.user_id),
     title: String(row.title ?? ""),
+    status: String(row.status ?? ""),
+    lifecycleState:
+      row.lifecycle_state != null ? String(row.lifecycle_state) : null,
+    lifecycleRunId:
+      row.lifecycle_run_id != null ? String(row.lifecycle_run_id) : null,
+    sandboxState: (row.sandbox_state as SandboxState | null) ?? null,
+    lastActivityAt: parseDate(row.last_activity_at),
+    hibernateAfter: parseDate(row.hibernate_after),
+    sandboxExpiresAt: parseDate(row.sandbox_expires_at),
   };
+}
+
+export async function claimSessionLifecycleRunId(
+  sessionId: string,
+  runId: string,
+): Promise<boolean> {
+  const { data, error } = await sb()
+    .from("sessions")
+    .update({
+      lifecycle_run_id: runId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sessionId)
+    .is("lifecycle_run_id", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  return Boolean(data);
 }
 
 export async function getChatsBySessionId(
@@ -232,7 +286,7 @@ export async function getChatsBySessionId(
 ): Promise<ChatSummary[]> {
   const { data, error } = await sb()
     .from("chats")
-    .select("id, session_id")
+    .select("id, session_id, active_stream_id")
     .eq("session_id", sessionId)
     .order("updated_at", { ascending: false })
     .order("created_at", { ascending: false });
@@ -245,6 +299,8 @@ export async function getChatsBySessionId(
     return {
       id: String(row.id),
       sessionId: String(row.session_id),
+      activeStreamId:
+        row.active_stream_id != null ? String(row.active_stream_id) : null,
     };
   });
 }

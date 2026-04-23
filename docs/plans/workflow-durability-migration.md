@@ -140,30 +140,20 @@ Runtime stream endpoint now returns `x-workflow-run-id` header in its `createUIM
 - Pruned chat entries from `apps/web/public/.well-known/workflow/v1/manifest.json`. Remaining manifest entries are just the `sandboxLifecycleWorkflow` steps, which are untouched.
 - Rewired `apps/web/app/api/sessions/[sessionId]/chats/[chatId]/messages/[messageId]` DELETE off `workflow/api`; it now calls runtime `GET /api/runs/:id` to check workflow status before allowing a delete mid-stream. Test updated to mock `getWorkflowClient` instead of `workflow/api`.
 
-The `workflow` dep stays in web `package.json` because `lib/sandbox/lifecycle-kick.ts` still uses `start(sandboxLifecycleWorkflow)`. Migrating the sandbox lifecycle workflow to the runtime is a separate concern (Phase 4 territory) — it hibernates idle sandboxes, a different domain from chat.
+### Phase 4: Sandbox lifecycle workflow → runtime ✅ DONE
 
-This is the payoff. The 1079-line `apps/web/app/workflows/chat.ts` moves to the new workflow service.
-
-Challenges to work through:
-- **Imports from web (`@/lib/db/sessions`, `@/app/types`, helpers under `chat-post-finish.ts`).** Decide per-import: move to shared package? Duplicate in workflow service? Query the web API?
-- **DB writes during steps.** Persist assistant messages, update session state, record usage. Runtime needs DB access — fine per PRD (same Supabase, different client).
-- **Workflow run ID ↔ chat.activeStreamId coordination.** Web still tracks active stream on the chat record so the UI can resume. Runtime returns the run ID; web stores it.
-- **Streaming response.** Web route does `createUIMessageStreamResponse({ stream: run.getReadable() })`. New flow: web calls runtime, runtime starts workflow, runtime returns the workflow's readable stream. Proxy needs to handle `getReadable()` semantics.
-
-### 3d: Wire chat HTTP routes (1 session, ~4–8h)
-
-- `/api/chat/route.ts` → call runtime's `/v1/chat/start`, forward stream
-- `/api/chat/[chatId]/stream/route.ts` → call runtime's `/v1/chat/[runId]/stream`
-- `/api/chat/[chatId]/stop/route.ts` → call runtime's `/v1/chat/[runId]/cancel`
-
-Keep the web-side auth/ownership checks (session, bot-id, chat ownership). Push the workflow orchestration to runtime.
-
-### 3e: Env branching + tests (1 session, ~4–8h)
-
-- `WORKFLOW_TARGET_WORLD` env honors hosted (Vercel World) vs self-hosted (Postgres World)
-- Update `turbo.json` with workflow env vars
-- Update desktop shell to spawn/connect the workflow runtime per connection mode
-- End-to-end test: embedded mode desktop session, start chat, kill/restart runtime, verify resume
+- Ported the sandbox-hibernation workflow to `apps/workflow-runtime/server/workflows/sandbox-lifecycle.ts`. Dependencies moved:
+  - `apps/workflow-runtime/server/utils/sandbox-utils.ts` — `canOperateOnSandbox`, `clearSandboxState`, `getPersistentSandboxName` (minimal subset web's `lib/sandbox/utils.ts` exposes).
+  - `apps/workflow-runtime/server/workflows/impl/sandbox-lifecycle.ts` — extended to include `evaluateSandboxLifecycle`, `getLifecycleDueAtMs`, `buildHibernatedLifecycleUpdate` and the full lifecycle state-machine types.
+  - `impl/db-sessions.ts` — added `claimSessionLifecycleRunId`, and `getSessionById` + `getChatsBySessionId` now return the lifecycle fields the evaluator needs (status, lifecycleState, lifecycleRunId, sandboxState, lastActivityAt, hibernateAfter, sandboxExpiresAt, activeStreamId).
+- New runtime HTTP endpoint `POST /api/sandbox/lifecycle/kick` — takes `{ sessionId, reason }`, runs the stale-run detection + CAS claim + `start(sandboxLifecycleWorkflow)` logic that used to live on web. Has an inline fallback to `evaluateSandboxLifecycle()` if `start()` throws.
+- Web `lib/sandbox/lifecycle-kick.ts` collapsed to a thin HTTP call (POST to runtime, log+swallow failures). Four web route callers (`sandbox`, `sandbox/status`, `sandbox/extend`, `sandbox/snapshot`) unchanged — same function signature.
+- Deleted `apps/web/app/workflows/sandbox-lifecycle.ts` (the workflow body).
+- Deleted `apps/web/public/.well-known/workflow/v1/manifest.json` and its containing directories (nothing on web owns any workflows now).
+- Dropped `workflow` dep from `apps/web/package.json`.
+- Removed the `workflow` TS plugin from `apps/web/tsconfig.json`.
+- Removed `withWorkflow` wrapper from `apps/web/next.config.ts`.
+- `mock.module("workflow/api", ...)` no longer appears anywhere in `apps/web`.
 
 ## Risks & mitigations
 
