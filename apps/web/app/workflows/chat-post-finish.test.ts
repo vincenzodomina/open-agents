@@ -82,7 +82,7 @@ mock.module("@open-harness/sandbox", () => ({
   connectSandbox: spies.connectSandbox,
 }));
 
-mock.module("@/lib/diff/compute-diff", () => ({
+mock.module("@open-harness/shared/lib/diff/compute-diff", () => ({
   computeAndCacheDiff: spies.computeAndCacheDiff,
 }));
 

@@ -93,8 +93,8 @@ export function parseStats(
     const parts = line.split("\t");
     if (parts.length < 3) continue;
 
-    const additions = parseInt(parts[0], 10) || 0;
-    const deletions = parseInt(parts[1], 10) || 0;
+    const additions = parseInt(parts[0] ?? "", 10) || 0;
+    const deletions = parseInt(parts[1] ?? "", 10) || 0;
     const path = parts[2];
 
     if (path) {
@@ -223,8 +223,9 @@ export async function resolveBaseRef(
     // "refs/remotes/origin/main" → "origin/main"
     const full = symRef.stdout.trim();
     const match = full.match(/^refs\/remotes\/(.+)$/);
-    if (match && SAFE_REF_PATTERN.test(match[1])) {
-      return match[1];
+    const ref = match?.[1];
+    if (ref && SAFE_REF_PATTERN.test(ref)) {
+      return ref;
     }
   }
 

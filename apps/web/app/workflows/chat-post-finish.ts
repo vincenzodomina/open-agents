@@ -353,9 +353,10 @@ export async function refreshDiffCache(
   "use step";
   try {
     const { connectSandbox } = await import("@open-harness/sandbox");
-    const { computeAndCacheDiff } = await import("@/lib/diff/compute-diff");
+    const { computeAndCacheDiff } =
+      await import("@open-harness/shared/lib/diff/compute-diff");
     const sandbox: Sandbox = await connectSandbox(sandboxState);
-    await computeAndCacheDiff({ sandbox, sessionId });
+    await computeAndCacheDiff({ sandbox, sessionId, updateSession });
   } catch (error) {
     console.error("[workflow] Failed to refresh diff cache:", error);
   }

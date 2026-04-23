@@ -1,4 +1,14 @@
-// Phase 3c-1 stub. See ./README.md.
-export async function computeAndCacheDiff(_args: unknown): Promise<void> {
-  console.warn("[workflow-runtime/stub] computeAndCacheDiff()");
+import type { Sandbox } from "@open-harness/sandbox";
+import { computeAndCacheDiff as sharedCompute } from "@open-harness/shared/lib/diff/compute-diff";
+import { updateSession } from "./db-sessions";
+
+export async function computeAndCacheDiff(params: {
+  sandbox: Sandbox;
+  sessionId: string;
+}): Promise<void> {
+  await sharedCompute({
+    sandbox: params.sandbox,
+    sessionId: params.sessionId,
+    updateSession,
+  });
 }

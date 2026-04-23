@@ -21,17 +21,6 @@ const updateSessionSpy = mock((_id: string, _patch: Record<string, unknown>) =>
   Promise.resolve(),
 );
 
-// ── Module mocks ───────────────────────────────────────────────────
-
-mock.module("@/lib/db/sessions", () => ({
-  updateSession: updateSessionSpy,
-}));
-
-mock.module("@/lib/sandbox/utils", () => ({
-  isSandboxUnavailableError: (msg: string) =>
-    msg.includes("sandbox unavailable"),
-}));
-
 const { computeAndCacheDiff, DiffComputationError } =
   await import("./compute-diff");
 
@@ -92,8 +81,8 @@ describe("computeAndCacheDiff", () => {
       });
 
       expect(result.files).toHaveLength(2);
-      expect(result.files[0].status).toBe("added");
-      expect(result.files[1].status).toBe("added");
+      expect(result.files[0]?.status).toBe("added");
+      expect(result.files[1]?.status).toBe("added");
       expect(result.baseRef).toBe("(no commits)");
     });
 
@@ -135,7 +124,7 @@ describe("computeAndCacheDiff", () => {
         "git ls-files --others": {
           success: false,
           stdout: "",
-          stderr: "sandbox unavailable",
+          stderr: "sandbox not found",
         },
       });
 
@@ -147,7 +136,7 @@ describe("computeAndCacheDiff", () => {
         expect(true).toBe(false);
       } catch (error) {
         expect(error).not.toBeInstanceOf(DiffComputationError);
-        expect((error as Error).message).toBe("sandbox unavailable");
+        expect((error as Error).message).toBe("sandbox not found");
       }
     });
 
@@ -175,7 +164,7 @@ describe("computeAndCacheDiff", () => {
       });
 
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].path).toBe("good.ts");
+      expect(result.files[0]?.path).toBe("good.ts");
     });
   });
 
@@ -313,16 +302,17 @@ describe("computeAndCacheDiff", () => {
           },
         }) as never,
         sessionId: "session-1",
+        updateSession: updateSessionSpy,
       });
 
       // Give the fire-and-forget a tick to resolve
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       expect(updateSessionSpy).toHaveBeenCalledTimes(1);
-      const [sessionId, patch] = updateSessionSpy.mock.calls[0];
-      expect(sessionId).toBe("session-1");
-      expect(patch).toHaveProperty("cachedDiff");
-      expect(patch).toHaveProperty("cachedDiffUpdatedAt");
+      const firstCall = updateSessionSpy.mock.calls[0];
+      expect(firstCall?.[0]).toBe("session-1");
+      expect(firstCall?.[1]).toHaveProperty("cachedDiff");
+      expect(firstCall?.[1]).toHaveProperty("cachedDiffUpdatedAt");
     });
 
     test("excludes generated files from full diff command", async () => {
@@ -424,8 +414,8 @@ describe("computeAndCacheDiff", () => {
       });
 
       expect(result.files).toHaveLength(1);
-      expect(result.files[0].path).toBe("new-file.ts");
-      expect(result.files[0].status).toBe("added");
+      expect(result.files[0]?.path).toBe("new-file.ts");
+      expect(result.files[0]?.status).toBe("added");
     });
   });
 

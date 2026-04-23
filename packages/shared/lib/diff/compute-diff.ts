@@ -7,9 +7,31 @@ import {
   resolveBaseRef,
   splitDiffByFile,
   unescapeGitPath,
-} from "@/app/api/sessions/[sessionId]/diff/_lib/diff-utils";
-import { updateSession } from "@/lib/db/sessions";
-import { isSandboxUnavailableError } from "@/lib/sandbox/utils";
+} from "./diff-utils";
+
+export type DiffCachePatch = {
+  cachedDiff: DiffResponse;
+  cachedDiffUpdatedAt: Date;
+  linesAdded: number;
+  linesRemoved: number;
+};
+
+export type UpdateSessionFn = (
+  sessionId: string,
+  patch: Record<string, unknown>,
+) => Promise<unknown>;
+
+function isSandboxUnavailableError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("expected a stream of command data") ||
+    normalized.includes("status code 410") ||
+    normalized.includes("status code 404") ||
+    normalized.includes("sandbox is stopped") ||
+    normalized.includes("sandbox not found") ||
+    normalized.includes("sandbox probe failed")
+  );
+}
 
 export type DiffFile = {
   path: string;
@@ -50,8 +72,9 @@ export class DiffComputationError extends Error {
 export async function computeAndCacheDiff(params: {
   sandbox: Sandbox;
   sessionId: string;
+  updateSession?: UpdateSessionFn;
 }): Promise<DiffResponse> {
-  const { sandbox, sessionId } = params;
+  const { sandbox, sessionId, updateSession } = params;
   const cwd = sandbox.workingDirectory;
 
   // Determine the best base ref for the diff:
@@ -141,12 +164,12 @@ export async function computeAndCacheDiff(params: {
       },
     };
 
-    updateSession(sessionId, {
+    updateSession?.(sessionId, {
       cachedDiff: response,
       cachedDiffUpdatedAt: new Date(),
       linesAdded: response.summary.totalAdditions,
       linesRemoved: response.summary.totalDeletions,
-    }).catch((err) => console.error("Failed to cache diff:", err));
+    })?.catch((err) => console.error("Failed to cache diff:", err));
 
     return response;
   }
@@ -361,12 +384,12 @@ export async function computeAndCacheDiff(params: {
   };
 
   // Cache diff for offline viewing (fire-and-forget)
-  updateSession(sessionId, {
+  updateSession?.(sessionId, {
     cachedDiff: response,
     cachedDiffUpdatedAt: new Date(),
     linesAdded: response.summary.totalAdditions,
     linesRemoved: response.summary.totalDeletions,
-  }).catch((err) => console.error("Failed to cache diff:", err));
+  })?.catch((err) => console.error("Failed to cache diff:", err));
 
   return response;
 }
