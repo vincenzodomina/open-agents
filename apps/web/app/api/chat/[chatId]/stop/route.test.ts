@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 // ── Mutable state ──────────────────────────────────────────────────
 
@@ -25,9 +25,17 @@ let sessionRecord: {
 let cancelShouldThrow = false;
 
 const spies = {
-  cancel: mock(() => {
+  cancel: mock((_path: string) => {
     if (cancelShouldThrow) throw new Error("Cancel failed");
-    return Promise.resolve();
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ runId: "wrun_active-123", cancelled: true }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
   }),
   compareAndSetChatActiveStreamId: mock(() => Promise.resolve(true)),
   createChatMessageIfNotExists: mock(
@@ -38,16 +46,11 @@ const spies = {
 
 // ── Module mocks ───────────────────────────────────────────────────
 
-const originalFetch = globalThis.fetch;
-globalThis.fetch = (async () =>
-  new Response("{}", {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  })) as unknown as typeof fetch;
-
-mock.module("workflow/api", () => ({
-  getRun: () => ({
-    cancel: spies.cancel,
+mock.module("@/lib/runtime-connection/workflow-client", () => ({
+  getWorkflowClient: () => ({
+    baseUrl: "http://workflow-runtime",
+    fetch: (path: string) => spies.cancel(path),
+    health: async () => ({ ok: true, status: 200 }),
   }),
 }));
 
@@ -64,10 +67,6 @@ mock.module("@/lib/db/sessions", () => ({
 }));
 
 const routeModulePromise = import("./route");
-
-afterAll(() => {
-  globalThis.fetch = originalFetch;
-});
 
 // ── Helpers ────────────────────────────────────────────────────────
 

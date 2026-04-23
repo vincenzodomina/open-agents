@@ -125,7 +125,7 @@ mock.module("@/app/workflows/chat", () => ({
   runAgentWorkflow: async () => {},
 }));
 
-mock.module("@/lib/chat/create-cancelable-readable-stream", () => ({
+mock.module("@open-harness/shared/lib/cancelable-readable-stream", () => ({
   createCancelableReadableStream: (stream: ReadableStream) => stream,
 }));
 

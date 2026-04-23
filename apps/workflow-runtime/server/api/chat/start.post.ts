@@ -1,14 +1,13 @@
+import { createCancelableReadableStream } from "@open-harness/shared/lib/cancelable-readable-stream";
+import type { WebAgentUIMessage } from "@open-harness/shared/lib/chat-types";
+import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
 import { defineEventHandler, readBody } from "nitro/h3";
 import { start } from "workflow/api";
 import { requireAuth } from "../../utils/auth";
 import { runAgentWorkflow } from "../../workflows/chat";
 
-/**
- * Starts a chat workflow run. Body mirrors the `Options` shape of
- * runAgentWorkflow in server/workflows/chat.ts; returns `{ runId }`.
- * The web app then streams the run via GET /api/chat/runs/:id/stream
- * (Phase 3c-2) or simply polls status.
- */
+type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
+
 export default defineEventHandler(async (event) => {
   const auth = await requireAuth(event);
   if (auth instanceof Response) {
@@ -32,5 +31,15 @@ export default defineEventHandler(async (event) => {
   }
 
   const run = await start(runAgentWorkflow, [{ ...body, userId: auth.userId }]);
-  return { runId: run.runId };
+
+  const stream = createCancelableReadableStream(
+    run.getReadable<WebAgentUIMessageChunk>(),
+  );
+
+  return createUIMessageStreamResponse({
+    stream,
+    headers: {
+      "x-workflow-run-id": run.runId,
+    },
+  });
 });

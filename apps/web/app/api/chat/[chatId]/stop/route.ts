@@ -1,4 +1,3 @@
-import { getRun } from "workflow/api";
 import {
   requireAuthenticatedUser,
   requireOwnedChatById,
@@ -9,6 +8,7 @@ import {
   createChatMessageIfNotExists,
   updateChatAssistantActivity,
 } from "@/lib/db/sessions";
+import { getWorkflowClient } from "@/lib/runtime-connection/workflow-client";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -36,8 +36,6 @@ export async function POST(request: Request, context: RouteContext) {
     return Response.json({ success: true });
   }
 
-  // Persist the latest client-side assistant message snapshot before
-  // cancelling so mid-step output is not lost on abrupt stop.
   try {
     const body: unknown = await request.json().catch(() => null);
     if (isStopRequestWithMessage(body)) {
@@ -48,8 +46,14 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   try {
-    const run = getRun(chat.activeStreamId);
-    await run.cancel();
+    const workflow = getWorkflowClient();
+    const response = await workflow.fetch(
+      `/api/chat/runs/${encodeURIComponent(chat.activeStreamId)}/stop`,
+      { method: "POST" },
+    );
+    if (!response.ok) {
+      throw new Error(`workflow-runtime returned ${response.status}`);
+    }
   } catch (error) {
     console.error(
       `[workflow] Failed to cancel workflow run for chat ${chatId}:`,
@@ -61,9 +65,6 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  // Clear activeStreamId immediately so a follow-up prompt does not
-  // reconnect to the cancelled (but not yet terminal) workflow.
-  // Uses CAS to avoid clobbering a newer workflow that raced in.
   await compareAndSetChatActiveStreamId(
     chatId,
     chat.activeStreamId,
@@ -82,9 +83,6 @@ async function persistAssistantSnapshot(
   chatId: string,
   message: WebAgentUIMessage,
 ): Promise<void> {
-  // Insert-only: if the workflow already persisted a fuller message, this
-  // is a no-op. Avoids overwriting server-side content with a stale
-  // (throttled) client snapshot.
   const created = await createChatMessageIfNotExists({
     id: message.id,
     chatId,

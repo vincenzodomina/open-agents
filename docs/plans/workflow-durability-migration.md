@@ -115,7 +115,34 @@ Also in 3c-2b: rename the `stubs/` directory (now misleading; holds real impls).
 
 Last two feature stubs are now real. Pure helpers (`crypto`, `repo-identifiers`) extracted to `@open-harness/shared`; DB-coupled and Octokit-coupled helpers duplicated in `apps/workflow-runtime/server/utils/` (GitHub account + token + app trailer + branches + pull requests + pr-content). `stubs/` directory renamed to `impl/` now that everything under it is real.
 
-### 3c-3: Wire web routes to call the workflow runtime (after 3c-2, ~2–3 days)
+### 3c-3a: Runtime streaming endpoints + /stop wiring ✅ DONE
+
+- Runtime `/api/chat/start` now returns a full streaming `createUIMessageStreamResponse` with `x-workflow-run-id` header (was `{ runId }`).
+- New runtime `/api/chat/runs/:id/stream` (GET) resumes streaming for an existing run; returns 204 when the run is completed/cancelled/failed or not found.
+- `createCancelableReadableStream` extracted from `apps/web/lib/chat/` to `@open-harness/shared/lib/cancelable-readable-stream` so both runtimes use one copy.
+- Web `/api/chat/[chatId]/stop` rewritten as a thin proxy calling the runtime's `/api/chat/runs/:id/stop`. The web keeps auth, ownership, assistant-snapshot persistence, and CAS-clear of `activeStreamId` — the runtime just cancels the run. Tests swap the `workflow/api` module mock for a `getWorkflowClient` mock.
+
+### 3c-3b: Wire `/api/chat/route.ts` and `/api/chat/[chatId]/stream/route.ts` (next session)
+
+Both routes still do workflow-SDK work on the web side. The main chat route is the bigger lift — it orchestrates:
+- reconcile of an existing `activeStreamId` (getRun status + resume or clear)
+- fresh workflow start (`start(runAgentWorkflow, [...])`)
+- atomic `compareAndSetChatActiveStreamId` claim with cancel-on-race
+- workflow-body config assembly (preferences, model variants, sandbox state, skills, auto-commit flags)
+
+Rewiring approach:
+1. **Reconcile path:** call runtime `/api/chat/runs/:id/stream` with the existing `activeStreamId`. If 204 (not running/found), CAS-clear the slot and fall through.
+2. **Fresh start:** call runtime `/api/chat/start` with the full `Options` body (keep assembling it on web). Read `x-workflow-run-id` from the response headers, CAS-claim. If the claim loses a race, POST `/api/chat/runs/:id/stop` to the runtime and return 409.
+3. **Streaming passthrough:** forward the runtime's response body as-is. SSE framing is already set up by `createUIMessageStreamResponse` on the runtime side.
+
+The streaming resume route (`/api/chat/[chatId]/stream`) follows the same reconcile pattern without the fresh-start branch.
+
+### 3c-3c: Decommission duplicated web-side chat workflow code (after 3c-3b)
+
+Once web routes are rewired:
+- Delete `apps/web/app/workflows/chat.ts`, `chat-post-finish.ts`, `usage-utils.ts` — live copies at `apps/workflow-runtime/server/workflows/` are now the source of truth.
+- Delete or migrate the web-side tests covering the workflow body (`chat.test.ts`, `chat-post-finish.test.ts`, `chat-post-finish-usage.test.ts`) — the workflow behavior is better tested in the runtime now.
+- Decommission Vercel Workflow bindings on the web `package.json` (the `workflow` dep goes; Next's workflow TS plugin stays out).
 
 This is the payoff. The 1079-line `apps/web/app/workflows/chat.ts` moves to the new workflow service.
 

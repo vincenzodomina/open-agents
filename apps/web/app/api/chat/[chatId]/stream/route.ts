@@ -6,7 +6,7 @@ import {
 } from "@/app/api/chat/_lib/chat-context";
 import type { WebAgentUIMessage } from "@/app/types";
 import { updateChatActiveStreamId } from "@/lib/db/sessions";
-import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
+import { createCancelableReadableStream } from "@open-harness/shared/lib/cancelable-readable-stream";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;

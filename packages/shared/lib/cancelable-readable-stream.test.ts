@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createCancelableReadableStream } from "./create-cancelable-readable-stream";
+import { createCancelableReadableStream } from "./cancelable-readable-stream";
 
 // ── Helpers ────────────────────────────────────────────────────────
 

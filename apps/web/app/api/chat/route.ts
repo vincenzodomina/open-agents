@@ -20,7 +20,7 @@ import {
   sanitizeUserPreferencesForSession,
 } from "@/lib/model-access";
 import { getAllVariants } from "@/lib/model-variants";
-import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
+import { createCancelableReadableStream } from "@open-harness/shared/lib/cancelable-readable-stream";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
