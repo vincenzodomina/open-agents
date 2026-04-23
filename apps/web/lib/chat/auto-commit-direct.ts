@@ -2,7 +2,7 @@ import type { Sandbox } from "@open-harness/sandbox";
 import { generateText } from "ai";
 import { gateway } from "@open-harness/agent";
 import { getGitHubAccount } from "@/lib/db/accounts";
-import { buildGitHubAuthRemoteUrl } from "@/lib/github/repo-identifiers";
+import { buildGitHubAuthRemoteUrl } from "@open-harness/shared/lib/repo-identifiers";
 import { getAppCoAuthorTrailer } from "@/lib/github/app-auth";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 

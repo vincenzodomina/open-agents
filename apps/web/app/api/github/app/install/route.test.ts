@@ -21,7 +21,7 @@ mock.module("@/lib/db/installations", () => ({
   getInstallationsByUserId: async () => installations,
 }));
 
-mock.module("@/lib/crypto", () => ({
+mock.module("@open-harness/shared/lib/crypto", () => ({
   decrypt: () => "ghu_saved",
 }));
 

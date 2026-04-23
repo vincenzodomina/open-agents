@@ -2,7 +2,7 @@ import { generateState } from "arctic";
 import { NextResponse, type NextRequest } from "next/server";
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { getInstallationsByUserId } from "@/lib/db/installations";
-import { decrypt } from "@/lib/crypto";
+import { decrypt } from "@open-harness/shared/lib/crypto";
 import { syncUserInstallations } from "@/lib/github/installations-sync";
 import { getServerSession } from "@/lib/session/get-server-session";
 

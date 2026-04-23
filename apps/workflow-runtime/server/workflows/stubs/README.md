@@ -10,9 +10,9 @@ Replacement target for the chat workflow's `@/lib/*` dependencies. Originally na
 | `db-workflow-runs.ts` | **Real** — calls `record_workflow_run` RPC | Verbatim port of `apps/web/lib/db/workflow-runs.ts` |
 | `db-usage.ts` | **Real** — inserts into `usage_events` | Verbatim port of `apps/web/lib/db/usage.ts#recordUsage` |
 | `sandbox-lifecycle.ts` | **Real** — pure helpers | Minimal port of `apps/web/lib/sandbox/lifecycle.ts` (activity + active update builders only) |
-| `auto-commit-direct.ts` | Stub | `apps/web/lib/chat/auto-commit-direct.ts` — sandbox + GitHub token operations; deferred to 3c-2b |
-| `auto-pr-direct.ts` | Stub | `apps/web/lib/chat/auto-pr-direct.ts` — GitHub REST API calls; deferred to 3c-2b |
-| `compute-diff.ts` | Stub | `apps/web/lib/diff/compute-diff.ts` — sandbox diff + blob cache; deferred to 3c-2b |
+| `auto-commit-direct.ts` | **Real** — uses runtime-side GitHub helpers and shared `buildGitHubAuthRemoteUrl` | Near-verbatim port of `apps/web/lib/chat/auto-commit-direct.ts` |
+| `auto-pr-direct.ts` | Stub | `apps/web/lib/chat/auto-pr-direct.ts` — Octokit + PR content generation; deferred (larger surface) |
+| `compute-diff.ts` | **Real** — wraps shared `@open-harness/shared/lib/diff/compute-diff` with runtime's `updateSession` | — |
 
 The three remaining stubs log calls and return safe defaults. The chat workflow runs end-to-end against them: the agent generates output, messages persist, usage gets tracked, workflow runs are recorded — only auto-commit, auto-PR, and diff caching no-op until 3c-2b.
 

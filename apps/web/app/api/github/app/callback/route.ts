@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { encrypt } from "@/lib/crypto";
+import { encrypt } from "@open-harness/shared/lib/crypto";
 import { getGitHubAccount, upsertGitHubAccount } from "@/lib/db/accounts";
 import { syncUserInstallations } from "@/lib/github/installations-sync";
 import { getServerSession } from "@/lib/session/get-server-session";
