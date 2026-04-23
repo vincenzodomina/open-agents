@@ -1,5 +1,21 @@
 # Open Agents
 
+## What This Branch Removed
+
+At a high level, this branch trims the upstream app down to a more minimal bash-files-chat product without the git and coding focused features:
+
+- **GitHub / repo workflow surfaces** — removed repository setup flows, git/PR-oriented UI, and other repo-management product surfaces from the main app flow.
+- **Public sharing** — removed share links, shared chat pages, and the related API/data layer.
+- **Embedded editor and dev-server UI** — removed the built-in code editor flow, codespace routes, and dev-server controls.
+- **Usage and leaderboard product features** — removed usage stats, ranked lists, and other public/profile-style product surfaces that are not needed for the core chat loop.
+- **Extra platform coupling** — reduced Vercel-specific project wiring and other hosted-product ties that were outside the minimal experience.
+
+The intended app flow for this branch is now roughly:
+
+```text
+login -> start session -> chat -> sandbox/filesystem tools
+```
+
 Summary of changes in **this fork** versus upstream [`vercel-labs/open-agents`](https://github.com/vercel-labs/open-agents):
 
 - **Supabase database** — Wired the app to Supabase Postgres with SQL migrations under `supabase/migrations/`, replacing the prior Drizzle-centric setup for core persistence.
