@@ -177,6 +177,8 @@
       "name": "@open-harness/shared",
       "version": "0.0.0",
       "dependencies": {
+        "@open-harness/agent": "workspace:*",
+        "ai": "catalog:",
         "react": "19.2.3",
       },
       "devDependencies": {

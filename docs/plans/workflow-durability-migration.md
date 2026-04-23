@@ -79,7 +79,30 @@ Follow-up for productionization (not a blocker for 3c):
 - Fold the workflow schema migration into `supabase/migrations/` so it's applied alongside app migrations, or make `workflow-postgres-setup` a post-deploy hook.
 - Decide on a `WORKFLOW_POSTGRES_JOB_PREFIX` to namespace queues if we want multiple independent workflow services later.
 
-### 3c: Chat workflow migration (2–3 sessions, ~1–2 weeks)
+### 3c-1: Chat workflow skeleton + stub layer ✅ DONE
+
+The full `apps/web/app/workflows/chat.ts` + `chat-post-finish.ts` + `usage-utils.ts` (1592 LOC total) now lives at `apps/workflow-runtime/server/workflows/`, compiles clean against:
+
+- `@open-harness/shared/lib/chat-types` — extracted `WebAgent*` type family; `apps/web/app/types.ts` is now a thin re-export shim
+- `@open-harness/shared/lib/dedupe-message-reasoning` — pure helper moved to shared
+- `@open-harness/shared/lib/workflow-run-types` — pure `WorkflowRunStatus` + `WorkflowRunStepTiming` types
+- `server/workflows/stubs/*` — temporary no-op stubs for all DB writes (sessions/workflow-runs/usage), auto-commit, auto-PR, compute-diff. See `stubs/README.md` for the inventory.
+
+New endpoints wired up with bearer auth:
+- `POST /api/chat/start` — starts `runAgentWorkflow`, returns `{ runId }`
+- `POST /api/chat/runs/:id/stop` — cancels a run
+
+The webAgent's dynamic `await import("@/app/config")` was replaced with `await import("@open-harness/agent/open-harness-agent")` — removes the runtime's implicit dependency on apps/web.
+
+### 3c-2: Replace stubs with real runtime-side implementations (next session, ~1 week)
+
+For each stub in `apps/workflow-runtime/server/workflows/stubs/`:
+
+1. **db-sessions / db-workflow-runs / db-usage** — build a runtime-side Supabase client. Easiest: add `@supabase/supabase-js` as a dep and use the service-role key (already in env as `SUPABASE_SERVICE_ROLE_KEY`) via `createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } })`. Port the queries from `apps/web/lib/db/{sessions,workflow-runs,usage}.ts` 1:1 — they're all RPC calls and table reads/writes that work identically regardless of which process issues them.
+2. **sandbox-lifecycle** — candidate to move to `@open-harness/shared`; it's pure TS that constructs update objects. No runtime/web specific concerns.
+3. **auto-commit-direct / auto-pr-direct / compute-diff** — these are sandbox operations + GitHub API calls. Port them to runtime; they need the GitHub token retrieval path (`getUserGitHubToken`) which also needs DB access. Consider extracting to a shared package if the web side still calls them for non-chat flows (grep — if they're chat-only, just move).
+
+### 3c-3: Wire web routes to call the workflow runtime (after 3c-2, ~2–3 days)
 
 This is the payoff. The 1079-line `apps/web/app/workflows/chat.ts` moves to the new workflow service.
 

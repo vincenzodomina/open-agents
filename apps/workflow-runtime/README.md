@@ -36,10 +36,13 @@ On Vercel deployments, leave `WORKFLOW_TARGET_WORLD` unset — the SDK auto-dete
 ## Endpoints
 
 - `GET /api/health` — liveness, no auth
-- `POST /api/count` `{ target?: number }` — starts a `countToN` workflow (auth required). Smoke test for the durability stack; remove once chat is migrated.
+- `POST /api/count` `{ target?: number }` — starts a `countToN` workflow (auth required). Smoke test for the durability stack; remove once chat is production-ready.
 - `GET /api/runs/:id` — returns run status (auth required)
+- `POST /api/chat/start` — starts the chat workflow (`runAgentWorkflow`). Body is the `Options` shape from `server/workflows/chat.ts`. Returns `{ runId }`. Phase 3c-1 skeleton: the workflow body compiles against `server/workflows/stubs/*` so DB writes are no-ops. Phase 3c-2 replaces stubs with real runtime-side implementations.
+- `POST /api/chat/runs/:id/stop` — cancels a chat workflow run (auth required).
+- *(coming in 3c-2)* `GET /api/chat/runs/:id/stream` — resume streaming from a running workflow via `run.getReadable()`.
 
-Phase 3c will add `/api/chat/start`, `/api/chat/:runId/stream`, `/api/chat/:runId/cancel` that host the migrated `apps/web/app/workflows/chat.ts` body.
+See `server/workflows/stubs/README.md` for the current inventory of stubs and what moves in 3c-2.
 
 ## Auth contract
 
