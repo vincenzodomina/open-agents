@@ -63,17 +63,6 @@ alter table "public"."chats" enable row level security;
 alter table "public"."sessions" enable row level security;
 
 
-  create table "public"."shares" (
-    "id" text not null,
-    "chat_id" text not null,
-    "created_at" timestamp without time zone not null default now(),
-    "updated_at" timestamp without time zone not null default now()
-      );
-
-
-alter table "public"."shares" enable row level security;
-
-
   create table "public"."user_preferences" (
     "id" text not null,
     "user_id" text not null,
@@ -154,10 +143,6 @@ CREATE UNIQUE INDEX sessions_pkey ON public.sessions USING btree (id);
 
 CREATE INDEX sessions_user_id_idx ON public.sessions USING btree (user_id);
 
-CREATE UNIQUE INDEX shares_chat_id_idx ON public.shares USING btree (chat_id);
-
-CREATE UNIQUE INDEX shares_pkey ON public.shares USING btree (id);
-
 CREATE UNIQUE INDEX user_preferences_pkey ON public.user_preferences USING btree (id);
 
 CREATE UNIQUE INDEX user_preferences_user_id_key ON public.user_preferences USING btree (user_id);
@@ -186,8 +171,6 @@ alter table "public"."chats" add constraint "chats_pkey" PRIMARY KEY using index
 
 alter table "public"."sessions" add constraint "sessions_pkey" PRIMARY KEY using index "sessions_pkey";
 
-alter table "public"."shares" add constraint "shares_pkey" PRIMARY KEY using index "shares_pkey";
-
 alter table "public"."user_preferences" add constraint "user_preferences_pkey" PRIMARY KEY using index "user_preferences_pkey";
 
 alter table "public"."users" add constraint "users_pkey" PRIMARY KEY using index "users_pkey";
@@ -215,10 +198,6 @@ alter table "public"."chats" validate constraint "chats_session_id_fkey";
 alter table "public"."sessions" add constraint "sessions_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
 
 alter table "public"."sessions" validate constraint "sessions_user_id_fkey";
-
-alter table "public"."shares" add constraint "shares_chat_id_fkey" FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE CASCADE not valid;
-
-alter table "public"."shares" validate constraint "shares_chat_id_fkey";
 
 alter table "public"."user_preferences" add constraint "user_preferences_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE not valid;
 
@@ -788,48 +767,6 @@ grant trigger on table "public"."sessions" to "service_role";
 grant truncate on table "public"."sessions" to "service_role";
 
 grant update on table "public"."sessions" to "service_role";
-
-grant delete on table "public"."shares" to "anon";
-
-grant insert on table "public"."shares" to "anon";
-
-grant references on table "public"."shares" to "anon";
-
-grant select on table "public"."shares" to "anon";
-
-grant trigger on table "public"."shares" to "anon";
-
-grant truncate on table "public"."shares" to "anon";
-
-grant update on table "public"."shares" to "anon";
-
-grant delete on table "public"."shares" to "authenticated";
-
-grant insert on table "public"."shares" to "authenticated";
-
-grant references on table "public"."shares" to "authenticated";
-
-grant select on table "public"."shares" to "authenticated";
-
-grant trigger on table "public"."shares" to "authenticated";
-
-grant truncate on table "public"."shares" to "authenticated";
-
-grant update on table "public"."shares" to "authenticated";
-
-grant delete on table "public"."shares" to "service_role";
-
-grant insert on table "public"."shares" to "service_role";
-
-grant references on table "public"."shares" to "service_role";
-
-grant select on table "public"."shares" to "service_role";
-
-grant trigger on table "public"."shares" to "service_role";
-
-grant truncate on table "public"."shares" to "service_role";
-
-grant update on table "public"."shares" to "service_role";
 
 grant delete on table "public"."user_preferences" to "anon";
 

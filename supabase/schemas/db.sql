@@ -76,14 +76,6 @@ CREATE TABLE IF NOT EXISTS chat_reads (
 );
 ALTER TABLE chat_reads ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS chat_reads_chat_id_idx ON chat_reads (chat_id);
-CREATE TABLE IF NOT EXISTS shares (
-    id text NOT NULL PRIMARY KEY,
-    chat_id text NOT NULL REFERENCES chats (id) ON DELETE CASCADE,
-    created_at timestamp without time zone DEFAULT now() NOT NULL,
-    updated_at timestamp without time zone DEFAULT now() NOT NULL
-);
-ALTER TABLE shares ENABLE ROW LEVEL SECURITY;
-CREATE UNIQUE INDEX IF NOT EXISTS shares_chat_id_idx ON shares (chat_id);
 CREATE TABLE IF NOT EXISTS workflow_runs (
     id text NOT NULL PRIMARY KEY,
     chat_id text NOT NULL REFERENCES chats (id) ON DELETE CASCADE,

@@ -23,7 +23,6 @@ export type SessionRow = TableRow<"sessions">;
 export type ChatRow = TableRow<"chats">;
 export type ChatMessageRow = TableRow<"chat_messages">;
 export type ChatReadRow = TableRow<"chat_reads">;
-export type ShareRow = TableRow<"shares">;
 export type UserRow = TableRow<"users">;
 export type UserPreferencesRow = TableRow<"user_preferences">;
 export type WorkflowRunRow = TableRow<"workflow_runs">;
@@ -72,20 +71,6 @@ export type Chat = {
 };
 
 export type NewChat = Omit<Chat, "createdAt" | "updatedAt"> & {
-  createdAt?: Date;
-  updatedAt?: Date;
-};
-
-type ShR = ShareRow;
-
-export type Share = {
-  id: ShR["id"];
-  chatId: ShR["chat_id"];
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type NewShare = Omit<Share, "createdAt" | "updatedAt"> & {
   createdAt?: Date;
   updatedAt?: Date;
 };

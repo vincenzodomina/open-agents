@@ -5,14 +5,11 @@ import {
   useContext,
   useMemo,
   useRef,
-  useState,
   type ReactNode,
   type RefObject,
 } from "react";
 
 type ChatLayoutContextValue = {
-  shareRequested: boolean;
-  setShareRequested: (requested: boolean) => void;
   headerActionsRef: RefObject<HTMLDivElement | null>;
 };
 
@@ -21,17 +18,9 @@ const ChatLayoutContext = createContext<ChatLayoutContextValue | undefined>(
 );
 
 export function ChatLayoutProvider({ children }: { children: ReactNode }) {
-  const [shareRequested, setShareRequested] = useState(false);
   const headerActionsRef = useRef<HTMLDivElement | null>(null);
 
-  const value = useMemo(
-    () => ({
-      shareRequested,
-      setShareRequested,
-      headerActionsRef,
-    }),
-    [shareRequested],
-  );
+  const value = useMemo(() => ({ headerActionsRef }), []);
 
   return (
     <ChatLayoutContext.Provider value={value}>

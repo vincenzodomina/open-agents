@@ -7,7 +7,6 @@ import type {
   ChatRead,
   NewSession,
   Session,
-  Share,
   UserPreferences,
   WorkflowRun,
   WorkflowRunStep,
@@ -79,15 +78,6 @@ export function mapChatMessageRow(row: Record<string, unknown>): ChatMessage {
     role: row.role as ChatMessage["role"],
     parts: row.parts as ChatMessage["parts"],
     createdAt: parseTimestampRequired(row.created_at),
-  };
-}
-
-export function mapShareRow(row: Record<string, unknown>): Share {
-  return {
-    id: String(row.id),
-    chatId: String(row.chat_id),
-    createdAt: parseTimestampRequired(row.created_at),
-    updatedAt: parseTimestampRequired(row.updated_at),
   };
 }
 

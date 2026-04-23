@@ -4,7 +4,6 @@ import {
   mapChatMessageRow,
   mapChatRow,
   mapSessionRow,
-  mapShareRow,
   newChatToSnakeInsert,
   newSessionToRpcJson,
   partialChatToSnakeUpdate,
@@ -17,7 +16,6 @@ import type {
   ChatMessage,
   NewChatMessage,
   NewSession,
-  NewShare,
   Session,
 } from "./schema";
 
@@ -135,64 +133,6 @@ export async function getSessionById(sessionId: string) {
     return null;
   }
   return normalizeSessionRecord(mapSessionRow(data as Record<string, unknown>));
-}
-
-export async function getShareById(shareId: string) {
-  const { data, error } = await sb()
-    .from("shares")
-    .select("*")
-    .eq("id", shareId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-  return data ? mapShareRow(data as Record<string, unknown>) : null;
-}
-
-export async function getShareByChatId(chatId: string) {
-  const { data, error } = await sb()
-    .from("shares")
-    .select("*")
-    .eq("chat_id", chatId)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-  return data ? mapShareRow(data as Record<string, unknown>) : null;
-}
-
-export async function createShareIfNotExists(data: NewShare) {
-  const row = {
-    id: data.id,
-    chat_id: data.chatId,
-    created_at: data.createdAt?.toISOString() ?? new Date().toISOString(),
-    updated_at: data.updatedAt?.toISOString() ?? new Date().toISOString(),
-  };
-
-  const { data: inserted, error } = await sb()
-    .from("shares")
-    .insert(row)
-    .select()
-    .maybeSingle();
-
-  if (!error && inserted) {
-    return mapShareRow(inserted as Record<string, unknown>);
-  }
-
-  if (error && (error as { code?: string }).code !== "23505") {
-    throw error;
-  }
-
-  return getShareByChatId(data.chatId);
-}
-
-export async function deleteShareByChatId(chatId: string) {
-  const { error } = await sb().from("shares").delete().eq("chat_id", chatId);
-  if (error) {
-    throw error;
-  }
 }
 
 export async function getSessionsByUserId(userId: string) {
