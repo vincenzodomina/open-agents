@@ -15,7 +15,7 @@ import {
 } from "@/app/api/generate-pr/_lib/generate-pr-helpers";
 import { getGitHubAccount } from "@/lib/db/accounts";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
-import { buildGitHubAuthRemoteUrl } from "@/lib/github/repo-identifiers";
+import { buildGitHubAuthRemoteUrl } from "@open-harness/shared/lib/repo-identifiers";
 import { generatePullRequestContentFromSandbox } from "@/lib/git/pr-content";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getAppCoAuthorTrailer } from "@/lib/github/app-auth";

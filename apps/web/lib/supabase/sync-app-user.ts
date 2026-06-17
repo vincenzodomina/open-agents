@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import { encrypt } from "@/lib/crypto";
+import { encrypt } from "@open-harness/shared/lib/crypto";
 import { upsertUser } from "@/lib/db/users";
 import type { Session as AppSession } from "@/lib/session/types";
 

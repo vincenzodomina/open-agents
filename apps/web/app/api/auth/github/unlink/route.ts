@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { decrypt } from "@/lib/crypto";
+import { decrypt } from "@open-harness/shared/lib/crypto";
 import { deleteGitHubAccount, getGitHubAccount } from "@/lib/db/accounts";
 import { deleteInstallationsByUserId } from "@/lib/db/installations";
 import { getServerSession } from "@/lib/session/get-server-session";

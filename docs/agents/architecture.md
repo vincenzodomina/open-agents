@@ -28,10 +28,19 @@ The `task` tool delegates to specialized subagents:
 
 ```
 apps/
-  web/           # Web interface
+  web/           # Web interface (Next.js)
+  runtime/       # Bun service: LLM endpoints + durable workflows (chat, sandbox-lifecycle)
+  desktop/      # Electron shell that runs web + runtime locally or proxies to a remote runtime
 packages/
   agent/         # Core agent logic (@open-harness/agent)
   sandbox/       # Sandbox abstraction (@open-harness/sandbox)
   shared/        # Shared utilities (@open-harness/shared)
+  runtime-core/  # Connection-mode, bearer auth, token refresh helpers
   tsconfig/      # Shared TypeScript configs
 ```
+
+## Runtime
+
+`apps/runtime` is a single Bun service that hosts both lightweight LLM endpoints and the durable workflow SDK (Vercel `workflow` + `@workflow/world-postgres`). Workflows (chat, sandbox-lifecycle) are built from source at boot via `@workflow/builders` `StandaloneBuilder`, which emits `.well-known/workflow/v1/{step,flow,webhook}.mjs` bundles. The server mounts those as the workflow control-plane routes and `getWorld().start()` subscribes to the Postgres queue.
+
+Web talks to the runtime via `getRuntimeClient()` using `SERVER_CONNECTION_URL`. On Vercel deploys, `WORKFLOW_TARGET_WORLD` stays unset and the SDK uses Vercel's hosted world; otherwise `WORKFLOW_TARGET_WORLD=@workflow/world-postgres` + `WORKFLOW_POSTGRES_URL` points at the self-hosted queue (Supabase Postgres).

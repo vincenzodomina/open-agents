@@ -1,8 +1,6 @@
-import { connectSandbox } from "@open-harness/sandbox";
-import { generateText } from "ai";
-import { gateway } from "@open-harness/agent";
 import { verifyBotIdRequest } from "@/lib/botid-server";
 import { getSessionById } from "@/lib/db/sessions";
+import { getRuntimeClient } from "@/lib/runtime-connection/server-client";
 import { isSessionSandboxOperational } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
@@ -11,7 +9,7 @@ export const maxDuration = 30;
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ sessionId: string }> },
-) {
+): Promise<Response> {
   const session = await getServerSession();
   if (!session?.user) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
@@ -28,47 +26,17 @@ export async function POST(
     return Response.json({ error: "Session not found" }, { status: 404 });
   }
 
-  if (!isSessionSandboxOperational(dbSession)) {
+  if (!isSessionSandboxOperational(dbSession) || !dbSession.sandboxState) {
     return Response.json({ error: "No active sandbox" }, { status: 400 });
   }
 
-  const sandboxState = dbSession.sandboxState;
-  if (!sandboxState) {
-    return Response.json({ error: "No active sandbox" }, { status: 400 });
-  }
-
-  const sandbox = await connectSandbox(sandboxState);
-  const cwd = sandbox.workingDirectory;
-
-  // Get the diff for commit message generation
-  const diffResult = await sandbox.exec(
-    "git diff HEAD --stat && echo '---DIFF---' && git diff HEAD",
-    cwd,
-    30000,
-  );
-
-  const diff = diffResult.stdout;
-  if (!diff.trim() || !diff.includes("---DIFF---")) {
-    return Response.json({ message: "chore: update repository changes" });
-  }
-
-  const result = await generateText({
-    model: gateway("openai/gpt-5.4"),
-    prompt: `Generate a concise git commit message for these changes. Use conventional commit format (e.g., "feat:", "fix:", "refactor:"). One line only, max 72 characters.
-
-Session context: ${dbSession.title}
-
-Diff:
-${diff.slice(0, 8000)}
-
-Respond with ONLY the commit message, nothing else.`,
+  const runtime = getRuntimeClient();
+  return runtime.fetch("/v1/generate-commit-message", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      sandboxState: dbSession.sandboxState,
+      sessionTitle: dbSession.title,
+    }),
   });
-
-  const generated = result.text.trim().split("\n")[0]?.trim();
-  const message =
-    generated && generated.length > 0
-      ? generated.slice(0, 72)
-      : "chore: update repository changes";
-
-  return Response.json({ message });
 }

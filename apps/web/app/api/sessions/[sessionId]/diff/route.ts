@@ -7,7 +7,7 @@ import {
 import {
   computeAndCacheDiff,
   DiffComputationError,
-} from "@/lib/diff/compute-diff";
+} from "@open-harness/shared/lib/diff/compute-diff";
 import { updateSession } from "@/lib/db/sessions";
 import { buildHibernatedLifecycleUpdate } from "@/lib/sandbox/lifecycle";
 import {
@@ -16,7 +16,10 @@ import {
   isSessionSandboxOperational,
 } from "@/lib/sandbox/utils";
 
-export type { DiffFile, DiffResponse } from "@/lib/diff/compute-diff";
+export type {
+  DiffFile,
+  DiffResponse,
+} from "@open-harness/shared/lib/diff/compute-diff";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -48,7 +51,11 @@ export async function GET(_req: NextRequest, context: RouteContext) {
 
   try {
     const sandbox = await connectSandbox(sandboxState);
-    const response = await computeAndCacheDiff({ sandbox, sessionId });
+    const response = await computeAndCacheDiff({
+      sandbox,
+      sessionId,
+      updateSession,
+    });
     return Response.json(response);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

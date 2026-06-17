@@ -6,13 +6,9 @@ import {
 } from "./config";
 
 export function createClient() {
-  return createBrowserClient(
-    getSupabaseBrowserUrl()!,
-    getSupabaseAnonKey()!,
-    {
-      cookieOptions: {
-        name: getSupabaseAuthStorageKey(),
-      },
+  return createBrowserClient(getSupabaseBrowserUrl()!, getSupabaseAnonKey()!, {
+    cookieOptions: {
+      name: getSupabaseAuthStorageKey(),
     },
-  );
+  });
 }

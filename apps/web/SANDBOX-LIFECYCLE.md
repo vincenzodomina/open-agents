@@ -130,8 +130,7 @@ These are **not** refreshed on:
 
 1. **Status endpoint** (`GET /api/sandbox/status`) - polled every 15s by the client. If the sandbox is overdue for hibernation but the lifecycle hasn't acted, it triggers a workflow kick. If a run is already active, the kick is ignored.
 2. **Workflow retry** - if evaluation returns "not-due-yet" (activity happened during sleep), re-computes the next wake time and loops.
-3. **Inline fallback** - if `start(workflow)` fails (workflow SDK unavailable in dev), runs `evaluateSandboxLifecycle()` synchronously as a fallback.
-4. **Stale lease guard** - if a workflow lease is overdue by more than 2 minutes, clear the lease so a fresh run can start.
+3. **Stale lease guard** - if a workflow lease is overdue by more than 2 minutes, clear the lease so a fresh run can start.
 
 ## Client-side UI sync
 

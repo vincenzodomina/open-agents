@@ -1,6 +1,6 @@
 import { isToolUIPart } from "ai";
 import type { WebAgentUIMessage } from "@/app/types";
-import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
+import { dedupeMessageReasoning } from "@open-harness/shared/lib/dedupe-message-reasoning";
 import { upsertChatMessageScoped } from "@/lib/db/sessions";
 
 /**

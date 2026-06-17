@@ -1,5 +1,5 @@
 import "server-only";
-import { decrypt, encrypt } from "@/lib/crypto";
+import { decrypt, encrypt } from "@open-harness/shared/lib/crypto";
 import { getGitHubAccount, updateGitHubAccountTokens } from "@/lib/db/accounts";
 import { getServerSession } from "@/lib/session/get-server-session";
 
